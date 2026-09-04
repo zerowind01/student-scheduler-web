@@ -72,14 +72,13 @@
       localStorage.getItem('edu_scheduler_teachers_v1') ||
       localStorage.getItem('edu_scheduler_teachers');
 
-    if (rawTeachers) {
+    if (rawTeachers !== null) {
       try {
         teachers = JSON.parse(rawTeachers);
       } catch (e) {
         teachers = [];
       }
-    }
-    if (!teachers || teachers.length === 0) {
+    } else {
       teachers = [
         { id: 't1', name: '张老师', subject: '钢琴', colorTheme: 'amber' },
         { id: 't2', name: '王老师', subject: '小提琴', colorTheme: 'emerald' },
@@ -89,7 +88,7 @@
       ];
     }
 
-    if (rawStudents) {
+    if (rawStudents !== null) {
       try {
         students = JSON.parse(rawStudents).map(normalizeStudent);
       } catch (e) {
@@ -151,7 +150,7 @@
       ];
     }
 
-    if (rawSchedules) {
+    if (rawSchedules !== null) {
       try {
         schedules = JSON.parse(rawSchedules);
       } catch (e) {
