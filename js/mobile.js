@@ -405,17 +405,30 @@
   }
 
   function setupMobileEvents() {
-    const btnMobileQuickSync = document.getElementById('btnMobileQuickSync');
-    if (btnMobileQuickSync) {
-      btnMobileQuickSync.addEventListener('click', () => {
-        if (confirm('确定要清除手机端旧缓存并重置刷新为最新全量数据吗？')) {
-          localStorage.clear();
-          loadData();
-          renderMobileTeacherSelect();
-          renderMobile3DayView();
-          renderMobileStudents();
-          showToast('已成功刷新并重置为最新全量课表数据！');
-        }
+    const btnMobileCloudSync = document.getElementById('btnMobileCloudSync');
+    if (btnMobileCloudSync) {
+      btnMobileCloudSync.addEventListener('click', () => {
+        const el = document.getElementById('inputSyncKey');
+        if (el) el.value = schoolSyncKey;
+        showModal('modalSyncKey');
+      });
+    }
+
+    const btnCloseSyncModal = document.getElementById('btnCloseSyncModal');
+    const btnCancelSyncModal = document.getElementById('btnCancelSyncModal');
+    if (btnCloseSyncModal) btnCloseSyncModal.addEventListener('click', () => hideModal('modalSyncKey'));
+    if (btnCancelSyncModal) btnCancelSyncModal.addEventListener('click', () => hideModal('modalSyncKey'));
+
+    const btnSaveSyncKey = document.getElementById('btnSaveSyncKey');
+    if (btnSaveSyncKey) {
+      btnSaveSyncKey.addEventListener('click', () => {
+        const el = document.getElementById('inputSyncKey');
+        const val = (el ? el.value.trim() : '') || 'school_demo_2026';
+        schoolSyncKey = val;
+        localStorage.setItem('edu_scheduler_school_key', val);
+        hideModal('modalSyncKey');
+        pushToCloudSync();
+        showToast(`云同步已开启！同步码: ${val}`);
       });
     }
     document.getElementById('btnMobilePrev').addEventListener('click', () => {
