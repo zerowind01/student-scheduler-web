@@ -229,13 +229,36 @@
     localStorage.setItem(STORAGE_KEY_TEACHERS, JSON.stringify(teachers));
   }
 
+  function checkUrlSyncData() {
+    try {
+      const hashData = location.hash.substring(1);
+      const queryParams = new URLSearchParams(location.search);
+      const rawData = queryParams.get('sync') || hashData;
+
+      if (rawData) {
+        const decoded = decodeURIComponent(rawData);
+        const data = JSON.parse(decoded);
+        if (data && (data.students || data.schedules)) {
+          students = data.students || [];
+          schedules = data.schedules || [];
+          teachers = data.teachers || teachers;
+          saveDataLocalOnly();
+          showToast('⚡ 扫码同步成功！已载入电脑端最新课表！');
+          history.replaceState(null, '', location.pathname);
+        }
+      }
+    } catch (e) {
+      console.warn('URL sync error:', e);
+    }
+  }
+
   function initMobileApp() {
+    checkUrlSyncData();
     loadData();
     setupMobileEvents();
     renderMobileTeacherSelect();
     renderMobile3DayView();
     renderMobileStudents();
-    // 手机端启动时强制优先从云端拉取已存在的课表，覆盖本地初始状态
     pullFromCloudSync(true);
   }
 

@@ -59,7 +59,58 @@
   // ==========================================
   // 2. 初始化与演示数据注入
   // ==========================================
+  function openQrSyncModal() {
+    const container = document.getElementById('qrcodeContainer');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const syncDataStr = JSON.stringify({ students, schedules, teachers, updatedAt: Date.now() });
+    const encodedData = encodeURIComponent(syncDataStr);
+
+    const baseUrl = `${location.protocol}//${location.host}${location.pathname.replace('index.html', '')}mobile.html`;
+    const targetUrl = `${baseUrl}#${encodedData}`;
+
+    if (window.QRCode) {
+      new QRCode(container, {
+        text: targetUrl,
+        width: 180,
+        height: 180,
+        colorDark: '#1e293b',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.L,
+      });
+    } else {
+      container.innerHTML = `<div class="p-3 text-xs text-rose-500 font-bold">二维码组件加载中，请复制同步码</div>`;
+    }
+
+    showModal('modalQrSync');
+  }
+
+  function checkUrlSyncData() {
+    try {
+      const hashData = location.hash.substring(1);
+      const queryParams = new URLSearchParams(location.search);
+      const rawData = queryParams.get('sync') || hashData;
+
+      if (rawData) {
+        const decoded = decodeURIComponent(rawData);
+        const data = JSON.parse(decoded);
+        if (data && (data.students || data.schedules)) {
+          students = data.students || [];
+          schedules = data.schedules || [];
+          teachers = data.teachers || teachers;
+          saveDataLocalOnly();
+          showToast('⚡ 扫码同步成功！已载入最新课表数据！', 'qrcode');
+          history.replaceState(null, '', location.pathname);
+        }
+      }
+    } catch (e) {
+      console.warn('URL sync error:', e);
+    }
+  }
+
   function initApp() {
+    checkUrlSyncData();
     loadData();
     setupEventListeners();
     renderTeacherOptions();
@@ -67,7 +118,6 @@
     renderStudentList();
     renderCalendarGrid();
     updateStats();
-    // 启动时强制优先从云端拉取已有数据，覆盖默认初始状态
     pullFromCloudSync(true);
   }
 
@@ -307,6 +357,9 @@
       renderCalendarGrid();
       updateStats();
     });
+
+    safeBind('btnQrSync', 'click', openQrSyncModal);
+    safeBind('btnCloseQrModal', 'click', () => hideModal('modalQrSync'));
 
     safeBind('btnCloudSync', 'click', () => {
       const el = document.getElementById('inputSyncKey');

@@ -12,6 +12,8 @@
   </script>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- QRCode.js 图库 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <!-- Custom CSS -->
@@ -79,6 +81,9 @@
         </div>
       </div>
 
+      <button id="btnQrSync" class="px-2.5 py-1 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg text-xs font-bold hover:from-amber-600 hover:to-amber-700 transition flex items-center gap-1.5 shrink-0 shadow-2xs" title="手机扫一扫，1秒将电脑排课同步到手机">
+        <i class="fa-solid fa-qrcode text-xs"></i> 扫码同步
+      </button>
       <button id="btnCloudSync" class="px-2.5 py-1 bg-amber-50 text-amber-900 border border-amber-200 rounded-lg text-xs font-bold hover:bg-amber-100 transition flex items-center gap-1 shrink-0 shadow-2xs" title="设置机构专属云端实时同步码">
         <i class="fa-solid fa-cloud-arrow-up text-amber-600 text-xs"></i> 实时云同步
       </button>
@@ -534,6 +539,33 @@
             <i class="fa-solid fa-file-import mr-1 text-amber-400"></i> 开始导入
           </button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 二维码扫码极速同步 Modal 弹窗 -->
+  <div id="modalQrSync" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
+    <div class="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full sm:w-[380px] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box text-center p-6 space-y-4">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <div class="flex items-center gap-2 font-bold text-slate-800 text-sm">
+          <i class="fa-solid fa-qrcode text-amber-500 text-lg"></i>
+          <span>手机扫码 1 秒同步课表</span>
+        </div>
+        <button id="btnCloseQrModal" class="text-slate-400 hover:text-slate-600 transition">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="text-xs text-slate-500 leading-relaxed">
+        请使用手机相机、微信或浏览器扫一扫，手机端将<strong>100% 自动同步载入</strong>当前电脑上的全部排课！
+      </div>
+
+      <div class="flex justify-center py-2">
+        <div id="qrcodeContainer" class="p-3 bg-white border-2 border-amber-400/80 rounded-2xl shadow-md inline-block"></div>
+      </div>
+
+      <div class="text-[11px] text-amber-700 font-semibold bg-amber-50 py-1.5 px-3 rounded-xl border border-amber-200/80">
+        ✨ 扫码 100% 极速秒级直连同步
       </div>
     </div>
   </div>
