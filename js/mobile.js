@@ -320,7 +320,7 @@
     }
   }
 
-  async function pullFromCloudSync() {
+  async function pullFromCloudSync(force = false) {
     if (!schoolSyncKey || isCloudSyncing) return;
 
     try {
@@ -336,7 +336,7 @@
         const remoteData = typeof data.result === 'string' ? JSON.parse(data.result) : data.result;
         if (remoteData && remoteData.updatedAt) {
           const localTime = parseInt(localStorage.getItem('edu_scheduler_last_sync_time') || '0', 10);
-          if (remoteData.updatedAt > localTime) {
+          if (force || remoteData.updatedAt > localTime) {
             isCloudSyncing = true;
             students = remoteData.students || students;
             schedules = remoteData.schedules || schedules;
@@ -348,7 +348,9 @@
             renderMobile3DayView();
             renderMobileStudents();
 
-            showToast('⚡ 已实时同步最新课表！');
+            if (!force) {
+              showToast('⚡ 已实时同步最新课表！');
+            }
           }
         }
       }
@@ -394,6 +396,8 @@
     renderMobileTeacherSelect();
     renderMobile3DayView();
     renderMobileStudents();
+    // 手机端启动时强制优先从云端拉取已存在的课表，覆盖本地初始状态
+    pullFromCloudSync(true);
   }
 
   function safeBind(id, eventName, handler) {
@@ -417,8 +421,9 @@
       schoolSyncKey = val;
       localStorage.setItem('edu_scheduler_school_key', val);
       hideModal('modalSyncKey');
-      pushToCloudSync();
-      showToast(`云同步已开启！同步码: ${val}`);
+      pullFromCloudSync(true).then(() => {
+        showToast(`已开启云同步！同步码: ${val}`);
+      });
     });
 
     safeBind('btnMobilePrev', 'click', () => {

@@ -67,6 +67,8 @@
     renderStudentList();
     renderCalendarGrid();
     updateStats();
+    // 启动时强制优先从云端拉取已有数据，覆盖默认初始状态
+    pullFromCloudSync(true);
   }
 
   function getMonday(d) {
@@ -363,7 +365,7 @@
     }
   }
 
-  async function pullFromCloudSync() {
+  async function pullFromCloudSync(force = false) {
     if (!schoolSyncKey || isCloudSyncing) return;
 
     try {
@@ -379,7 +381,7 @@
         const remoteData = typeof data.result === 'string' ? JSON.parse(data.result) : data.result;
         if (remoteData && remoteData.updatedAt) {
           const localTime = parseInt(localStorage.getItem('edu_scheduler_last_sync_time') || '0', 10);
-          if (remoteData.updatedAt > localTime) {
+          if (force || remoteData.updatedAt > localTime) {
             isCloudSyncing = true;
             students = remoteData.students || students;
             schedules = remoteData.schedules || schedules;
@@ -390,7 +392,9 @@
             renderTeacherOptions();
             refreshView();
 
-            showToast('⚡ 已实时同步最新课表数据！', 'bolt');
+            if (!force) {
+              showToast('⚡ 已实时同步最新课表数据！', 'bolt');
+            }
           }
         }
       }
@@ -479,8 +483,9 @@
       schoolSyncKey = val;
       localStorage.setItem('edu_scheduler_school_key', val);
       hideModal('modalSyncKey');
-      pushToCloudSync();
-      showToast(`已开启云同步！同步码: ${val}`, 'cloud-arrow-up');
+      pullFromCloudSync(true).then(() => {
+        showToast(`已开启云同步！同步码: ${val}`, 'cloud-arrow-up');
+      });
     });
 
     safeBind('btnManageTeachers', 'click', openTeacherModal);
