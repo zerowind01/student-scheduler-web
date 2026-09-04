@@ -1,0 +1,2 @@
+# Redirect API calls to Netlify Serverless Functions
+/api/sync  /.netlify/functions/sync  200

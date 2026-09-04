@@ -343,11 +343,21 @@
         } catch (e) {}
       }
 
-      await fetch(`/api/sync?key=${encodeURIComponent(schoolSyncKey)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      const endpoints = [
+        `/.netlify/functions/sync?key=${encodeURIComponent(schoolSyncKey)}`,
+        `/api/sync?key=${encodeURIComponent(schoolSyncKey)}`
+      ];
+
+      for (const ep of endpoints) {
+        try {
+          const res = await fetch(ep, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          if (res.ok) break;
+        } catch (e) {}
+      }
     } catch (err) {
       console.warn('Cloud sync push:', err);
     } finally {
@@ -359,10 +369,22 @@
     if (!schoolSyncKey || isCloudSyncing) return;
 
     try {
-      const res = await fetch(`/api/sync?key=${encodeURIComponent(schoolSyncKey)}`);
-      if (!res.ok) return;
+      const endpoints = [
+        `/.netlify/functions/sync?key=${encodeURIComponent(schoolSyncKey)}`,
+        `/api/sync?key=${encodeURIComponent(schoolSyncKey)}`
+      ];
 
-      const remoteData = await res.json();
+      let remoteData = null;
+      for (const ep of endpoints) {
+        try {
+          const res = await fetch(ep);
+          if (res.ok) {
+            remoteData = await res.json();
+            if (remoteData && remoteData.updatedAt) break;
+          }
+        } catch (e) {}
+      }
+
       if (remoteData && remoteData.updatedAt) {
         const localTime = parseInt(localStorage.getItem('edu_scheduler_last_sync_time') || '0', 10);
         if (remoteData.updatedAt > localTime) {
