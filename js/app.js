@@ -309,10 +309,105 @@
       ];
     }
 
-    saveData();
+    saveDataLocalOnly();
   }
 
+  // ==========================================
+  // 云端实时跨设备同步引擎
+  // ==========================================
+  let schoolSyncKey = localStorage.getItem('edu_scheduler_school_key') || 'school_demo_2026';
+  let isCloudSyncing = false;
+
+  async function pushToCloudSync() {
+    saveDataLocalOnly();
+    if (!schoolSyncKey || isCloudSyncing) return;
+
+    try {
+      isCloudSyncing = true;
+      const now = Date.now();
+
+      const payload = {
+        key: schoolSyncKey,
+        updatedAt: now,
+        students,
+        schedules,
+        teachers,
+      };
+
+      localStorage.setItem('edu_scheduler_last_sync_time', String(now));
+
+      if ('BroadcastChannel' in window) {
+        try {
+          new BroadcastChannel('edu_scheduler_broadcast').postMessage(payload);
+        } catch (e) {}
+      }
+
+      await fetch(`/api/sync?key=${encodeURIComponent(schoolSyncKey)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      console.warn('Cloud sync push:', err);
+    } finally {
+      isCloudSyncing = false;
+    }
+  }
+
+  async function pullFromCloudSync() {
+    if (!schoolSyncKey || isCloudSyncing) return;
+
+    try {
+      const res = await fetch(`/api/sync?key=${encodeURIComponent(schoolSyncKey)}`);
+      if (!res.ok) return;
+
+      const remoteData = await res.json();
+      if (remoteData && remoteData.updatedAt) {
+        const localTime = parseInt(localStorage.getItem('edu_scheduler_last_sync_time') || '0', 10);
+        if (remoteData.updatedAt > localTime) {
+          isCloudSyncing = true;
+          students = remoteData.students || students;
+          schedules = remoteData.schedules || schedules;
+          teachers = remoteData.teachers || teachers;
+
+          localStorage.setItem('edu_scheduler_last_sync_time', String(remoteData.updatedAt));
+          saveDataLocalOnly();
+          renderTeacherOptions();
+          refreshView();
+
+          showToast('⚡ 已实时同步最新课表数据！', 'bolt');
+        }
+      }
+    } catch (err) {
+      // 离线忽略
+    } finally {
+      isCloudSyncing = false;
+    }
+  }
+
+  if ('BroadcastChannel' in window) {
+    try {
+      const bc = new BroadcastChannel('edu_scheduler_broadcast');
+      bc.onmessage = (event) => {
+        if (event.data && event.data.updatedAt) {
+          students = event.data.students || students;
+          schedules = event.data.schedules || schedules;
+          teachers = event.data.teachers || teachers;
+          saveDataLocalOnly();
+          renderTeacherOptions();
+          refreshView();
+        }
+      };
+    } catch (e) {}
+  }
+
+  setInterval(pullFromCloudSync, 2000);
+
   function saveData() {
+    pushToCloudSync();
+  }
+
+  function saveDataLocalOnly() {
     localStorage.setItem(STORAGE_KEY_STUDENTS, JSON.stringify(students));
     localStorage.setItem(STORAGE_KEY_SCHEDULES, JSON.stringify(schedules));
     localStorage.setItem(STORAGE_KEY_TEACHERS, JSON.stringify(teachers));
@@ -348,6 +443,32 @@
       renderCalendarGrid();
       updateStats();
     });
+
+    // 云同步设置 Modal 事件
+    const btnCloudSync = document.getElementById('btnCloudSync');
+    if (btnCloudSync) {
+      btnCloudSync.addEventListener('click', () => {
+        document.getElementById('inputSyncKey').value = schoolSyncKey;
+        showModal('modalSyncKey');
+      });
+    }
+
+    const btnCloseSyncModal = document.getElementById('btnCloseSyncModal');
+    const btnCancelSyncModal = document.getElementById('btnCancelSyncModal');
+    if (btnCloseSyncModal) btnCloseSyncModal.addEventListener('click', () => hideModal('modalSyncKey'));
+    if (btnCancelSyncModal) btnCancelSyncModal.addEventListener('click', () => hideModal('modalSyncKey'));
+
+    const btnSaveSyncKey = document.getElementById('btnSaveSyncKey');
+    if (btnSaveSyncKey) {
+      btnSaveSyncKey.addEventListener('click', () => {
+        const val = document.getElementById('inputSyncKey').value.trim() || 'school_demo_2026';
+        schoolSyncKey = val;
+        localStorage.setItem('edu_scheduler_school_key', val);
+        hideModal('modalSyncKey');
+        pushToCloudSync();
+        showToast(`已开启云同步！同步码: ${val}`, 'cloud-arrow-up');
+      });
+    }
 
     document.getElementById('btnManageTeachers').addEventListener('click', openTeacherModal);
     document.getElementById('btnCloseTeacherModal').addEventListener('click', closeTeacherModal);
@@ -1676,7 +1797,23 @@
   }
 
   function exportScheduleData() {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify({ students, schedules, teachers }, null, 2));
+    const jsonText = JSON.stringify({ students, schedules, teachers }, null, 2);
+
+    // 自动将全量数据文本写入剪贴板，方便通过微信/微信发给手机粘贴导入
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(jsonText).then(() => {
+        showToast('已复制全量课表数据！可直接粘贴发给手机导入', 'copy');
+      }).catch(() => {});
+    }
+
+    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(jsonText);
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute('href', dataStr);
+    downloadAnchor.setAttribute('download', `课表导出_${formatDate(new Date())}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  }
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute('href', dataStr);
     downloadAnchor.setAttribute('download', `课表导出_${formatDate(new Date())}.json`);

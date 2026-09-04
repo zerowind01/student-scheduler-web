@@ -270,10 +270,105 @@
       ];
     }
 
-    saveData();
+    saveDataLocalOnly();
   }
 
+  // 云端实时跨设备同步引擎
+  let schoolSyncKey = localStorage.getItem('edu_scheduler_school_key') || 'school_demo_2026';
+  let isCloudSyncing = false;
+
+  async function pushToCloudSync() {
+    saveDataLocalOnly();
+    if (!schoolSyncKey || isCloudSyncing) return;
+
+    try {
+      isCloudSyncing = true;
+      const now = Date.now();
+
+      const payload = {
+        key: schoolSyncKey,
+        updatedAt: now,
+        students,
+        schedules,
+        teachers,
+      };
+
+      localStorage.setItem('edu_scheduler_last_sync_time', String(now));
+
+      if ('BroadcastChannel' in window) {
+        try {
+          new BroadcastChannel('edu_scheduler_broadcast').postMessage(payload);
+        } catch (e) {}
+      }
+
+      await fetch(`/api/sync?key=${encodeURIComponent(schoolSyncKey)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      console.warn('Cloud sync push:', err);
+    } finally {
+      isCloudSyncing = false;
+    }
+  }
+
+  async function pullFromCloudSync() {
+    if (!schoolSyncKey || isCloudSyncing) return;
+
+    try {
+      const res = await fetch(`/api/sync?key=${encodeURIComponent(schoolSyncKey)}`);
+      if (!res.ok) return;
+
+      const remoteData = await res.json();
+      if (remoteData && remoteData.updatedAt) {
+        const localTime = parseInt(localStorage.getItem('edu_scheduler_last_sync_time') || '0', 10);
+        if (remoteData.updatedAt > localTime) {
+          isCloudSyncing = true;
+          students = remoteData.students || students;
+          schedules = remoteData.schedules || schedules;
+          teachers = remoteData.teachers || teachers;
+
+          localStorage.setItem('edu_scheduler_last_sync_time', String(remoteData.updatedAt));
+          saveDataLocalOnly();
+          renderMobileTeacherSelect();
+          renderMobile3DayView();
+          renderMobileStudents();
+
+          showToast('⚡ 已实时同步最新课表！');
+        }
+      }
+    } catch (err) {
+      // 离线忽略
+    } finally {
+      isCloudSyncing = false;
+    }
+  }
+
+  if ('BroadcastChannel' in window) {
+    try {
+      const bc = new BroadcastChannel('edu_scheduler_broadcast');
+      bc.onmessage = (event) => {
+        if (event.data && event.data.updatedAt) {
+          students = event.data.students || students;
+          schedules = event.data.schedules || schedules;
+          teachers = event.data.teachers || teachers;
+          saveDataLocalOnly();
+          renderMobileTeacherSelect();
+          renderMobile3DayView();
+          renderMobileStudents();
+        }
+      };
+    } catch (e) {}
+  }
+
+  setInterval(pullFromCloudSync, 2000);
+
   function saveData() {
+    pushToCloudSync();
+  }
+
+  function saveDataLocalOnly() {
     localStorage.setItem(STORAGE_KEY_STUDENTS, JSON.stringify(students));
     localStorage.setItem(STORAGE_KEY_SCHEDULES, JSON.stringify(schedules));
     localStorage.setItem(STORAGE_KEY_TEACHERS, JSON.stringify(teachers));
