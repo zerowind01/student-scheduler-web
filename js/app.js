@@ -327,6 +327,48 @@
       });
     });
 
+    safeBind('btnCopyQuickSyncCode', 'click', () => {
+      const payloadStr = JSON.stringify({ students, schedules, teachers, updatedAt: Date.now() });
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(payloadStr).then(() => {
+          showToast('已复制排课同步代码！通过微信发给手机粘贴即可', 'copy');
+        }).catch(() => {
+          prompt('请复制以下排课同步代码：', payloadStr);
+        });
+      } else {
+        prompt('请复制以下排课同步代码：', payloadStr);
+      }
+    });
+
+    safeBind('btnPasteQuickSyncCode', 'click', async () => {
+      try {
+        let text = '';
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          try { text = await navigator.clipboard.readText(); } catch (e) {}
+        }
+        if (!text) {
+          text = prompt('请粘贴发过来的排课同步代码：');
+        }
+        if (!text || !text.trim()) return;
+
+        const data = JSON.parse(text.trim());
+        if (data && (data.students || data.schedules)) {
+          students = data.students || [];
+          schedules = data.schedules || [];
+          teachers = data.teachers || teachers;
+          saveData();
+          renderTeacherOptions();
+          refreshView();
+          hideModal('modalSyncKey');
+          showToast('⚡ 排课代码解析成功，已同步最新界面！', 'check');
+        } else {
+          alert('无效的同步代码，请重新复制粘贴！');
+        }
+      } catch (e) {
+        alert('解析同步代码失败，请确认剪贴板内容是否完整！');
+      }
+    });
+
     safeBind('btnManageTeachers', 'click', openTeacherModal);
     safeBind('btnCloseTeacherModal', 'click', closeTeacherModal);
     safeBind('formAddTeacher', 'submit', handleAddTeacher);
