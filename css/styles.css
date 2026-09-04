@@ -198,17 +198,15 @@ aside.sidebar-collapsed {
   50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.08); }
 }
 
-/* 7. Modal 弹窗显示动画 */
+/* 7. Modal 弹窗显示动画 (自动覆盖所有弹窗) */
 .modal-box {
   transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease;
 }
 
-#modalSchedule:not(.hidden) .modal-box,
-#modalStudent:not(.hidden) .modal-box,
-#modalTeacher:not(.hidden) .modal-box,
-#modalImport:not(.hidden) .modal-box {
-  transform: scale(1) translateY(0);
-  opacity: 1;
+div:not(.hidden) > .modal-box,
+div:not(.hidden) .modal-box {
+  transform: scale(1) translateY(0) !important;
+  opacity: 1 !important;
 }
 
 /* 8. 今天日期高亮 */
