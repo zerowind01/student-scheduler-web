@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>学生排课助手 - 手机版</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="bg-amber-50/40 text-slate-800 font-sans h-screen flex flex-col overflow-hidden select-none">
+
+  <!-- 手机端 App 顶栏 Header -->
+  <header class="bg-white/95 backdrop-blur-md border-b border-amber-100 px-4 py-2.5 flex items-center justify-between shadow-2xs shrink-0 z-20">
+    <div class="flex items-center space-x-2">
+      <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-400 flex items-center justify-center text-white shadow-xs shrink-0">
+        <i class="fa-solid fa-mobile-screen text-base"></i>
+      </div>
+      <div>
+        <h1 class="text-sm font-bold text-slate-800 tracking-tight">排课助手 <span class="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded-md font-semibold">手机版</span></h1>
+      </div>
+    </div>
+
+    <!-- 顶部老师筛选与数据同步 -->
+    <div class="flex items-center space-x-1.5">
+      <button id="btnMobileQuickSync" class="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs" title="重置并同步最新课表数据">
+        <i class="fa-solid fa-arrows-rotate text-amber-600 text-[11px]"></i> 同步数据
+      </button>
+      <a href="index.html" class="text-[11px] text-slate-500 hover:text-amber-600 bg-slate-100 px-2 py-1 rounded-lg font-medium transition" title="切换至电脑完整版">
+        <i class="fa-solid fa-desktop mr-0.5"></i> 电脑版
+      </a>
+    </div>
+  </header>
+
+  <!-- 手机版 日期导航栏 (3日/1日 滚动控制) -->
+  <div id="mobileDateBar" class="bg-white border-b border-slate-100 px-3 py-2 flex items-center justify-between text-xs shrink-0 z-10 shadow-2xs">
+    <div class="flex items-center space-x-1">
+      <button id="btnMobilePrev" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold transition flex items-center gap-1">
+        <i class="fa-solid fa-chevron-left text-[10px]"></i> 前3天
+      </button>
+      <button id="btnMobileToday" class="px-3 py-1 bg-amber-500 text-white rounded-lg font-bold shadow-2xs transition">
+        今天
+      </button>
+      <button id="btnMobileNext" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold transition flex items-center gap-1">
+        后3天 <i class="fa-solid fa-chevron-right text-[10px]"></i>
+      </button>
+    </div>
+    <span id="mobileDateText" class="font-bold text-slate-800 text-xs text-right truncate">
+      9月1日 - 9月3日
+    </span>
+  </div>
+
+  <!-- 手机端 主视图 (课表视图 vs 学员列表) -->
+  <main class="flex-1 overflow-hidden relative bg-slate-50">
+
+    <!-- 1. 手机端 3日课表日历视图 -->
+    <div id="viewSchedule" class="h-full flex flex-col overflow-hidden">
+      <!-- 3日 header -->
+      <div class="bg-white border-b border-slate-200 flex items-center shadow-2xs z-10 shrink-0">
+        <div class="w-12 shrink-0 py-2 text-center text-[11px] text-slate-400 font-semibold border-r border-slate-100">
+          时间
+        </div>
+        <div id="mobileHeaderDays" class="grid grid-cols-3 flex-1 divide-x divide-slate-100 text-center py-1.5 font-bold">
+          <!-- 动态渲染 3 天标题 -->
+        </div>
+      </div>
+
+      <!-- 3日 课表 Body -->
+      <div id="mobileCalendarScroll" class="flex-1 overflow-y-auto relative custom-scrollbar">
+        <div class="flex min-h-[832px] relative">
+          <!-- 时间刻度轴 08:00 - 21:00 -->
+          <div class="w-12 shrink-0 bg-slate-50/90 border-r border-slate-200 text-[10px] text-slate-400 font-mono flex flex-col justify-between py-2 select-none">
+            <div class="time-slot-label">08:00</div>
+            <div class="time-slot-label">09:00</div>
+            <div class="time-slot-label">10:00</div>
+            <div class="time-slot-label">11:00</div>
+            <div class="time-slot-label">12:00</div>
+            <div class="time-slot-label">13:00</div>
+            <div class="time-slot-label">14:00</div>
+            <div class="time-slot-label">15:00</div>
+            <div class="time-slot-label">16:00</div>
+            <div class="time-slot-label">17:00</div>
+            <div class="time-slot-label">18:00</div>
+            <div class="time-slot-label">19:00</div>
+            <div class="time-slot-label">20:00</div>
+            <div class="time-slot-label">21:00</div>
+          </div>
+
+          <!-- 3天 日历列网格 -->
+          <div id="mobileGridColumns" class="grid grid-cols-3 flex-1 divide-x divide-slate-200/80 relative">
+            <!-- 动态渲染 3列 Day Column -->
+          </div>
+
+          <!-- 水平分割虚线 -->
+          <div class="absolute inset-0 left-12 pointer-events-none grid grid-rows-13 divide-y divide-slate-200/40">
+            <div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. 手机端 学员名册视图 -->
+    <div id="viewStudents" class="h-full flex flex-col overflow-hidden hidden bg-white p-3">
+      <!-- 搜索与筛选 -->
+      <div class="space-y-2 pb-3 border-b border-slate-100">
+        <div class="relative">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+          <input type="text" id="mobileSearchStudent" placeholder="搜索学员姓名/科目..." class="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-xl outline-none focus:ring-1 focus:ring-amber-400">
+        </div>
+        <div class="flex items-center space-x-1.5 text-xs">
+          <button class="mobile-student-filter active px-2.5 py-1 rounded-lg bg-amber-500 text-white font-bold" data-filter="all">全部学员</button>
+          <button class="mobile-student-filter px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 font-medium" data-filter="low">课时预警(≤2)</button>
+        </div>
+      </div>
+
+      <!-- 学员列表列表 -->
+      <div id="mobileStudentContainer" class="flex-1 overflow-y-auto py-3 space-y-2 custom-scrollbar">
+        <!-- 动态学员卡片 -->
+      </div>
+    </div>
+
+  </main>
+
+  <!-- 手机端 App 底部导航栏 -->
+  <nav class="bg-white border-t border-slate-200 px-6 py-2 flex items-center justify-between shrink-0 shadow-lg z-30">
+    <button id="navTabSchedule" class="flex flex-col items-center gap-0.5 text-amber-600 font-bold text-xs">
+      <i class="fa-solid fa-calendar-week text-base"></i>
+      <span>课表视图</span>
+    </button>
+
+    <button id="navTabQuickAdd" class="flex flex-col items-center justify-center -mt-5 w-12 h-12 rounded-full bg-gradient-to-tr from-amber-500 to-orange-400 text-white shadow-lg shadow-orange-200 border-4 border-white transition active:scale-95">
+      <i class="fa-solid fa-plus text-lg"></i>
+    </button>
+
+    <button id="navTabStudents" class="flex flex-col items-center gap-0.5 text-slate-400 font-medium text-xs hover:text-slate-700">
+      <i class="fa-solid fa-users text-base"></i>
+      <span>学员名册</span>
+    </button>
+  </nav>
+
+  <!-- 手机端 安排新课程 Modal 弹窗 -->
+  <div id="modalMobileSchedule" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-end justify-center z-50 hidden transition-opacity">
+    <div class="bg-white rounded-t-3xl shadow-2xl border-t border-amber-200 w-full max-h-[92vh] overflow-y-auto p-5 space-y-3.5 text-xs transform transition-all modal-box">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <h3 id="modalMobileScheduleTitle" class="font-bold text-base text-slate-800">安排新课程</h3>
+        <button id="btnCloseMobileSchedule" class="text-slate-400 hover:text-slate-700 transition">
+          <i class="fa-solid fa-xmark text-xl"></i>
+        </button>
+      </div>
+
+      <form id="formMobileSchedule" class="space-y-3">
+        <input type="hidden" id="inputMobileScheduleId">
+
+        <!-- 选择学员 -->
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">选择学员 <span class="text-rose-500">*</span></label>
+          <select id="selectMobileStudent" required class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 bg-amber-50/50 outline-none focus:ring-1 focus:ring-amber-400">
+            <!-- 动态装载学员 -->
+          </select>
+        </div>
+
+        <!-- 选择课程 -->
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">本次上课课程 <span class="text-rose-500">*</span></label>
+          <select id="selectMobileCourse" required class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 bg-white outline-none focus:ring-1 focus:ring-amber-400">
+            <!-- 动态装载选中学员的课程 -->
+          </select>
+        </div>
+
+        <!-- 日期与时间 -->
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">上课日期</label>
+            <input type="date" id="inputMobileDate" required class="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-1 focus:ring-amber-400">
+          </div>
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">开始时间</label>
+            <input type="time" id="inputMobileStartTime" required step="900" class="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-1 focus:ring-amber-400">
+          </div>
+        </div>
+
+        <!-- 时长 & 课室 -->
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">课程时长</label>
+            <select id="selectMobileDuration" class="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none bg-white">
+              <option value="30">30 分钟 (0.5课时)</option>
+              <option value="45">45 分钟 (0.75课时)</option>
+              <option value="60" selected>60 分钟 (1课时)</option>
+              <option value="90">90 分钟 (1.5课时)</option>
+              <option value="120">120 分钟 (2课时)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">上课教室</label>
+            <input type="text" id="inputMobileRoom" placeholder="如：琴房 101" required class="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none font-semibold">
+          </div>
+        </div>
+
+        <!-- 老师配置 -->
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">主讲老师 <span class="text-rose-500">*</span></label>
+            <select id="selectMobileTeacher" required class="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none bg-white font-semibold">
+            </select>
+          </div>
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">共上/助教老师</label>
+            <select id="selectMobileAssistant" class="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none bg-white">
+              <option value="">无 (单师上课)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between pt-3 border-t border-slate-100">
+          <button type="button" id="btnDeleteMobileSchedule" class="px-3 py-2 text-rose-600 bg-rose-50 rounded-xl font-bold transition hidden">
+            删除
+          </button>
+          <div class="flex items-center space-x-2 ml-auto">
+            <button type="button" id="btnCancelMobileSchedule" class="px-4 py-2 text-slate-600 bg-slate-100 rounded-xl font-medium">
+              取消
+            </button>
+            <button type="submit" class="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold shadow-md shadow-amber-200">
+              保存排课
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 提示 Toast 通知 -->
+  <div id="toast" class="fixed bottom-16 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-2xl shadow-xl text-xs font-medium flex items-center space-x-2 z-50 transform transition-all translate-y-10 opacity-0 pointer-events-none whitespace-nowrap">
+    <i id="toastIcon" class="fa-solid fa-circle-check text-amber-400"></i>
+    <span id="toastMsg">操作成功</span>
+  </div>
+
+  <!-- 手机版专属 JavaScript 代码 -->
+  <script src="js/mobile.js"></script>
+</body>
+</html>
