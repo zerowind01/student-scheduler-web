@@ -319,6 +319,10 @@
   let schoolSyncKey = localStorage.getItem('edu_scheduler_school_key') || 'school_demo_2026';
   let isCloudSyncing = false;
 
+  // Upstash Serverless Redis 实时云端存储 (100% 全球持久化 + CORS 支持)
+  const UPSTASH_REST_URL = 'https://coherent-possum-31725.upstash.io';
+  const UPSTASH_REST_TOKEN = 'AXutACQgM2YxNWYzMzEtYjM0NC00YzM0LTk5MzktZTM1OGExN2I3YzA1';
+
   async function pushToCloudSync() {
     saveDataLocalOnly();
     if (!schoolSyncKey || isCloudSyncing) return;
@@ -343,21 +347,15 @@
         } catch (e) {}
       }
 
-      const endpoints = [
-        `/.netlify/functions/sync?key=${encodeURIComponent(schoolSyncKey)}`,
-        `/api/sync?key=${encodeURIComponent(schoolSyncKey)}`
-      ];
-
-      for (const ep of endpoints) {
-        try {
-          const res = await fetch(ep, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-          if (res.ok) break;
-        } catch (e) {}
-      }
+      const valStr = JSON.stringify(payload);
+      await fetch(`${UPSTASH_REST_URL}/set/${encodeURIComponent(schoolSyncKey)}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${UPSTASH_REST_TOKEN}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(valStr)
+      });
     } catch (err) {
       console.warn('Cloud sync push:', err);
     } finally {
@@ -369,36 +367,31 @@
     if (!schoolSyncKey || isCloudSyncing) return;
 
     try {
-      const endpoints = [
-        `/.netlify/functions/sync?key=${encodeURIComponent(schoolSyncKey)}`,
-        `/api/sync?key=${encodeURIComponent(schoolSyncKey)}`
-      ];
+      const res = await fetch(`${UPSTASH_REST_URL}/get/${encodeURIComponent(schoolSyncKey)}`, {
+        headers: {
+          'Authorization': `Bearer ${UPSTASH_REST_TOKEN}`
+        }
+      });
+      if (!res.ok) return;
 
-      let remoteData = null;
-      for (const ep of endpoints) {
-        try {
-          const res = await fetch(ep);
-          if (res.ok) {
-            remoteData = await res.json();
-            if (remoteData && remoteData.updatedAt) break;
+      const data = await res.json();
+      if (data && data.result) {
+        const remoteData = typeof data.result === 'string' ? JSON.parse(data.result) : data.result;
+        if (remoteData && remoteData.updatedAt) {
+          const localTime = parseInt(localStorage.getItem('edu_scheduler_last_sync_time') || '0', 10);
+          if (remoteData.updatedAt > localTime) {
+            isCloudSyncing = true;
+            students = remoteData.students || students;
+            schedules = remoteData.schedules || schedules;
+            teachers = remoteData.teachers || teachers;
+
+            localStorage.setItem('edu_scheduler_last_sync_time', String(remoteData.updatedAt));
+            saveDataLocalOnly();
+            renderTeacherOptions();
+            refreshView();
+
+            showToast('⚡ 已实时同步最新课表数据！', 'bolt');
           }
-        } catch (e) {}
-      }
-
-      if (remoteData && remoteData.updatedAt) {
-        const localTime = parseInt(localStorage.getItem('edu_scheduler_last_sync_time') || '0', 10);
-        if (remoteData.updatedAt > localTime) {
-          isCloudSyncing = true;
-          students = remoteData.students || students;
-          schedules = remoteData.schedules || schedules;
-          teachers = remoteData.teachers || teachers;
-
-          localStorage.setItem('edu_scheduler_last_sync_time', String(remoteData.updatedAt));
-          saveDataLocalOnly();
-          renderTeacherOptions();
-          refreshView();
-
-          showToast('⚡ 已实时同步最新课表数据！', 'bolt');
         }
       }
     } catch (err) {
