@@ -305,13 +305,13 @@
       }
 
       const valStr = JSON.stringify(payload);
-      await fetch(`${UPSTASH_REST_URL}/set/${encodeURIComponent(schoolSyncKey)}`, {
+      await fetch(UPSTASH_REST_URL, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${UPSTASH_REST_TOKEN}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(valStr)
+        body: JSON.stringify(['SET', schoolSyncKey, valStr])
       });
     } catch (err) {
       console.warn('Cloud sync push:', err);
