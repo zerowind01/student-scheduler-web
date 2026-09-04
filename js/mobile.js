@@ -95,59 +95,7 @@
         students = [];
       }
     } else {
-      students = [
-        {
-          id: 's1',
-          name: '张伟',
-          phone: '13800112233',
-          colorTheme: 'amber',
-          courses: [
-            { id: 'c_s1_1', name: '钢琴一对一', remainingLessons: 12 },
-            { id: 'c_s1_2', name: '视唱练耳基础', remainingLessons: 8 },
-          ],
-        },
-        {
-          id: 's2',
-          name: '李娜',
-          phone: '13911223344',
-          colorTheme: 'emerald',
-          courses: [
-            { id: 'c_s2_1', name: '小提琴基础', remainingLessons: 8 },
-            { id: 'c_s2_2', name: '室内乐合奏', remainingLessons: 4 },
-          ],
-        },
-        {
-          id: 's3',
-          name: '王强',
-          phone: '13722334455',
-          colorTheme: 'sky',
-          courses: [{ id: 'c_s3_1', name: '美声发声', remainingLessons: 2 }],
-        },
-        {
-          id: 's4',
-          name: '赵敏',
-          phone: '13633445566',
-          colorTheme: 'purple',
-          courses: [
-            { id: 'c_s4_1', name: '古典吉他', remainingLessons: 15 },
-            { id: 'c_s4_2', name: '民谣吉他弹唱', remainingLessons: 6 },
-          ],
-        },
-        {
-          id: 's5',
-          name: '孙悦',
-          phone: '13544556677',
-          colorTheme: 'rose',
-          courses: [{ id: 'c_s5_1', name: '爵士鼓入门', remainingLessons: 1 }],
-        },
-        {
-          id: 's6',
-          name: '周杰',
-          phone: '13455667788',
-          colorTheme: 'amber',
-          courses: [{ id: 'c_s6_1', name: '古筝进阶', remainingLessons: 6 }],
-        },
-      ];
+      students = []; // 新设备登录默认留空！
     }
 
     if (rawSchedules !== null) {
@@ -157,116 +105,7 @@
         schedules = [];
       }
     } else {
-      const weekStart = getMonday(new Date());
-      const mon = formatDate(addDays(weekStart, 0));
-      const wed = formatDate(addDays(weekStart, 2));
-      const fri = formatDate(addDays(weekStart, 4));
-      const sat = formatDate(addDays(weekStart, 5));
-
-      schedules = [
-        {
-          id: 'sch_1',
-          studentId: 's1',
-          studentName: '张伟',
-          courseId: 'c_s1_1',
-          subject: '钢琴一对一',
-          teacherId: 't1',
-          teacherName: '张老师',
-          assistantTeacherId: '',
-          assistantTeacherName: '',
-          date: mon,
-          startTime: '10:00',
-          durationMinutes: 60,
-          room: '琴房 101',
-          colorTheme: 'amber',
-          notes: '准备汤普森第二册',
-        },
-        {
-          id: 'sch_6',
-          studentId: 's5',
-          studentName: '孙悦',
-          courseId: 'c_s5_1',
-          subject: '爵士鼓入门',
-          teacherId: 't5',
-          teacherName: '陈老师',
-          assistantTeacherId: '',
-          assistantTeacherName: '',
-          date: mon,
-          startTime: '10:00',
-          durationMinutes: 60,
-          room: '综合教室 201',
-          colorTheme: 'rose',
-          notes: '同时间段不同教室并行授课并排展示',
-        },
-        {
-          id: 'sch_2',
-          studentId: 's2',
-          studentName: '李娜',
-          courseId: 'c_s2_2',
-          subject: '室内乐合奏',
-          teacherId: 't2',
-          teacherName: '王老师',
-          assistantTeacherId: 't3',
-          assistantTeacherName: '李老师',
-          date: wed,
-          startTime: '14:30',
-          durationMinutes: 90,
-          room: '琴房 103',
-          colorTheme: 'emerald',
-          notes: '双师共上合奏指导',
-        },
-        {
-          id: 'sch_5',
-          studentId: 's6',
-          studentName: '周杰',
-          courseId: 'c_s6_1',
-          subject: '古筝进阶',
-          teacherId: 't1',
-          teacherName: '张老师',
-          assistantTeacherId: '',
-          assistantTeacherName: '',
-          date: wed,
-          startTime: '14:30',
-          durationMinutes: 60,
-          room: '琴房 103',
-          colorTheme: 'amber',
-          notes: '占用琴房103冲突演示',
-        },
-        {
-          id: 'sch_3',
-          studentId: 's3',
-          studentName: '王强',
-          courseId: 'c_s3_1',
-          subject: '美声发声',
-          teacherId: 't3',
-          teacherName: '李老师',
-          assistantTeacherId: '',
-          assistantTeacherName: '',
-          date: fri,
-          startTime: '16:00',
-          durationMinutes: 60,
-          room: '声乐教室 B',
-          colorTheme: 'sky',
-          notes: '高音换声技巧',
-        },
-        {
-          id: 'sch_4',
-          studentId: 's4',
-          studentName: '赵敏',
-          courseId: 'c_s4_1',
-          subject: '古典吉他',
-          teacherId: 't4',
-          teacherName: '赵老师',
-          assistantTeacherId: 't5',
-          assistantTeacherName: '陈老师',
-          date: sat,
-          startTime: '09:30',
-          durationMinutes: 60,
-          room: '琴房 102',
-          colorTheme: 'purple',
-          notes: '打击乐与吉他合奏课程',
-        },
-      ];
+      schedules = []; // 新设备登录默认留空！
     }
 
     saveDataLocalOnly();
@@ -277,14 +116,15 @@
   const UPSTASH_REST_TOKEN = 'AXutACQgM2YxNWYzMzEtYjM0NC00YzM0LTk5MzktZTM1OGExN2I3YzA1';
 
   let schoolSyncKey = localStorage.getItem('edu_scheduler_school_key') || 'school_demo_2026';
-  let isCloudSyncing = false;
+  let isPushingToCloud = false;
+  let isPullingFromCloud = false;
 
   async function pushToCloudSync() {
     saveDataLocalOnly();
-    if (!schoolSyncKey || isCloudSyncing) return;
+    if (!schoolSyncKey) return;
 
     try {
-      isCloudSyncing = true;
+      isPushingToCloud = true;
       const now = Date.now();
 
       const payload = {
@@ -315,14 +155,15 @@
     } catch (err) {
       console.warn('Cloud sync push:', err);
     } finally {
-      isCloudSyncing = false;
+      isPushingToCloud = false;
     }
   }
 
   async function pullFromCloudSync(force = false) {
-    if (!schoolSyncKey || isCloudSyncing) return;
+    if (!schoolSyncKey || isPullingFromCloud || isPushingToCloud) return;
 
     try {
+      isPullingFromCloud = true;
       const res = await fetch(`${UPSTASH_REST_URL}/get/${encodeURIComponent(schoolSyncKey)}`, {
         headers: {
           'Authorization': `Bearer ${UPSTASH_REST_TOKEN}`
@@ -336,9 +177,8 @@
         if (remoteData && remoteData.updatedAt) {
           const localTime = parseInt(localStorage.getItem('edu_scheduler_last_sync_time') || '0', 10);
           if (force || remoteData.updatedAt > localTime) {
-            isCloudSyncing = true;
-            students = remoteData.students || students;
-            schedules = remoteData.schedules || schedules;
+            students = remoteData.students || [];
+            schedules = remoteData.schedules || [];
             teachers = remoteData.teachers || teachers;
 
             localStorage.setItem('edu_scheduler_last_sync_time', String(remoteData.updatedAt));
@@ -356,7 +196,7 @@
     } catch (err) {
       // 离线忽略
     } finally {
-      isCloudSyncing = false;
+      isPullingFromCloud = false;
     }
   }
 
