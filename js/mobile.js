@@ -1,7 +1,7 @@
 /**
  * 学生排课助手 - 手机版核心逻辑 (Mobile Pure Tap-Based Engine)
  * 特点：完全去掉拖拽排课，采用100%手机触控点按交互、3日大列宽日历、双师共上与冲突检测
- * 与桌面端 (index.html) 共享完全相同的 LocalStorage 数据库
+ * 与桌面端 (index.html) 共享完全相同的 LocalStorage 与 Upstash 云端数据库
  */
 
 (function () {
@@ -273,13 +273,12 @@
     saveDataLocalOnly();
   }
 
-  // 云端实时跨设备同步引擎
-  let schoolSyncKey = localStorage.getItem('edu_scheduler_school_key') || 'school_demo_2026';
-  let isCloudSyncing = false;
-
   // Upstash Serverless Redis 实时云端存储 (100% 全球持久化 + CORS 支持)
   const UPSTASH_REST_URL = 'https://coherent-possum-31725.upstash.io';
   const UPSTASH_REST_TOKEN = 'AXutACQgM2YxNWYzMzEtYjM0NC00YzM0LTk5MzktZTM1OGExN2I3YzA1';
+
+  let schoolSyncKey = localStorage.getItem('edu_scheduler_school_key') || 'school_demo_2026';
+  let isCloudSyncing = false;
 
   async function pushToCloudSync() {
     saveDataLocalOnly();
@@ -359,14 +358,6 @@
       isCloudSyncing = false;
     }
   }
-        }
-      }
-    } catch (err) {
-      // 离线忽略
-    } finally {
-      isCloudSyncing = false;
-    }
-  }
 
   if ('BroadcastChannel' in window) {
     try {
@@ -405,90 +396,105 @@
     renderMobileStudents();
   }
 
+  function safeBind(id, eventName, handler) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener(eventName, handler);
+  }
+
   function setupMobileEvents() {
-    const btnMobileCloudSync = document.getElementById('btnMobileCloudSync');
-    if (btnMobileCloudSync) {
-      btnMobileCloudSync.addEventListener('click', () => {
-        const el = document.getElementById('inputSyncKey');
-        if (el) el.value = schoolSyncKey;
-        showModal('modalSyncKey');
-      });
-    }
+    safeBind('btnMobileCloudSync', 'click', () => {
+      const el = document.getElementById('inputSyncKey');
+      if (el) el.value = schoolSyncKey;
+      showModal('modalSyncKey');
+    });
 
-    const btnCloseSyncModal = document.getElementById('btnCloseSyncModal');
-    const btnCancelSyncModal = document.getElementById('btnCancelSyncModal');
-    if (btnCloseSyncModal) btnCloseSyncModal.addEventListener('click', () => hideModal('modalSyncKey'));
-    if (btnCancelSyncModal) btnCancelSyncModal.addEventListener('click', () => hideModal('modalSyncKey'));
+    safeBind('btnCloseSyncModal', 'click', () => hideModal('modalSyncKey'));
+    safeBind('btnCancelSyncModal', 'click', () => hideModal('modalSyncKey'));
 
-    const btnSaveSyncKey = document.getElementById('btnSaveSyncKey');
-    if (btnSaveSyncKey) {
-      btnSaveSyncKey.addEventListener('click', () => {
-        const el = document.getElementById('inputSyncKey');
-        const val = (el ? el.value.trim() : '') || 'school_demo_2026';
-        schoolSyncKey = val;
-        localStorage.setItem('edu_scheduler_school_key', val);
-        hideModal('modalSyncKey');
-        pushToCloudSync();
-        showToast(`云同步已开启！同步码: ${val}`);
-      });
-    }
-    document.getElementById('btnMobilePrev').addEventListener('click', () => {
+    safeBind('btnSaveSyncKey', 'click', () => {
+      const el = document.getElementById('inputSyncKey');
+      const val = (el ? el.value.trim() : '') || 'school_demo_2026';
+      schoolSyncKey = val;
+      localStorage.setItem('edu_scheduler_school_key', val);
+      hideModal('modalSyncKey');
+      pushToCloudSync();
+      showToast(`云同步已开启！同步码: ${val}`);
+    });
+
+    safeBind('btnMobilePrev', 'click', () => {
       mobileStartDate = addDays(mobileStartDate, -3);
       renderMobile3DayView();
     });
 
-    document.getElementById('btnMobileNext').addEventListener('click', () => {
+    safeBind('btnMobileNext', 'click', () => {
       mobileStartDate = addDays(mobileStartDate, 3);
       renderMobile3DayView();
     });
 
-    document.getElementById('btnMobileToday').addEventListener('click', () => {
+    safeBind('btnMobileToday', 'click', () => {
       mobileStartDate = getMonday(new Date());
       renderMobile3DayView();
     });
 
-    document.getElementById('mobileTeacherSelect').addEventListener('change', (e) => {
+    safeBind('mobileTeacherSelect', 'change', (e) => {
       selectedTeacherFilter = e.target.value;
       renderMobile3DayView();
     });
 
-    document.getElementById('navTabSchedule').addEventListener('click', () => {
-      document.getElementById('viewSchedule').classList.remove('hidden');
-      document.getElementById('viewStudents').classList.add('hidden');
+    safeBind('navTabSchedule', 'click', () => {
+      const sView = document.getElementById('viewSchedule');
+      const stView = document.getElementById('viewStudents');
+      if (sView) sView.classList.remove('hidden');
+      if (stView) stView.classList.add('hidden');
 
-      document.getElementById('navTabSchedule').classList.add('text-amber-600', 'font-bold');
-      document.getElementById('navTabSchedule').classList.remove('text-slate-400', 'font-medium');
-      document.getElementById('navTabStudents').classList.remove('text-amber-600', 'font-bold');
-      document.getElementById('navTabStudents').classList.add('text-slate-400', 'font-medium');
+      const tab1 = document.getElementById('navTabSchedule');
+      const tab2 = document.getElementById('navTabStudents');
+      if (tab1) {
+        tab1.classList.add('text-amber-600', 'font-bold');
+        tab1.classList.remove('text-slate-400', 'font-medium');
+      }
+      if (tab2) {
+        tab2.classList.remove('text-amber-600', 'font-bold');
+        tab2.classList.add('text-slate-400', 'font-medium');
+      }
     });
 
-    document.getElementById('navTabStudents').addEventListener('click', () => {
-      document.getElementById('viewStudents').classList.remove('hidden');
-      document.getElementById('viewSchedule').classList.add('hidden');
+    safeBind('navTabStudents', 'click', () => {
+      const sView = document.getElementById('viewSchedule');
+      const stView = document.getElementById('viewStudents');
+      if (stView) stView.classList.remove('hidden');
+      if (sView) sView.classList.add('hidden');
 
-      document.getElementById('navTabStudents').classList.add('text-amber-600', 'font-bold');
-      document.getElementById('navTabStudents').classList.remove('text-slate-400', 'font-medium');
-      document.getElementById('navTabSchedule').classList.remove('text-amber-600', 'font-bold');
-      document.getElementById('navTabSchedule').classList.add('text-slate-400', 'font-medium');
+      const tab1 = document.getElementById('navTabSchedule');
+      const tab2 = document.getElementById('navTabStudents');
+      if (tab2) {
+        tab2.classList.add('text-amber-600', 'font-bold');
+        tab2.classList.remove('text-slate-400', 'font-medium');
+      }
+      if (tab1) {
+        tab1.classList.remove('text-amber-600', 'font-bold');
+        tab1.classList.add('text-slate-400', 'font-medium');
+      }
       renderMobileStudents();
     });
 
-    document.getElementById('navTabQuickAdd').addEventListener('click', () => {
+    safeBind('navTabQuickAdd', 'click', () => {
       openMobileScheduleModalForNew();
     });
 
-    document.getElementById('btnCloseMobileSchedule').addEventListener('click', closeMobileScheduleModal);
-    document.getElementById('btnCancelMobileSchedule').addEventListener('click', closeMobileScheduleModal);
-    document.getElementById('formMobileSchedule').addEventListener('submit', handleSaveMobileSchedule);
-    document.getElementById('btnDeleteMobileSchedule').addEventListener('click', handleDeleteMobileSchedule);
+    safeBind('btnCloseMobileSchedule', 'click', closeMobileScheduleModal);
+    safeBind('btnCancelMobileSchedule', 'click', closeMobileScheduleModal);
+    safeBind('formMobileSchedule', 'submit', handleSaveMobileSchedule);
+    safeBind('btnDeleteMobileSchedule', 'click', handleDeleteMobileSchedule);
 
-    document.getElementById('selectMobileStudent').addEventListener('change', (e) => {
+    safeBind('selectMobileStudent', 'change', (e) => {
       const stId = e.target.value;
       const st = students.find((x) => x.id === stId);
       updateMobileCourseDropdown(st);
     });
 
-    document.getElementById('mobileSearchStudent').addEventListener('input', renderMobileStudents);
+    safeBind('mobileSearchStudent', 'input', renderMobileStudents);
+
     document.querySelectorAll('.mobile-student-filter').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         document.querySelectorAll('.mobile-student-filter').forEach((b) => {
@@ -504,6 +510,7 @@
 
   function renderMobileTeacherSelect() {
     const select = document.getElementById('mobileTeacherSelect');
+    if (!select) return;
     select.innerHTML = `<option value="all">全校老师 (全部)</option>`;
     teachers.forEach((t) => {
       select.innerHTML += `<option value="${t.id}">👩‍🏫 ${t.name}</option>`;
@@ -514,11 +521,15 @@
   function renderMobile3DayView() {
     const headerContainer = document.getElementById('mobileHeaderDays');
     const gridContainer = document.getElementById('mobileGridColumns');
+    if (!headerContainer || !gridContainer) return;
     headerContainer.innerHTML = '';
     gridContainer.innerHTML = '';
 
     const endDate = addDays(mobileStartDate, 2);
-    document.getElementById('mobileDateText').textContent = `${mobileStartDate.getMonth() + 1}月${mobileStartDate.getDate()}日 - ${endDate.getMonth() + 1}月${endDate.getDate()}日`;
+    const dateTextEl = document.getElementById('mobileDateText');
+    if (dateTextEl) {
+      dateTextEl.textContent = `${mobileStartDate.getMonth() + 1}月${mobileStartDate.getDate()}日 - ${endDate.getMonth() + 1}月${endDate.getDate()}日`;
+    }
 
     const weekdayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
     const todayStr = formatDate(new Date());
@@ -531,10 +542,10 @@
       const isToday = dateStr === todayStr;
 
       const colHeader = document.createElement('div');
-      colHeader.className = `py-1.5 px-1 ${isToday ? 'bg-amber-100 text-amber-900 font-bold' : 'text-slate-700'}`;
+      colHeader.className = `py-1.5 px-1 text-center transition ${isToday ? 'bg-amber-100 text-amber-900 font-bold' : 'text-slate-700 bg-white'}`;
       colHeader.innerHTML = `
-        <div class="text-[10px] ${isToday ? 'text-amber-700 font-bold' : 'text-slate-400'}">${weekdayNames[dayDate.getDay()]}</div>
-        <div class="text-xs font-extrabold">${dayDate.getMonth() + 1}/${dayDate.getDate()}</div>
+        <div class="text-[11px] ${isToday ? 'text-amber-700 font-bold' : 'text-slate-400'}">${weekdayNames[dayDate.getDay()]}</div>
+        <div class="text-xs font-extrabold ${isToday ? 'text-amber-900' : 'text-slate-700'}">${dayDate.getMonth() + 1}/${dayDate.getDate()}</div>
       `;
       headerContainer.appendChild(colHeader);
 
@@ -747,11 +758,13 @@
 
   function renderMobileStudents() {
     const container = document.getElementById('mobileStudentContainer');
+    if (!container) return;
     container.innerHTML = '';
 
     const filterBtn = document.querySelector('.mobile-student-filter.active');
     const filter = filterBtn ? filterBtn.getAttribute('data-filter') : 'all';
-    const query = (document.getElementById('mobileSearchStudent').value || '').trim().toLowerCase();
+    const searchEl = document.getElementById('mobileSearchStudent');
+    const query = ((searchEl ? searchEl.value : '') || '').trim().toLowerCase();
 
     let list = students.filter((st) => {
       normalizeStudent(st);
@@ -797,7 +810,8 @@
       `;
 
       card.querySelector('.btn-schedule-mobile').addEventListener('click', () => {
-        document.getElementById('navTabSchedule').click();
+        const tabEl = document.getElementById('navTabSchedule');
+        if (tabEl) tabEl.click();
         openMobileScheduleModalForNew(st, formatDate(new Date()), '10:00');
       });
 
@@ -806,60 +820,90 @@
   }
 
   function openMobileScheduleModalForNew(student = null, dateStr = formatDate(new Date()), startTimeStr = '10:00') {
-    document.getElementById('modalMobileScheduleTitle').textContent = '安排新课程';
-    document.getElementById('inputMobileScheduleId').value = '';
+    const titleEl = document.getElementById('modalMobileScheduleTitle');
+    if (titleEl) titleEl.textContent = '安排新课程';
+
+    const idEl = document.getElementById('inputMobileScheduleId');
+    if (idEl) idEl.value = '';
 
     const stSelect = document.getElementById('selectMobileStudent');
-    stSelect.innerHTML = '';
-    students.forEach((st) => {
-      stSelect.innerHTML += `<option value="${st.id}">${st.name} (${st.courses.length}门课)</option>`;
-    });
+    if (stSelect) {
+      stSelect.innerHTML = '';
+      students.forEach((st) => {
+        stSelect.innerHTML += `<option value="${st.id}">${st.name} (${st.courses.length}门课)</option>`;
+      });
+      const targetStudent = student || students[0];
+      if (targetStudent) stSelect.value = targetStudent.id;
+      updateMobileCourseDropdown(targetStudent);
+    }
 
-    const targetStudent = student || students[0];
-    if (targetStudent) stSelect.value = targetStudent.id;
+    const dateEl = document.getElementById('inputMobileDate');
+    if (dateEl) dateEl.value = dateStr;
 
-    updateMobileCourseDropdown(targetStudent);
+    const timeEl = document.getElementById('inputMobileStartTime');
+    if (timeEl) timeEl.value = startTimeStr;
 
-    document.getElementById('inputMobileDate').value = dateStr;
-    document.getElementById('inputMobileStartTime').value = startTimeStr;
-    document.getElementById('selectMobileDuration').value = '60';
-    document.getElementById('inputMobileRoom').value = '琴房 101';
+    const durEl = document.getElementById('selectMobileDuration');
+    if (durEl) durEl.value = '60';
+
+    const roomEl = document.getElementById('inputMobileRoom');
+    if (roomEl) roomEl.value = '琴房 101';
 
     renderMobileTeacherDropdowns();
 
-    document.getElementById('btnDeleteMobileSchedule').classList.add('hidden');
+    const delBtn = document.getElementById('btnDeleteMobileSchedule');
+    if (delBtn) delBtn.classList.add('hidden');
+
     showModal('modalMobileSchedule');
   }
 
   function openMobileScheduleModalForEdit(schedule) {
-    document.getElementById('modalMobileScheduleTitle').textContent = '修改课程排期';
-    document.getElementById('inputMobileScheduleId').value = schedule.id;
+    const titleEl = document.getElementById('modalMobileScheduleTitle');
+    if (titleEl) titleEl.textContent = '修改课程排期';
+
+    const idEl = document.getElementById('inputMobileScheduleId');
+    if (idEl) idEl.value = schedule.id;
 
     const stSelect = document.getElementById('selectMobileStudent');
-    stSelect.innerHTML = '';
-    students.forEach((st) => {
-      stSelect.innerHTML += `<option value="${st.id}">${st.name}</option>`;
-    });
-    stSelect.value = schedule.studentId;
+    if (stSelect) {
+      stSelect.innerHTML = '';
+      students.forEach((st) => {
+        stSelect.innerHTML += `<option value="${st.id}">${st.name}</option>`;
+      });
+      stSelect.value = schedule.studentId;
+    }
 
     const st = students.find((x) => x.id === schedule.studentId);
     updateMobileCourseDropdown(st, schedule.courseId || schedule.subject);
 
-    document.getElementById('inputMobileDate').value = schedule.date;
-    document.getElementById('inputMobileStartTime').value = schedule.startTime;
-    document.getElementById('selectMobileDuration').value = String(schedule.durationMinutes);
-    document.getElementById('inputMobileRoom').value = schedule.room || '';
+    const dateEl = document.getElementById('inputMobileDate');
+    if (dateEl) dateEl.value = schedule.date;
+
+    const timeEl = document.getElementById('inputMobileStartTime');
+    if (timeEl) timeEl.value = schedule.startTime;
+
+    const durEl = document.getElementById('selectMobileDuration');
+    if (durEl) durEl.value = String(schedule.durationMinutes);
+
+    const roomEl = document.getElementById('inputMobileRoom');
+    if (roomEl) roomEl.value = schedule.room || '';
 
     renderMobileTeacherDropdowns();
-    if (schedule.teacherId) document.getElementById('selectMobileTeacher').value = schedule.teacherId;
-    if (schedule.assistantTeacherId) document.getElementById('selectMobileAssistant').value = schedule.assistantTeacherId;
+    const tEl = document.getElementById('selectMobileTeacher');
+    if (tEl && schedule.teacherId) tEl.value = schedule.teacherId;
 
-    document.getElementById('btnDeleteMobileSchedule').classList.remove('hidden');
+    const aEl = document.getElementById('selectMobileAssistant');
+    if (aEl && schedule.assistantTeacherId) aEl.value = schedule.assistantTeacherId;
+
+    const delBtn = document.getElementById('btnDeleteMobileSchedule');
+    if (delBtn) delBtn.classList.remove('hidden');
+
     showModal('modalMobileSchedule');
   }
 
   function updateMobileCourseDropdown(student, selectedCourseIdOrName = '') {
     const cSelect = document.getElementById('selectMobileCourse');
+    if (!cSelect) return;
     cSelect.innerHTML = '';
     if (!student || !student.courses) return;
 
@@ -873,15 +917,19 @@
     const tSelect = document.getElementById('selectMobileTeacher');
     const aSelect = document.getElementById('selectMobileAssistant');
 
-    tSelect.innerHTML = '';
-    teachers.forEach((t) => {
-      tSelect.innerHTML += `<option value="${t.id}">${t.name} - ${t.subject || '通用'}</option>`;
-    });
+    if (tSelect) {
+      tSelect.innerHTML = '';
+      teachers.forEach((t) => {
+        tSelect.innerHTML += `<option value="${t.id}">${t.name} - ${t.subject || '通用'}</option>`;
+      });
+    }
 
-    aSelect.innerHTML = `<option value="">无 (单师授课)</option>`;
-    teachers.forEach((t) => {
-      aSelect.innerHTML += `<option value="${t.id}">${t.name} - ${t.subject || '通用'}</option>`;
-    });
+    if (aSelect) {
+      aSelect.innerHTML = `<option value="">无 (单师授课)</option>`;
+      teachers.forEach((t) => {
+        aSelect.innerHTML += `<option value="${t.id}">${t.name} - ${t.subject || '通用'}</option>`;
+      });
+    }
   }
 
   function closeMobileScheduleModal() {
@@ -890,20 +938,25 @@
 
   function handleSaveMobileSchedule(e) {
     e.preventDefault();
-    const schId = document.getElementById('inputMobileScheduleId').value;
-    const studentId = document.getElementById('selectMobileStudent').value;
+    const idEl = document.getElementById('inputMobileScheduleId');
+    const schId = idEl ? idEl.value : '';
+
+    const stSelect = document.getElementById('selectMobileStudent');
+    const studentId = stSelect ? stSelect.value : '';
     const student = students.find((st) => st.id === studentId);
 
     const cSelect = document.getElementById('selectMobileCourse');
-    const courseId = cSelect.value;
-    const courseOpt = cSelect.options[cSelect.selectedIndex];
+    const courseId = cSelect ? cSelect.value : '';
+    const courseOpt = cSelect ? cSelect.options[cSelect.selectedIndex] : null;
     const subject = courseOpt ? courseOpt.getAttribute('data-name') : '通用课程';
 
-    const teacherId = document.getElementById('selectMobileTeacher').value;
+    const tSelect = document.getElementById('selectMobileTeacher');
+    const teacherId = tSelect ? tSelect.value : '';
     const teacher = teachers.find((t) => t.id === teacherId);
     const teacherName = teacher ? teacher.name : '';
 
-    const assistantTeacherId = document.getElementById('selectMobileAssistant').value;
+    const aSelect = document.getElementById('selectMobileAssistant');
+    const assistantTeacherId = aSelect ? aSelect.value : '';
     const assistantTeacher = teachers.find((t) => t.id === assistantTeacherId);
     const assistantTeacherName = assistantTeacher ? assistantTeacher.name : '';
 
@@ -968,7 +1021,8 @@
   }
 
   function handleDeleteMobileSchedule() {
-    const schId = document.getElementById('inputMobileScheduleId').value;
+    const idEl = document.getElementById('inputMobileScheduleId');
+    const schId = idEl ? idEl.value : '';
     if (!schId) return;
 
     if (confirm('确定要删除此节课程安排吗？')) {
