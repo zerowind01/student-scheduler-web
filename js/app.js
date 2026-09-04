@@ -198,10 +198,11 @@
         schedules = [];
       }
     } else {
-      const mon = formatDate(addDays(currentWeekStart, 0));
-      const wed = formatDate(addDays(currentWeekStart, 2));
-      const fri = formatDate(addDays(currentWeekStart, 4));
-      const sat = formatDate(addDays(currentWeekStart, 5));
+      const weekStart = getMonday(new Date());
+      const mon = formatDate(addDays(weekStart, 0));
+      const wed = formatDate(addDays(weekStart, 2));
+      const fri = formatDate(addDays(weekStart, 4));
+      const sat = formatDate(addDays(weekStart, 5));
 
       schedules = [
         {
@@ -419,62 +420,59 @@
     return result;
   }
 
+  function safeBind(id, eventName, handler) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener(eventName, handler);
+  }
+
   // ==========================================
-  // 3. 事件监听配置
+  // 3. 安全防崩溃事件监听配置
   // ==========================================
   function setupEventListeners() {
-    document.getElementById('btnPrevWeek').addEventListener('click', () => {
+    safeBind('btnPrevWeek', 'click', () => {
       currentWeekStart = addDays(currentWeekStart, -7);
       refreshView();
     });
 
-    document.getElementById('btnNextWeek').addEventListener('click', () => {
+    safeBind('btnNextWeek', 'click', () => {
       currentWeekStart = addDays(currentWeekStart, 7);
       refreshView();
     });
 
-    document.getElementById('btnToday').addEventListener('click', () => {
+    safeBind('btnToday', 'click', () => {
       currentWeekStart = getMonday(new Date());
       refreshView();
     });
 
-    document.getElementById('filterTeacherSelect').addEventListener('change', (e) => {
+    safeBind('filterTeacherSelect', 'change', (e) => {
       selectedTeacherFilter = e.target.value;
       renderCalendarGrid();
       updateStats();
     });
 
-    // 云同步设置 Modal 事件
-    const btnCloudSync = document.getElementById('btnCloudSync');
-    if (btnCloudSync) {
-      btnCloudSync.addEventListener('click', () => {
-        document.getElementById('inputSyncKey').value = schoolSyncKey;
-        showModal('modalSyncKey');
-      });
-    }
+    safeBind('btnCloudSync', 'click', () => {
+      const el = document.getElementById('inputSyncKey');
+      if (el) el.value = schoolSyncKey;
+      showModal('modalSyncKey');
+    });
 
-    const btnCloseSyncModal = document.getElementById('btnCloseSyncModal');
-    const btnCancelSyncModal = document.getElementById('btnCancelSyncModal');
-    if (btnCloseSyncModal) btnCloseSyncModal.addEventListener('click', () => hideModal('modalSyncKey'));
-    if (btnCancelSyncModal) btnCancelSyncModal.addEventListener('click', () => hideModal('modalSyncKey'));
+    safeBind('btnCloseSyncModal', 'click', () => hideModal('modalSyncKey'));
+    safeBind('btnCancelSyncModal', 'click', () => hideModal('modalSyncKey'));
+    safeBind('btnSaveSyncKey', 'click', () => {
+      const el = document.getElementById('inputSyncKey');
+      const val = (el ? el.value.trim() : '') || 'school_demo_2026';
+      schoolSyncKey = val;
+      localStorage.setItem('edu_scheduler_school_key', val);
+      hideModal('modalSyncKey');
+      pushToCloudSync();
+      showToast(`已开启云同步！同步码: ${val}`, 'cloud-arrow-up');
+    });
 
-    const btnSaveSyncKey = document.getElementById('btnSaveSyncKey');
-    if (btnSaveSyncKey) {
-      btnSaveSyncKey.addEventListener('click', () => {
-        const val = document.getElementById('inputSyncKey').value.trim() || 'school_demo_2026';
-        schoolSyncKey = val;
-        localStorage.setItem('edu_scheduler_school_key', val);
-        hideModal('modalSyncKey');
-        pushToCloudSync();
-        showToast(`已开启云同步！同步码: ${val}`, 'cloud-arrow-up');
-      });
-    }
+    safeBind('btnManageTeachers', 'click', openTeacherModal);
+    safeBind('btnCloseTeacherModal', 'click', closeTeacherModal);
+    safeBind('formAddTeacher', 'submit', handleAddTeacher);
 
-    document.getElementById('btnManageTeachers').addEventListener('click', openTeacherModal);
-    document.getElementById('btnCloseTeacherModal').addEventListener('click', closeTeacherModal);
-    document.getElementById('formAddTeacher').addEventListener('submit', handleAddTeacher);
-
-    document.getElementById('searchStudentInput').addEventListener('input', (e) => {
+    safeBind('searchStudentInput', 'input', (e) => {
       searchQuery = e.target.value.trim().toLowerCase();
       renderStudentList();
     });
@@ -490,29 +488,29 @@
       });
     });
 
-    document.getElementById('btnNewStudent').addEventListener('click', () => openStudentModal());
-    document.getElementById('btnCloseStudentModal').addEventListener('click', closeStudentModal);
-    document.getElementById('btnCancelStudentModal').addEventListener('click', closeStudentModal);
-    document.getElementById('formStudent').addEventListener('submit', handleSaveStudent);
-    document.getElementById('btnDeleteStudent').addEventListener('click', handleDeleteStudent);
-    document.getElementById('btnAddStudentCourseRow').addEventListener('click', () => addCourseRowToStudentModal());
+    safeBind('btnNewStudent', 'click', () => openStudentModal());
+    safeBind('btnCloseStudentModal', 'click', closeStudentModal);
+    safeBind('btnCancelStudentModal', 'click', closeStudentModal);
+    safeBind('formStudent', 'submit', handleSaveStudent);
+    safeBind('btnDeleteStudent', 'click', handleDeleteStudent);
+    safeBind('btnAddStudentCourseRow', 'click', () => addCourseRowToStudentModal());
 
-    document.getElementById('btnCloseScheduleModal').addEventListener('click', closeScheduleModal);
-    document.getElementById('btnCancelScheduleModal').addEventListener('click', closeScheduleModal);
-    document.getElementById('formSchedule').addEventListener('submit', handleSaveSchedule);
-    document.getElementById('btnDeleteSchedule').addEventListener('click', handleDeleteSchedule);
+    safeBind('btnCloseScheduleModal', 'click', closeScheduleModal);
+    safeBind('btnCancelScheduleModal', 'click', closeScheduleModal);
+    safeBind('formSchedule', 'submit', handleSaveSchedule);
+    safeBind('btnDeleteSchedule', 'click', handleDeleteSchedule);
 
-    // 导入 Modal 事件
-    document.getElementById('btnImport').addEventListener('click', openImportModal);
-    document.getElementById('btnCloseImportModal').addEventListener('click', closeImportModal);
-    document.getElementById('btnCancelImportModal').addEventListener('click', closeImportModal);
-    document.getElementById('btnSelectImportFile').addEventListener('click', () => {
-      document.getElementById('importFileInput').click();
+    safeBind('btnImport', 'click', openImportModal);
+    safeBind('btnCloseImportModal', 'click', closeImportModal);
+    safeBind('btnCancelImportModal', 'click', closeImportModal);
+    safeBind('btnSelectImportFile', 'click', () => {
+      const el = document.getElementById('importFileInput');
+      if (el) el.click();
     });
-    document.getElementById('importFileInput').addEventListener('change', handleImportFileChange);
-    document.getElementById('btnConfirmImport').addEventListener('click', handleConfirmImport);
+    safeBind('importFileInput', 'change', handleImportFileChange);
+    safeBind('btnConfirmImport', 'click', handleConfirmImport);
 
-    document.getElementById('btnResetData').addEventListener('click', () => {
+    safeBind('btnResetData', 'click', () => {
       if (confirm('确定要恢复为演示数据吗？当前保存的数据将被重置。')) {
         localStorage.clear();
         loadData();
@@ -522,105 +520,9 @@
       }
     });
 
-    document.getElementById('btnExport').addEventListener('click', exportScheduleData);
+    safeBind('btnExport', 'click', exportScheduleData);
+    safeBind('btnCancelTapSchedule', 'click', clearStudentForTap);
 
-    const btnCancelTapSchedule = document.getElementById('btnCancelTapSchedule');
-    if (btnCancelTapSchedule) btnCancelTapSchedule.addEventListener('click', clearStudentForTap);
-
-    // 手机端 视图切换 (3日 / 7日)
-    const btnMobileView3Day = document.getElementById('btnMobileView3Day');
-    const btnMobileView7Day = document.getElementById('btnMobileView7Day');
-
-    if (btnMobileView3Day && btnMobileView7Day) {
-      btnMobileView3Day.addEventListener('click', () => {
-        mobileDisplayDaysCount = 3;
-        btnMobileView3Day.classList.add('bg-amber-500', 'text-white');
-        btnMobileView3Day.classList.remove('text-slate-600');
-        btnMobileView7Day.classList.remove('bg-amber-500', 'text-white');
-        btnMobileView7Day.classList.add('text-slate-600');
-        refreshView();
-      });
-
-      btnMobileView7Day.addEventListener('click', () => {
-        mobileDisplayDaysCount = 7;
-        btnMobileView7Day.classList.add('bg-amber-500', 'text-white');
-        btnMobileView7Day.classList.remove('text-slate-600');
-        btnMobileView3Day.classList.remove('bg-amber-500', 'text-white');
-        btnMobileView3Day.classList.add('text-slate-600');
-        refreshView();
-      });
-    }
-
-    // 手机端底部与更多菜单弹窗事件
-    const btnOpenMobileMenu = document.getElementById('btnOpenMobileMenu');
-    const btnMobileOpenMenu = document.getElementById('btnMobileOpenMenu');
-    const btnCloseMobileMenu = document.getElementById('btnCloseMobileMenu');
-    const modalMobileMenu = document.getElementById('modalMobileMenu');
-
-    function openMobileMenu() {
-      if (modalMobileMenu) showModal('modalMobileMenu');
-    }
-    function closeMobileMenu() {
-      if (modalMobileMenu) hideModal('modalMobileMenu');
-    }
-
-    if (btnOpenMobileMenu) btnOpenMobileMenu.addEventListener('click', openMobileMenu);
-    if (btnMobileOpenMenu) btnMobileOpenMenu.addEventListener('click', openMobileMenu);
-    if (btnCloseMobileMenu) btnCloseMobileMenu.addEventListener('click', closeMobileMenu);
-
-    const btnMobileOpenStudents = document.getElementById('btnMobileOpenStudents');
-    if (btnMobileOpenStudents) btnMobileOpenStudents.addEventListener('click', expandSidebar);
-
-    const btnMobileNewStudent = document.getElementById('btnMobileNewStudent');
-    if (btnMobileNewStudent) btnMobileNewStudent.addEventListener('click', () => openStudentModal());
-
-    const btnMobileToday = document.getElementById('btnMobileToday');
-    if (btnMobileToday) {
-      btnMobileToday.addEventListener('click', () => {
-        currentWeekStart = getMonday(new Date());
-        refreshView();
-      });
-    }
-
-    const btnMobileManageTeachers = document.getElementById('btnMobileManageTeachers');
-    if (btnMobileManageTeachers) {
-      btnMobileManageTeachers.addEventListener('click', () => {
-        closeMobileMenu();
-        openTeacherModal();
-      });
-    }
-
-    const btnMobileImport = document.getElementById('btnMobileImport');
-    if (btnMobileImport) {
-      btnMobileImport.addEventListener('click', () => {
-        closeMobileMenu();
-        openImportModal();
-      });
-    }
-
-    const btnMobileExport = document.getElementById('btnMobileExport');
-    if (btnMobileExport) {
-      btnMobileExport.addEventListener('click', () => {
-        closeMobileMenu();
-        exportScheduleData();
-      });
-    }
-
-    const btnMobileReset = document.getElementById('btnMobileReset');
-    if (btnMobileReset) {
-      btnMobileReset.addEventListener('click', () => {
-        closeMobileMenu();
-        if (confirm('确定要恢复为演示数据吗？当前保存的数据将被重置。')) {
-          localStorage.clear();
-          loadData();
-          renderTeacherOptions();
-          refreshView();
-          showToast('演示数据已成功重置！', 'check');
-        }
-      });
-    }
-
-    // 侧边栏折叠/展开自适应切换
     const sidebar = document.getElementById('sidebarStudent');
     const btnToggleSidebar = document.getElementById('btnToggleSidebar');
     const btnExpandSidebarFloating = document.getElementById('btnExpandSidebarFloating');
@@ -661,21 +563,27 @@
     const modalSelect = document.getElementById('selectTeacher');
     const assistantSelect = document.getElementById('selectAssistantTeacher');
 
-    filterSelect.innerHTML = `<option value="all">全校老师 (全部)</option>`;
-    teachers.forEach((t) => {
-      filterSelect.innerHTML += `<option value="${t.id}">👩‍🏫 ${t.name} (${t.subject || '全科'})</option>`;
-    });
-    filterSelect.value = selectedTeacherFilter;
+    if (filterSelect) {
+      filterSelect.innerHTML = `<option value="all">全校老师 (全部)</option>`;
+      teachers.forEach((t) => {
+        filterSelect.innerHTML += `<option value="${t.id}">👩‍🏫 ${t.name} (${t.subject || '全科'})</option>`;
+      });
+      filterSelect.value = selectedTeacherFilter;
+    }
 
-    modalSelect.innerHTML = '';
-    teachers.forEach((t) => {
-      modalSelect.innerHTML += `<option value="${t.id}">${t.name} - ${t.subject || '通用'}</option>`;
-    });
+    if (modalSelect) {
+      modalSelect.innerHTML = '';
+      teachers.forEach((t) => {
+        modalSelect.innerHTML += `<option value="${t.id}">${t.name} - ${t.subject || '通用'}</option>`;
+      });
+    }
 
-    assistantSelect.innerHTML = `<option value="">无 (仅主讲老师单师授课)</option>`;
-    teachers.forEach((t) => {
-      assistantSelect.innerHTML += `<option value="${t.id}">${t.name} - ${t.subject || '通用'}</option>`;
-    });
+    if (assistantSelect) {
+      assistantSelect.innerHTML = `<option value="">无 (仅主讲老师单师授课)</option>`;
+      teachers.forEach((t) => {
+        assistantSelect.innerHTML += `<option value="${t.id}">${t.name} - ${t.subject || '通用'}</option>`;
+      });
+    }
   }
 
   // ==========================================
@@ -683,11 +591,14 @@
   // ==========================================
   function renderWeekHeader() {
     const headerContainer = document.getElementById('calendarHeaderDays');
+    if (!headerContainer) return;
     headerContainer.innerHTML = '';
 
     const weekEnd = addDays(currentWeekStart, 6);
     const rangeText = `${currentWeekStart.getFullYear()}年${currentWeekStart.getMonth() + 1}月${currentWeekStart.getDate()}日 - ${weekEnd.getMonth() + 1}月${weekEnd.getDate()}日`;
-    document.getElementById('currentWeekRange').textContent = rangeText;
+
+    const rangeEl = document.getElementById('currentWeekRange');
+    if (rangeEl) rangeEl.textContent = rangeText;
 
     const weekdayNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
     const todayStr = formatDate(new Date());
@@ -698,11 +609,11 @@
       const isToday = dateStr === todayStr;
 
       const colHeader = document.createElement('div');
-      colHeader.className = `py-3 px-2 text-center transition ${isToday ? 'today-column-header' : 'bg-white'}`;
+      colHeader.className = `py-2 px-1 text-center transition ${isToday ? 'today-column-header' : 'bg-white'}`;
 
       colHeader.innerHTML = `
-        <div class="text-xs ${isToday ? 'text-amber-600 font-bold' : 'text-slate-400 font-medium'}">${weekdayNames[i]}</div>
-        <div class="text-sm font-bold mt-0.5 ${isToday ? 'today-badge inline-block' : 'text-slate-700'}">
+        <div class="text-[11px] ${isToday ? 'text-amber-600 font-bold' : 'text-slate-400 font-medium'}">${weekdayNames[i]}</div>
+        <div class="text-xs sm:text-sm font-bold mt-0.5 ${isToday ? 'today-badge inline-block' : 'text-slate-700'}">
           ${dayDate.getMonth() + 1}/${dayDate.getDate()}
         </div>
       `;
@@ -715,6 +626,7 @@
   // ==========================================
   function renderStudentList() {
     const container = document.getElementById('studentListContainer');
+    if (!container) return;
     container.innerHTML = '';
 
     const weekStartStr = formatDate(currentWeekStart);
@@ -747,7 +659,8 @@
       return !scheduledStudentIdsThisWeek.has(st.id);
     });
 
-    document.getElementById('studentCountBadge').textContent = `${filtered.length} 人`;
+    const badgeEl = document.getElementById('studentCountBadge');
+    if (badgeEl) badgeEl.textContent = `${filtered.length} 人`;
 
     if (filtered.length === 0) {
       container.innerHTML = `
@@ -939,6 +852,7 @@
   // ==========================================
   function renderCalendarGrid() {
     const gridContainer = document.getElementById('calendarGridColumns');
+    if (!gridContainer) return;
     gridContainer.innerHTML = '';
 
     const conflictsMap = detectScheduleConflicts();
@@ -1017,7 +931,6 @@
         }
       });
 
-      // 触摸屏/点击模式：点击学员后点击日历格直接排课
       dayColumn.addEventListener('click', (e) => {
         if (selectedStudentForTap && !e.target.closest('.schedule-event-card')) {
           const rect = dayColumn.getBoundingClientRect();
@@ -1074,7 +987,6 @@
     const heightPx = (schedule.durationMinutes / (13 * 60)) * 832;
 
     card.style.top = `${Math.max(0, topPx)}px`;
-    // 设置卡片保底显示高度 48px，确保学员姓名、科目、老师与教室全部完整显示，不裁切
     card.style.height = `${Math.max(48, heightPx)}px`;
 
     const totalCols = schedule._totalCols || 1;
@@ -1107,38 +1019,35 @@
       `学员: ${schedule.studentName}\n课程: ${schedule.subject}\n时间: ${schedule.startTime}-${endTimeStr}\n任课老师: ${schedule.teacherName || '未指定'}${schedule.assistantTeacherName ? ' & ' + schedule.assistantTeacherName : ''}\n课室: ${schedule.room || '未指定'}`
     );
 
-    // 空间精细自适应算法：恢复中文字体自然宽高比，拒绝扁平
-    const isSpacious = totalCols === 1; // 独占全宽
+    const isSpacious = totalCols === 1;
+    const isVeryTall = heightPx >= 68;
 
-    const nameFontSize = isSpacious ? 'text-[13.5px] font-bold' : 'text-xs font-bold';
-    const timeFontSize = isSpacious ? 'text-[10px] font-mono font-medium' : 'text-[9px] font-mono';
-    const badgeFontSize = isSpacious ? 'text-[10.5px] font-semibold' : 'text-[10px] font-semibold';
-    const textFontSize = isSpacious ? 'text-[10.5px] font-normal' : 'text-[9.5px] font-normal';
+    const nameFontSize = isSpacious ? (isVeryTall ? 'text-sm font-black' : 'text-[13px] font-extrabold') : 'text-xs font-bold';
+    const timeFontSize = isSpacious ? 'text-[10px] font-mono font-bold' : 'text-[9px] font-mono';
+    const badgeFontSize = isSpacious ? 'text-[11px] font-bold' : 'text-[10px] font-bold';
+    const textFontSize = isSpacious ? 'text-[10.5px] font-semibold' : 'text-[9.5px] font-medium';
 
     card.innerHTML = `
-      <div class="flex flex-col justify-between h-full pointer-events-none px-2 py-1.5">
-        <!-- 顶行：学员姓名与时间段 (自然舒展字形) -->
-        <div class="flex items-center justify-between gap-1.5 leading-snug shrink-0">
+      <div class="flex flex-col justify-between h-full space-y-0.5 pointer-events-none px-2 py-1">
+        <div class="flex items-center justify-between gap-1 leading-none shrink-0">
           <span class="truncate text-slate-900 ${nameFontSize} flex-1 tracking-normal font-sans">${schedule.studentName}</span>
           ${
             !isSideBySide
-              ? `<span class="${timeFontSize} opacity-75 shrink-0 bg-white/70 px-1 py-0.5 rounded border border-black/5 font-mono">${schedule.startTime}-${endTimeStr}</span>`
+              ? `<span class="${timeFontSize} opacity-80 shrink-0 bg-white/75 px-1 py-0.2 rounded border border-black/5">${schedule.startTime}-${endTimeStr}</span>`
               : ''
           }
         </div>
 
-        <!-- 中行：科目、老师与教室信息 (向上微调 2px) -->
-        <div class="leading-snug flex items-center gap-1.5 flex-wrap truncate shrink-0 -mt-[2px]">
+        <div class="leading-none flex items-center gap-1 flex-wrap truncate shrink-0 -mt-[2px]">
           <span class="${badgeFontSize} px-1.5 py-0.5 bg-white/80 text-slate-800 rounded-md border border-black/5 shadow-2xs truncate">${schedule.subject}</span>
           ${teacherText ? `<span class="opacity-85 ${textFontSize} truncate">${teacherText}</span>` : ''}
           ${roomText ? `<span class="opacity-85 ${textFontSize} truncate">${roomText}</span>` : ''}
         </div>
 
-        <!-- 底行：冲突警告标条 (如果有) -->
         ${
           hasConflict
-            ? `<div class="text-[9.5px] font-bold text-rose-700 bg-rose-100/95 border border-rose-300 px-1.5 py-0.5 rounded-md truncate flex items-center gap-1 shadow-2xs shrink-0 mt-0.5" title="${conflictInfo.reasons.join(' | ')}">
-                <i class="fa-solid fa-triangle-exclamation text-rose-500 animate-pulse shrink-0 text-[8.5px]"></i>
+            ? `<div class="text-[9px] font-bold text-rose-700 bg-rose-100/95 border border-rose-300 px-1 py-0.2 rounded truncate flex items-center gap-0.5 shadow-2xs shrink-0 mt-0.5" title="${conflictInfo.reasons.join(' | ')}">
+                <i class="fa-solid fa-triangle-exclamation text-rose-500 animate-pulse shrink-0 text-[8px]"></i>
                 <span class="truncate leading-normal">${conflictInfo.reasons.join('; ')}</span>
                </div>`
             : ''
@@ -1169,7 +1078,7 @@
   }
 
   // ==========================================
-  // 9. 冲突检测算法 (多教师与双师交叉撞课检测)
+  // 9. 冲突检测算法
   // ==========================================
   function detectScheduleConflicts() {
     const conflictsMap = new Map();
@@ -1195,8 +1104,8 @@
             const reasonsB = [];
 
             if (a.room && b.room && a.room.trim() === b.room.trim()) {
-              reasonsA.push(`课室[${a.room}]占用冲突`);
-              reasonsB.push(`课室[${b.room}]占用冲突`);
+              reasonsA.push(`课室[${a.room}]占用`);
+              reasonsB.push(`课室[${b.room}]占用`);
             }
 
             const teachersInA = [
@@ -1247,27 +1156,47 @@
   function openScheduleModalForNew(student, dateStr, startTimeStr) {
     normalizeStudent(student);
 
-    document.getElementById('modalScheduleTitle').textContent = '安排新课程';
-    document.getElementById('inputScheduleId').value = '';
-    document.getElementById('inputStudentId').value = student.id;
+    const titleEl = document.getElementById('modalScheduleTitle');
+    if (titleEl) titleEl.textContent = '安排新课程';
 
-    document.getElementById('modalStudentAvatar').textContent = student.name.substring(0, 1);
-    document.getElementById('modalStudentName').textContent = student.name;
+    const idEl = document.getElementById('inputScheduleId');
+    if (idEl) idEl.value = '';
+
+    const stIdEl = document.getElementById('inputStudentId');
+    if (stIdEl) stIdEl.value = student.id;
+
+    const avEl = document.getElementById('modalStudentAvatar');
+    if (avEl) avEl.textContent = student.name.substring(0, 1);
+
+    const nameEl = document.getElementById('modalStudentName');
+    if (nameEl) nameEl.textContent = student.name;
 
     const totalLessons = student.courses.reduce((acc, c) => acc + c.remainingLessons, 0);
-    document.getElementById('modalStudentMeta').textContent = `${student.courses.length}门课程在读 | 总剩 ${totalLessons} 课时`;
+    const metaEl = document.getElementById('modalStudentMeta');
+    if (metaEl) metaEl.textContent = `${student.courses.length}门课程在读 | 总剩 ${totalLessons} 课时`;
 
-    document.getElementById('inputCourseDate').value = dateStr;
-    document.getElementById('inputStartTime').value = startTimeStr;
-    document.getElementById('selectDuration').value = '60';
-    document.getElementById('inputRoom').value = '琴房 101';
-    document.getElementById('inputNotes').value = '';
+    const dateEl = document.getElementById('inputCourseDate');
+    if (dateEl) dateEl.value = dateStr;
+
+    const timeEl = document.getElementById('inputStartTime');
+    if (timeEl) timeEl.value = startTimeStr;
+
+    const durEl = document.getElementById('selectDuration');
+    if (durEl) durEl.value = '60';
+
+    const roomEl = document.getElementById('inputRoom');
+    if (roomEl) roomEl.value = '琴房 101';
+
+    const noteEl = document.getElementById('inputNotes');
+    if (noteEl) noteEl.value = '';
 
     const courseSelect = document.getElementById('selectStudentCourse');
-    courseSelect.innerHTML = '';
-    student.courses.forEach((c) => {
-      courseSelect.innerHTML += `<option value="${c.id}" data-name="${c.name}">${c.name} (剩余 ${c.remainingLessons} 课时)</option>`;
-    });
+    if (courseSelect) {
+      courseSelect.innerHTML = '';
+      student.courses.forEach((c) => {
+        courseSelect.innerHTML += `<option value="${c.id}" data-name="${c.name}">${c.name} (剩余 ${c.remainingLessons} 课时)</option>`;
+      });
+    }
 
     renderTeacherOptions();
 
@@ -1275,7 +1204,9 @@
     const radio = document.querySelector(`input[name="colorTheme"][value="${theme}"]`);
     if (radio) radio.checked = true;
 
-    document.getElementById('btnDeleteSchedule').classList.add('hidden');
+    const delBtn = document.getElementById('btnDeleteSchedule');
+    if (delBtn) delBtn.classList.add('hidden');
+
     showModal('modalSchedule');
   }
 
@@ -1286,42 +1217,63 @@
     };
     normalizeStudent(student);
 
-    document.getElementById('modalScheduleTitle').textContent = '修改课程排期';
-    document.getElementById('inputScheduleId').value = schedule.id;
-    document.getElementById('inputStudentId').value = schedule.studentId;
+    const titleEl = document.getElementById('modalScheduleTitle');
+    if (titleEl) titleEl.textContent = '修改课程排期';
 
-    document.getElementById('modalStudentAvatar').textContent = student.name.substring(0, 1);
-    document.getElementById('modalStudentName').textContent = student.name;
+    const idEl = document.getElementById('inputScheduleId');
+    if (idEl) idEl.value = schedule.id;
+
+    const stIdEl = document.getElementById('inputStudentId');
+    if (stIdEl) stIdEl.value = schedule.studentId;
+
+    const avEl = document.getElementById('modalStudentAvatar');
+    if (avEl) avEl.textContent = student.name.substring(0, 1);
+
+    const nameEl = document.getElementById('modalStudentName');
+    if (nameEl) nameEl.textContent = student.name;
 
     const totalLessons = student.courses.reduce((acc, c) => acc + c.remainingLessons, 0);
-    document.getElementById('modalStudentMeta').textContent = `${student.courses.length}门课程在读 | 总剩 ${totalLessons} 课时`;
+    const metaEl = document.getElementById('modalStudentMeta');
+    if (metaEl) metaEl.textContent = `${student.courses.length}门课程在读 | 总剩 ${totalLessons} 课时`;
 
-    document.getElementById('inputCourseDate').value = schedule.date;
-    document.getElementById('inputStartTime').value = schedule.startTime;
-    document.getElementById('selectDuration').value = String(schedule.durationMinutes);
-    document.getElementById('inputRoom').value = schedule.room || '';
-    document.getElementById('inputNotes').value = schedule.notes || '';
+    const dateEl = document.getElementById('inputCourseDate');
+    if (dateEl) dateEl.value = schedule.date;
+
+    const timeEl = document.getElementById('inputStartTime');
+    if (timeEl) timeEl.value = schedule.startTime;
+
+    const durEl = document.getElementById('selectDuration');
+    if (durEl) durEl.value = String(schedule.durationMinutes);
+
+    const roomEl = document.getElementById('inputRoom');
+    if (roomEl) roomEl.value = schedule.room || '';
+
+    const noteEl = document.getElementById('inputNotes');
+    if (noteEl) noteEl.value = schedule.notes || '';
 
     const courseSelect = document.getElementById('selectStudentCourse');
-    courseSelect.innerHTML = '';
-    student.courses.forEach((c) => {
-      const selected = c.id === schedule.courseId || c.name === schedule.subject ? 'selected' : '';
-      courseSelect.innerHTML += `<option value="${c.id}" data-name="${c.name}" ${selected}>${c.name} (剩余 ${c.remainingLessons} 课时)</option>`;
-    });
+    if (courseSelect) {
+      courseSelect.innerHTML = '';
+      student.courses.forEach((c) => {
+        const selected = c.id === schedule.courseId || c.name === schedule.subject ? 'selected' : '';
+        courseSelect.innerHTML += `<option value="${c.id}" data-name="${c.name}" ${selected}>${c.name} (剩余 ${c.remainingLessons} 课时)</option>`;
+      });
+    }
 
     renderTeacherOptions();
-    if (schedule.teacherId) {
-      document.getElementById('selectTeacher').value = schedule.teacherId;
-    }
-    if (schedule.assistantTeacherId) {
-      document.getElementById('selectAssistantTeacher').value = schedule.assistantTeacherId;
-    }
+    const tEl = document.getElementById('selectTeacher');
+    if (tEl && schedule.teacherId) tEl.value = schedule.teacherId;
+
+    const aEl = document.getElementById('selectAssistantTeacher');
+    if (aEl && schedule.assistantTeacherId) aEl.value = schedule.assistantTeacherId;
 
     const theme = schedule.colorTheme || 'amber';
     const radio = document.querySelector(`input[name="colorTheme"][value="${theme}"]`);
     if (radio) radio.checked = true;
 
-    document.getElementById('btnDeleteSchedule').classList.remove('hidden');
+    const delBtn = document.getElementById('btnDeleteSchedule');
+    if (delBtn) delBtn.classList.remove('hidden');
+
     showModal('modalSchedule');
   }
 
@@ -1336,15 +1288,17 @@
     const student = students.find((st) => st.id === studentId);
 
     const courseSelect = document.getElementById('selectStudentCourse');
-    const courseId = courseSelect.value;
-    const courseOpt = courseSelect.options[courseSelect.selectedIndex];
+    const courseId = courseSelect ? courseSelect.value : '';
+    const courseOpt = courseSelect ? courseSelect.options[courseSelect.selectedIndex] : null;
     const subject = courseOpt ? courseOpt.getAttribute('data-name') : '通用课程';
 
-    const teacherId = document.getElementById('selectTeacher').value;
+    const tSelect = document.getElementById('selectTeacher');
+    const teacherId = tSelect ? tSelect.value : '';
     const teacher = teachers.find((t) => t.id === teacherId);
     const teacherName = teacher ? teacher.name : '';
 
-    const assistantTeacherId = document.getElementById('selectAssistantTeacher').value;
+    const aSelect = document.getElementById('selectAssistantTeacher');
+    const assistantTeacherId = aSelect ? aSelect.value : '';
     const assistantTeacher = teachers.find((t) => t.id === assistantTeacherId);
     const assistantTeacherName = assistantTeacher ? assistantTeacher.name : '';
 
@@ -1352,7 +1306,7 @@
     const startTime = document.getElementById('inputStartTime').value;
     const durationMinutes = parseInt(document.getElementById('selectDuration').value, 10);
     const room = document.getElementById('inputRoom').value.trim();
-    const notes = document.getElementById('inputNotes').value.trim();
+    const notes = document.getElementById('inputNotes') ? document.getElementById('inputNotes').value.trim() : '';
     const colorTheme = document.querySelector('input[name="colorTheme"]:checked')?.value || 'amber';
 
     if (schId) {
@@ -1447,6 +1401,7 @@
 
   function renderTeacherListInModal() {
     const container = document.getElementById('teacherListContainer');
+    if (!container) return;
     container.innerHTML = '';
 
     if (teachers.length === 0) {
@@ -1492,8 +1447,8 @@
     const nameInput = document.getElementById('teacherNameInput');
     const subjectInput = document.getElementById('teacherSubjectInput');
 
-    const name = nameInput.value.trim();
-    const subject = subjectInput.value.trim() || '通用科目';
+    const name = nameInput ? nameInput.value.trim() : '';
+    const subject = subjectInput ? subjectInput.value.trim() : '通用科目';
 
     if (!name) return;
 
@@ -1507,8 +1462,8 @@
     teachers.push(newTeacher);
     saveData();
 
-    nameInput.value = '';
-    subjectInput.value = '';
+    if (nameInput) nameInput.value = '';
+    if (subjectInput) subjectInput.value = '';
 
     renderTeacherOptions();
     renderTeacherListInModal();
@@ -1522,21 +1477,41 @@
   function openStudentModal(student = null) {
     if (student) {
       normalizeStudent(student);
-      document.getElementById('modalStudentTitle').textContent = '编辑学员及课程';
-      document.getElementById('editStudentId').value = student.id;
-      document.getElementById('studentNameInput').value = student.name;
-      document.getElementById('studentPhoneInput').value = student.phone || '';
-      document.getElementById('studentColorSelect').value = student.colorTheme || 'amber';
-      document.getElementById('btnDeleteStudent').classList.remove('hidden');
+      const titleEl = document.getElementById('modalStudentTitle');
+      if (titleEl) titleEl.textContent = '编辑学员及课程';
+
+      const idEl = document.getElementById('editStudentId');
+      if (idEl) idEl.value = student.id;
+
+      const nameEl = document.getElementById('studentNameInput');
+      if (nameEl) nameEl.value = student.name;
+
+      const phoneEl = document.getElementById('studentPhoneInput');
+      if (phoneEl) phoneEl.value = student.phone || '';
+
+      const colorEl = document.getElementById('studentColorSelect');
+      if (colorEl) colorEl.value = student.colorTheme || 'amber';
+
+      const delBtn = document.getElementById('btnDeleteStudent');
+      if (delBtn) delBtn.classList.remove('hidden');
 
       renderStudentCoursesModalRows(student.courses);
     } else {
-      document.getElementById('modalStudentTitle').textContent = '添加新学员';
-      document.getElementById('editStudentId').value = '';
-      document.getElementById('formStudent').reset();
+      const titleEl = document.getElementById('modalStudentTitle');
+      if (titleEl) titleEl.textContent = '添加新学员';
+
+      const idEl = document.getElementById('editStudentId');
+      if (idEl) idEl.value = '';
+
+      const form = document.getElementById('formStudent');
+      if (form) form.reset();
+
       const randomColor = getRandomColorTheme();
-      document.getElementById('studentColorSelect').value = randomColor;
-      document.getElementById('btnDeleteStudent').classList.add('hidden');
+      const colorEl = document.getElementById('studentColorSelect');
+      if (colorEl) colorEl.value = randomColor;
+
+      const delBtn = document.getElementById('btnDeleteStudent');
+      if (delBtn) delBtn.classList.add('hidden');
 
       renderStudentCoursesModalRows([{ id: 'c_new_' + Date.now(), name: '钢琴一对一', remainingLessons: 10 }]);
     }
@@ -1545,9 +1520,10 @@
 
   function renderStudentCoursesModalRows(courses) {
     const container = document.getElementById('studentCoursesListContainer');
+    if (!container) return;
     container.innerHTML = '';
 
-    courses.forEach((c, idx) => {
+    courses.forEach((c) => {
       const row = document.createElement('div');
       row.className = 'course-row flex items-center gap-2';
       row.innerHTML = `
@@ -1576,6 +1552,7 @@
 
   function addCourseRowToStudentModal() {
     const container = document.getElementById('studentCoursesListContainer');
+    if (!container) return;
     const row = document.createElement('div');
     row.className = 'course-row flex items-center gap-2';
     row.innerHTML = `
@@ -1601,10 +1578,15 @@
 
   function handleSaveStudent(e) {
     e.preventDefault();
-    const editId = document.getElementById('editStudentId').value;
-    const name = document.getElementById('studentNameInput').value.trim();
-    const phone = document.getElementById('studentPhoneInput').value.trim();
-    const colorTheme = document.getElementById('studentColorSelect').value;
+    const editId = document.getElementById('editStudentId') ? document.getElementById('editStudentId').value : '';
+    const nameInput = document.getElementById('studentNameInput');
+    const name = nameInput ? nameInput.value.trim() : '';
+
+    const phoneInput = document.getElementById('studentPhoneInput');
+    const phone = phoneInput ? phoneInput.value.trim() : '';
+
+    const colorSelect = document.getElementById('studentColorSelect');
+    const colorTheme = colorSelect ? colorSelect.value : 'amber';
 
     const courseRows = document.querySelectorAll('#studentCoursesListContainer .course-row');
     const courses = [];
@@ -1647,7 +1629,7 @@
   }
 
   function handleDeleteStudent() {
-    const editId = document.getElementById('editStudentId').value;
+    const editId = document.getElementById('editStudentId') ? document.getElementById('editStudentId').value : '';
     if (!editId) return;
 
     if (confirm('确定要删除该学员吗？该学员的所有课程记录及历史排课会被同步清理。')) {
@@ -1664,9 +1646,15 @@
   // 14. 导入课表功能 (支持 JS / JSON 文件及代码文本)
   // ==========================================
   function openImportModal() {
-    document.getElementById('importFileInput').value = '';
-    document.getElementById('importFileName').textContent = '未选择任何文件';
-    document.getElementById('importTextarea').value = '';
+    const fileInput = document.getElementById('importFileInput');
+    if (fileInput) fileInput.value = '';
+
+    const nameEl = document.getElementById('importFileName');
+    if (nameEl) nameEl.textContent = '未选择任何文件';
+
+    const textEl = document.getElementById('importTextarea');
+    if (textEl) textEl.value = '';
+
     showModal('modalImport');
   }
 
@@ -1678,11 +1666,13 @@
     const file = e.target.files[0];
     if (!file) return;
 
-    document.getElementById('importFileName').textContent = file.name;
+    const nameEl = document.getElementById('importFileName');
+    if (nameEl) nameEl.textContent = file.name;
 
     const reader = new FileReader();
     reader.onload = function (evt) {
-      document.getElementById('importTextarea').value = evt.target.result;
+      const textEl = document.getElementById('importTextarea');
+      if (textEl) textEl.value = evt.target.result;
     };
     reader.onerror = function () {
       showToast('文件读取失败，请重试！', 'triangle-exclamation');
@@ -1696,13 +1686,11 @@
     }
 
     let cleanText = rawText.trim();
-
     cleanText = cleanText.replace(/^(const|let|var)\s+\w+\s*=\s*/i, '');
     cleanText = cleanText.replace(/^(module\.exports\s*=\s*|export\s+default\s*)/i, '');
     cleanText = cleanText.replace(/;$/, '');
 
     let data = null;
-
     try {
       data = JSON.parse(cleanText);
     } catch (e1) {
@@ -1721,7 +1709,8 @@
   }
 
   function handleConfirmImport() {
-    const rawText = document.getElementById('importTextarea').value;
+    const textEl = document.getElementById('importTextarea');
+    const rawText = textEl ? textEl.value : '';
     const mode = document.querySelector('input[name="importMode"]:checked')?.value || 'overwrite';
 
     try {
@@ -1792,14 +1781,16 @@
     const totalMinutes = currentWeekSchedules.reduce((acc, cur) => acc + cur.durationMinutes, 0);
     const totalHours = (totalMinutes / 60).toFixed(1);
 
-    document.getElementById('statWeeklyCourses').textContent = `${totalCourses} 节`;
-    document.getElementById('statWeeklyHours').textContent = `${totalHours} 小时`;
+    const cEl = document.getElementById('statWeeklyCourses');
+    if (cEl) cEl.textContent = `${totalCourses} 节`;
+
+    const hEl = document.getElementById('statWeeklyHours');
+    if (hEl) hEl.textContent = `${totalHours} 小时`;
   }
 
   function exportScheduleData() {
     const jsonText = JSON.stringify({ students, schedules, teachers }, null, 2);
 
-    // 自动将全量数据文本写入剪贴板，方便通过微信/微信发给手机粘贴导入
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(jsonText).then(() => {
         showToast('已复制全量课表数据！可直接粘贴发给手机导入', 'copy');
@@ -1814,25 +1805,21 @@
     downloadAnchor.click();
     downloadAnchor.remove();
   }
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `课表导出_${formatDate(new Date())}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
-    showToast('已导出全校课程、双师排课及多门课程学员数据！', 'download');
-  }
 
   function showModal(modalId) {
     const el = document.getElementById(modalId);
-    el.classList.remove('hidden');
-    setTimeout(() => el.classList.add('opacity-100'), 10);
+    if (el) {
+      el.classList.remove('hidden');
+      setTimeout(() => el.classList.add('opacity-100'), 10);
+    }
   }
 
   function hideModal(modalId) {
     const el = document.getElementById(modalId);
-    el.classList.remove('opacity-100');
-    setTimeout(() => el.classList.add('hidden'), 200);
+    if (el) {
+      el.classList.remove('opacity-100');
+      setTimeout(() => el.classList.add('hidden'), 200);
+    }
   }
 
   function showToast(msg, icon = 'circle-check') {
@@ -1840,16 +1827,18 @@
     const toastMsg = document.getElementById('toastMsg');
     const toastIcon = document.getElementById('toastIcon');
 
-    toastMsg.textContent = msg;
-    toastIcon.className = `fa-solid fa-${icon} text-amber-400`;
+    if (toast && toastMsg && toastIcon) {
+      toastMsg.textContent = msg;
+      toastIcon.className = `fa-solid fa-${icon} text-amber-400`;
 
-    toast.classList.remove('translate-y-10', 'opacity-0', 'pointer-events-none');
-    toast.classList.add('translate-y-0', 'opacity-100');
+      toast.classList.remove('translate-y-10', 'opacity-0', 'pointer-events-none');
+      toast.classList.add('translate-y-0', 'opacity-100');
 
-    setTimeout(() => {
-      toast.classList.add('translate-y-10', 'opacity-0', 'pointer-events-none');
-      toast.classList.remove('translate-y-0', 'opacity-100');
-    }, 2800);
+      setTimeout(() => {
+        toast.classList.add('translate-y-10', 'opacity-0', 'pointer-events-none');
+        toast.classList.remove('translate-y-0', 'opacity-100');
+      }, 2800);
+    }
   }
 
   document.addEventListener('DOMContentLoaded', initApp);
