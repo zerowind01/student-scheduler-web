@@ -118,6 +118,7 @@
   let schoolSyncKey = localStorage.getItem('edu_scheduler_school_key') || 'school_demo_2026';
   let isPushingToCloud = false;
   let isPullingFromCloud = false;
+  let cloudSyncFailedOnce = false; // 只提醒一次，避免弹窗轰炸
 
   async function pushToCloudSync() {
     saveDataLocalOnly();
@@ -149,8 +150,13 @@
         headers: { 'Content-Type': 'application/json' },
         body: valStr
       });
+      cloudSyncFailedOnce = false;
     } catch (err) {
       console.warn('Cloud sync push:', err);
+      if (!cloudSyncFailedOnce) {
+        cloudSyncFailedOnce = true;
+        showToast('⚠️ 云同步不可用：数据仅保存在本机。请通过部署后的网址访问以启用跨设备同步。');
+      }
     } finally {
       isPushingToCloud = false;
     }

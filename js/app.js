@@ -209,6 +209,7 @@
   let schoolSyncKey = localStorage.getItem('edu_scheduler_school_key') || 'school_demo_2026';
   let isPushingToCloud = false;
   let isPullingFromCloud = false;
+  let cloudSyncFailedOnce = false; // 只提醒一次，避免弹窗轰炸
 
   // 云端同步改走同源 /api/sync 代理（凭据由服务端函数持有，前端不再暴露 token）
   // 服务端实现见 netlify/functions/sync.js —— 读取 UPSTASH_REST_URL / UPSTASH_REST_TOKEN 环境变量
@@ -244,8 +245,13 @@
         headers: { 'Content-Type': 'application/json' },
         body: valStr
       });
+      cloudSyncFailedOnce = false;
     } catch (err) {
       console.warn('Cloud sync push:', err);
+      if (!cloudSyncFailedOnce) {
+        cloudSyncFailedOnce = true;
+        showToast('⚠️ 云同步不可用：当前通过 file:// 直接打开或网络异常，数据仅保存在本机。请通过部署后的网址访问以启用跨设备同步。', 'cloud-slash');
+      }
     } finally {
       isPushingToCloud = false;
     }
@@ -269,6 +275,7 @@
           : raw;
         if (remoteData && remoteData.updatedAt) {
           const localTime = parseInt(localStorage.getItem('edu_scheduler_last_sync_time') || '0', 10);
+          // 只有远端确实更新才覆盖本地，防止轮询把刚做的本地改动回滚
           if (force || remoteData.updatedAt > localTime) {
             students = remoteData.students || [];
             schedules = remoteData.schedules || [];
