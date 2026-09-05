@@ -63,3 +63,12 @@ student_scheduler_web/
 │   └── app.js       # 核心排课引擎、拖拽逻辑、冲突算法与数据持久化
 └── README.md        # 项目说明文档
 ```
+
+---
+
+## 🔄 云同步部署说明
+
+- 电脑端 / 手机端请通过 Netlify 部署后的网址访问（如 `https://zippy-meerkat-cfab1f.netlify.app`）
+- 双方在设置里填同一个"同步码"即可实时同步（约 2 秒）
+- 云端数据存储在 Upstash Redis，凭据由 Netlify 服务端函数持有，前端代码不含任何密钥
+- 本地开发时直接双击 `index.html` 只能用本地存储，云同步功能不可用（会有提示）
