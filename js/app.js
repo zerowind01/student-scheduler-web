@@ -973,6 +973,9 @@
       const el = document.getElementById(id);
       if (el) el.classList.toggle('hidden', id !== 'page' + page.charAt(0).toUpperCase() + page.slice(1));
     });
+    // GSAP：切换后的新页面轻量进场
+    const activeEl = document.getElementById('page' + page.charAt(0).toUpperCase() + page.slice(1));
+    if (window.uiAnim && activeEl) window.uiAnim.viewIn(activeEl);
 
     // 桌面侧栏按钮高亮
     document.querySelectorAll('.nav-page-btn[data-page]').forEach((btn) => {
@@ -2747,14 +2750,24 @@
     if (el) {
       el.classList.remove('hidden');
       setTimeout(() => el.classList.add('opacity-100'), 10);
+      // GSAP 进场动效
+      const box = el.querySelector('.modal-content, .bg-white, [class*="rounded"]');
+      if (window.uiAnim) window.uiAnim.modalIn(box, el);
     }
   }
 
   function hideModal(modalId) {
     const el = document.getElementById(modalId);
     if (el) {
-      el.classList.remove('opacity-100');
-      setTimeout(() => el.classList.add('hidden'), 200);
+      const finish = () => el.classList.add('hidden');
+      const box = el.querySelector('.modal-content, .bg-white, [class*="rounded"]');
+      if (window.uiAnim) {
+        window.uiAnim.modalOut(box, el, finish);
+        setTimeout(finish, 260); // 兜底
+      } else {
+        el.classList.remove('opacity-100');
+        setTimeout(finish, 200);
+      }
     }
   }
 
@@ -2769,6 +2782,7 @@
 
       toast.classList.remove('translate-y-10', 'opacity-0', 'pointer-events-none');
       toast.classList.add('translate-y-0', 'opacity-100');
+      if (window.uiAnim) window.uiAnim.toastIn(toast);
 
       setTimeout(() => {
         toast.classList.add('translate-y-10', 'opacity-0', 'pointer-events-none');

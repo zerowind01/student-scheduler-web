@@ -1,0 +1,143 @@
+/* ==========================================================================
+   排课工作台 · 设计 Token 体系（两端统一）
+   由 taste-skill 方案 + finesse-ui 定稿生成 · v1.0
+   原则：tinted 中性色（禁纯白纯黑）、单一暖阴影、三档圆角、语义色固定
+   ========================================================================== */
+
+:root {
+  /* ---- 品牌色阶（琥珀，替代散落的 amber-xxx 混用） ---- */
+  --brand-50: #fffbeb;
+  --brand-100: #fef3c7;
+  --brand-200: #fde68a;
+  --brand-300: #fcd34d;
+  --brand-400: #fbbf24;
+  --brand-500: #f59e0b;
+  --brand-600: #d97706;
+  --brand-700: #b45309;
+
+  /* ---- 中性面（stone 微暖 tinted，禁纯白） ---- */
+  --surface-page: #fafaf9;        /* 页面底 */
+  --surface-card: #fffffe;        /* 卡片面（近白非纯白） */
+  --surface-sunken: #f5f5f4;      /* 凹陷区/输入框底 */
+  --hairline: rgb(28 25 23 / 0.08);        /* 统一分隔线 */
+  --hairline-strong: rgb(28 25 23 / 0.14); /* 强分隔（卡片描边） */
+
+  /* ---- 文字墨色 ---- */
+  --ink-900: #1c1917;             /* 主文字 */
+  --ink-700: #44403c;             /* 次文字 */
+  --ink-500: #78716c;             /* 辅助文字 */
+  --ink-400: #a8a29e;             /* 占位/禁用 */
+
+  /* ---- 语义色（全站唯一用途） ---- */
+  --sem-danger: #e11d48;          /* 欠课 / 删除 */
+  --sem-danger-soft: #fff1f2;
+  --sem-warn: #d97706;            /* 课时不足 */
+  --sem-warn-soft: #fffbeb;
+  --sem-ok: #059669;              /* 成功 / 已消课确认 */
+  --sem-ok-soft: #ecfdf5;
+  --sem-info: #0284c7;            /* 详情 / 提示 */
+  --sem-info-soft: #f0f9ff;
+
+  /* ---- 三档圆角（唯一体系，禁用其他值） ---- */
+  --radius-card: 16px;            /* 卡片 / 弹窗 */
+  --radius-btn: 10px;             /* 按钮 */
+  --radius-input: 8px;            /* 输入框 / 下拉 */
+
+  /* ---- 单一 tinted 暖阴影（禁纯黑阴影） ---- */
+  --shadow-card: 0 1px 3px rgb(28 25 23 / 0.06), 0 1px 2px rgb(28 25 23 / 0.04);
+  --shadow-pop: 0 12px 32px rgb(28 25 23 / 0.14), 0 2px 8px rgb(28 25 23 / 0.08);
+  --shadow-nav: 0 -1px 0 rgb(28 25 23 / 0.06);
+
+  /* ---- 动效曲线（GSAP/CSS 共用） ---- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 150ms;
+  --dur-base: 220ms;
+}
+
+/* ==========================================================================
+   Token → 组件基类（两端共用）
+   ========================================================================== */
+
+/* 卡片：单一表面 + hairline 描边 + 单一阴影 */
+.ui-card {
+  background: var(--surface-card);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+/* 主按钮 / 次按钮 / 危险按钮 */
+.ui-btn {
+  border-radius: var(--radius-btn);
+  font-weight: 600;
+  transition: transform var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-fast) var(--ease-out),
+              background-color var(--dur-fast) var(--ease-out);
+}
+.ui-btn:active { transform: scale(0.98); }
+
+.ui-btn-primary {
+  background: var(--brand-600);
+  color: #fff;
+}
+.ui-btn-primary:hover { background: var(--brand-700); }
+
+.ui-btn-secondary {
+  background: var(--surface-sunken);
+  color: var(--ink-700);
+}
+.ui-btn-secondary:hover { background: #e7e5e4; }
+
+.ui-btn-danger {
+  background: var(--sem-danger-soft);
+  color: var(--sem-danger);
+}
+
+/* 输入框 */
+.ui-input {
+  background: var(--surface-card);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-input);
+  transition: border-color var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-fast) var(--ease-out);
+}
+.ui-input:focus {
+  outline: none;
+  border-color: var(--brand-500);
+  box-shadow: 0 0 0 3px rgb(245 158 11 / 0.15);
+}
+
+/* 弹窗壳 */
+.ui-modal {
+  background: var(--surface-card);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-pop);
+}
+
+/* 日历课卡状态色条：状态色只出现在左条 + 角标，卡体中性 */
+.ui-status-bar {
+  position: absolute;
+  left: 0;
+  top: 8%;
+  bottom: 8%;
+  width: 3px;
+  border-radius: 2px;
+}
+.ui-status-scheduled { background: var(--brand-500); }
+.ui-status-completed { background: var(--sem-ok); }
+.ui-status-leave { background: var(--ink-400); }
+
+/* 数字滚动容器（GSAP 目标） */
+.ui-num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ==========================================================================
+   动效终态（reduced-motion 用户的强制回退）
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -703,6 +703,9 @@
         const el = document.getElementById('view' + v.charAt(0).toUpperCase() + v.slice(1));
         if (el) el.classList.toggle('hidden', v !== view);
       });
+      // GSAP：切换后的新视图轻量进场
+      const activeEl = document.getElementById('view' + view.charAt(0).toUpperCase() + view.slice(1));
+      if (window.uiAnim && activeEl) window.uiAnim.viewIn(activeEl);
       document.querySelectorAll('.nav-tab').forEach((tab) => {
         const active = tab.getAttribute('data-view') === view;
         tab.classList.toggle('text-amber-600', active);
@@ -1424,14 +1427,24 @@
     if (el) {
       el.classList.remove('hidden');
       setTimeout(() => el.classList.add('opacity-100'), 10);
+      // GSAP 进场动效（底部抽屉上滑）
+      const box = el.querySelector('.bg-white, [class*="rounded"]');
+      if (window.uiAnim) window.uiAnim.modalIn(box, el);
     }
   }
 
   function hideModal(id) {
     const el = document.getElementById(id);
     if (el) {
-      el.classList.remove('opacity-100');
-      setTimeout(() => el.classList.add('hidden'), 200);
+      const finish = () => el.classList.add('hidden');
+      const box = el.querySelector('.bg-white, [class*="rounded"]');
+      if (window.uiAnim) {
+        window.uiAnim.modalOut(box, el, finish);
+        setTimeout(finish, 260); // 兜底
+      } else {
+        el.classList.remove('opacity-100');
+        setTimeout(finish, 200);
+      }
     }
   }
 
@@ -1598,6 +1611,7 @@
       toastMsg.textContent = msg;
       toast.classList.remove('translate-y-10', 'opacity-0', 'pointer-events-none');
       toast.classList.add('translate-y-0', 'opacity-100');
+      if (window.uiAnim) window.uiAnim.toastIn(toast);
       setTimeout(() => {
         toast.classList.add('translate-y-10', 'opacity-0', 'pointer-events-none');
         toast.classList.remove('translate-y-0', 'opacity-100');
