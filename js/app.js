@@ -816,7 +816,7 @@
     });
 
     // 桌面侧栏按钮高亮
-    document.querySelectorAll('.nav-page-btn').forEach((btn) => {
+    document.querySelectorAll('.nav-page-btn[data-page]').forEach((btn) => {
       const active = btn.getAttribute('data-page') === page;
       btn.classList.toggle('active', active);
       if (active) {
@@ -845,7 +845,7 @@
   }
 
   function bindPageNav() {
-    document.querySelectorAll('.nav-page-btn, .mnav-btn').forEach((btn) => {
+    document.querySelectorAll('.nav-page-btn[data-page], .mnav-btn[data-page]').forEach((btn) => {
       btn.addEventListener('click', () => switchPage(btn.getAttribute('data-page')));
     });
     // 底部导航"学员"按钮沿用原 btnMobileOpenStudents id
@@ -869,6 +869,55 @@
       const el = document.getElementById('btnClearAllData');
       if (el) el.click();
     });
+
+    // ============ 工具箱弹出菜单（左侧导航栏底部） ============
+    function resetToDemoData() {
+      if (confirm('确定要恢复为演示数据吗？当前保存的数据将被重置。')) {
+        localStorage.clear();
+        loadData();
+        renderTeacherOptions();
+        refreshView();
+        showToast('演示数据已成功重置！', 'check');
+      }
+    }
+    function clearAllData() {
+      if (confirm('确定要清空当前所有学员与排课记录，开启全新的空白课表吗？')) {
+        students = [];
+        schedules = [];
+        checkInLogs = [];
+        debts = [];
+        saveData();
+        renderTeacherOptions();
+        refreshView();
+        showToast('已清空全部学员和排课数据！', 'trash-can');
+      }
+    }
+    function openToolbox() {
+      const menu = document.getElementById('toolboxMenu');
+      if (menu) menu.classList.toggle('hidden');
+    }
+    safeBind('btnToolbox', 'click', (e) => {
+      e.stopPropagation();
+      openToolbox();
+    });
+    document.addEventListener('click', (e) => {
+      const menu = document.getElementById('toolboxMenu');
+      if (menu && !menu.classList.contains('hidden') && !e.target.closest('#toolboxMenu') && !e.target.closest('#btnToolbox')) {
+        menu.classList.add('hidden');
+      }
+    });
+    safeBind('tbQrSync', 'click', () => { openToolbox(); openQrSyncModal(); });
+    safeBind('tbCloudSync', 'click', () => {
+      openToolbox();
+      const el = document.getElementById('inputSyncKey');
+      if (el) el.value = schoolSyncKey;
+      showModal('modalSyncKey');
+    });
+    safeBind('tbManageTeachers', 'click', () => { openToolbox(); openTeacherModal(); });
+    safeBind('tbImport', 'click', () => { openToolbox(); openImportModal(); });
+    safeBind('tbExport', 'click', () => { openToolbox(); exportScheduleData(); });
+    safeBind('tbResetData', 'click', () => { openToolbox(); resetToDemoData(); });
+    safeBind('tbClearAll', 'click', () => { openToolbox(); clearAllData(); });
   }
 
   function updateDebtBadges() {
