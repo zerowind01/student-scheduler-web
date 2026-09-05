@@ -410,6 +410,9 @@
             checkInLogs = remoteData.checkInLogs || [];
             debts = (remoteData.debts || []).map(normalizeDebt);
 
+            // 欠课账校准：负课时（欠课）同步进欠课账
+            syncAllDebts();
+
             localStorage.setItem('edu_scheduler_last_sync_time', String(remoteData.updatedAt));
             saveDataLocalOnly();
             renderMobileTeacherSelect();
@@ -1557,6 +1560,9 @@
       });
       showToast('成功添加新学员！');
     }
+
+    // 欠课账校准：编辑/新增学员后，负课时（欠课）同步进欠课账，财务页即时可见
+    syncAllDebts();
 
     saveData();
     closeMobileStudentModal();

@@ -105,6 +105,8 @@
           students = data.students || [];
           schedules = data.schedules || [];
           teachers = data.teachers || teachers;
+          // 欠课账校准：负课时（欠课）同步进欠课账
+          syncAllDebts();
           saveDataLocalOnly();
           showToast('⚡ 扫码同步成功！已载入最新课表数据！', 'qrcode');
           history.replaceState(null, '', location.pathname);
@@ -425,6 +427,9 @@
             courseTypes = remoteData.courseTypes || courseTypes;
             checkInLogs = remoteData.checkInLogs || [];
             debts = (remoteData.debts || []).map(normalizeDebt);
+
+            // 欠课账校准：负课时（欠课）同步进欠课账
+            syncAllDebts();
 
             localStorage.setItem('edu_scheduler_last_sync_time', String(remoteData.updatedAt));
             saveDataLocalOnly();
@@ -2210,6 +2215,9 @@
       students.push(newStudent);
       showToast('成功添加新学员及课程！', 'user-check');
     }
+
+    // 欠课账校准：编辑/新增学员后，负课时（欠课）同步进欠课账，财务页即时可见
+    syncAllDebts();
 
     saveData();
     closeStudentModal();
