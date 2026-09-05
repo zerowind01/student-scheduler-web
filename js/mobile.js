@@ -471,12 +471,7 @@
   }
 
   function setupMobileEvents() {
-    safeBind('btnMobileCloudSync', 'click', () => {
-      const el = document.getElementById('inputSyncKey');
-      if (el) el.value = schoolSyncKey;
-      showModal('modalSyncKey');
-    });
-
+    // 云同步入口已移至 设置 分页（msetCloudSync），顶栏不再放按钮
     safeBind('btnCloseSyncModal', 'click', () => hideModal('modalSyncKey'));
     safeBind('btnCancelSyncModal', 'click', () => hideModal('modalSyncKey'));
 
