@@ -1,0 +1,15 @@
+# Netlify 站点配置
+# publish: 网站根目录就是仓库根目录（纯静态前端）
+# functions: serverless 函数目录（云同步 /api/sync）
+# 环境变量 UPSTASH_REST_URL / UPSTASH_REST_TOKEN 在 Netlify 站点设置里配置
+
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+# 将 /api/sync 转发到 serverless 函数
+[[redirects]]
+  from = "/api/sync"
+  to = "/.netlify/functions/sync"
+  status = 200
+  force = true
