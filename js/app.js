@@ -210,9 +210,9 @@
   let isPushingToCloud = false;
   let isPullingFromCloud = false;
 
-  // Upstash Serverless Redis 实时云端存储 (100% 全球持久化 + CORS 支持)
-  const UPSTASH_REST_URL = 'https://coherent-possum-31725.upstash.io';
-  const UPSTASH_REST_TOKEN = 'AXutACQgM2YxNWYzMzEtYjM0NC00YzM0LTk5MzktZTM1OGExN2I3YzA1';
+  // 云端同步改走同源 /api/sync 代理（凭据由服务端函数持有，前端不再暴露 token）
+  // 服务端实现见 netlify/functions/sync.js —— 读取 UPSTASH_REST_URL / UPSTASH_REST_TOKEN 环境变量
+  const CLOUD_SYNC_ENDPOINT = '/api/sync';
 
   async function pushToCloudSync() {
     saveDataLocalOnly();
@@ -239,13 +239,10 @@
       }
 
       const valStr = JSON.stringify(payload);
-      await fetch(UPSTASH_REST_URL, {
+      await fetch(`${CLOUD_SYNC_ENDPOINT}?key=${encodeURIComponent(schoolSyncKey)}`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${UPSTASH_REST_TOKEN}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(['SET', schoolSyncKey, valStr])
+        headers: { 'Content-Type': 'application/json' },
+        body: valStr
       });
     } catch (err) {
       console.warn('Cloud sync push:', err);
@@ -259,16 +256,17 @@
 
     try {
       isPullingFromCloud = true;
-      const res = await fetch(`${UPSTASH_REST_URL}/get/${encodeURIComponent(schoolSyncKey)}`, {
-        headers: {
-          'Authorization': `Bearer ${UPSTASH_REST_TOKEN}`
-        }
+      const res = await fetch(`${CLOUD_SYNC_ENDPOINT}?key=${encodeURIComponent(schoolSyncKey)}`, {
+        headers: { 'Accept': 'application/json' }
       });
       if (!res.ok) return;
 
-      const data = await res.json();
-      if (data && data.result) {
-        const remoteData = typeof data.result === 'string' ? JSON.parse(data.result) : data.result;
+      const raw = await res.json();
+      if (raw) {
+        // 兼容服务端返回 {result: <payload>} 或直接返回 payload 对象两种格式
+        const remoteData = raw.result
+          ? (typeof raw.result === 'string' ? JSON.parse(raw.result) : raw.result)
+          : raw;
         if (remoteData && remoteData.updatedAt) {
           const localTime = parseInt(localStorage.getItem('edu_scheduler_last_sync_time') || '0', 10);
           if (force || remoteData.updatedAt > localTime) {
