@@ -119,6 +119,7 @@
     checkUrlSyncData();
     loadData();
     setupEventListeners();
+    bindPageNav();
     renderTeacherOptions();
     renderWeekHeader();
     renderStudentList();
@@ -798,6 +799,219 @@
     renderStudentList();
     renderCalendarGrid();
     updateStats();
+    renderPageStudents();
+    renderPageFinance();
+    updateDebtBadges();
+  }
+
+  // ==========================================
+  // 分页导航（课表/学员/财务/设置）
+  // ==========================================
+  const PAGE_IDS = ['pageSchedule', 'pageStudents', 'pageFinance', 'pageSettings'];
+
+  function switchPage(page) {
+    PAGE_IDS.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.classList.toggle('hidden', id !== 'page' + page.charAt(0).toUpperCase() + page.slice(1));
+    });
+
+    // 桌面侧栏按钮高亮
+    document.querySelectorAll('.nav-page-btn').forEach((btn) => {
+      const active = btn.getAttribute('data-page') === page;
+      btn.classList.toggle('active', active);
+      if (active) {
+        btn.classList.remove('text-slate-400');
+        btn.classList.add('bg-amber-500/90', 'text-white');
+      } else {
+        btn.classList.add('text-slate-400');
+        btn.classList.remove('bg-amber-500/90', 'text-white');
+      }
+    });
+
+    // 手机底部导航高亮
+    document.querySelectorAll('.mnav-btn').forEach((btn) => {
+      const active = btn.getAttribute('data-page') === page;
+      btn.classList.toggle('text-amber-600', active);
+      btn.classList.toggle('font-bold', active);
+      btn.classList.toggle('text-slate-700', !active);
+    });
+
+    // 课表页隐藏手机浮动栏（因为课表有自己的操作），其他页显示
+    const bottomNav = document.getElementById('mobileBottomNav');
+    if (bottomNav) bottomNav.classList.toggle('hidden', page === 'schedule');
+
+    if (page === 'students') renderPageStudents();
+    if (page === 'finance') renderPageFinance();
+  }
+
+  function bindPageNav() {
+    document.querySelectorAll('.nav-page-btn, .mnav-btn').forEach((btn) => {
+      btn.addEventListener('click', () => switchPage(btn.getAttribute('data-page')));
+    });
+    // 底部导航"学员"按钮沿用原 btnMobileOpenStudents id
+    safeBind('btnMobileOpenStudents', 'click', () => switchPage('students'));
+    safeBind('btnMobileNewStudent', 'click', () => openStudentModal(null));
+    safeBind('btnPageNewStudent', 'click', () => openStudentModal(null));
+    // 设置页
+    safeBind('btnPageCloudSync', 'click', () => {
+      const el = document.getElementById('inputSyncKey');
+      if (el) el.value = schoolSyncKey;
+      showModal('modalSyncKey');
+    });
+    safeBind('btnPageQrSync', 'click', openQrSyncModal);
+    safeBind('btnPageManageTeachers', 'click', openTeacherModal);
+    safeBind('btnPageImport', 'click', () => {
+      const el = document.getElementById('btnImport');
+      if (el) el.click();
+    });
+    safeBind('btnPageExport', 'click', exportScheduleData);
+    safeBind('btnPageClearAll', 'click', () => {
+      const el = document.getElementById('btnClearAllData');
+      if (el) el.click();
+    });
+  }
+
+  function updateDebtBadges() {
+    const hasDebt = debts.some((d) => d.amount > 0);
+    ['navDebtBadge', 'mnavDebtBadge'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.classList.toggle('hidden', !hasDebt);
+    });
+  }
+
+  // 学员管理分页：完整版卡片（含课时/欠课/操作）
+  function renderPageStudents() {
+    const container = document.getElementById('pageStudentsList');
+    if (!container) return;
+    if (students.length === 0) {
+      container.innerHTML = `<div class="col-span-full text-center py-16 text-slate-400 text-sm">还没有学员，点击右上角"新建学员"开始</div>`;
+      return;
+    }
+    container.innerHTML = students.map((student) => {
+      normalizeStudent(student);
+      migrateStudentCourses(student);
+      const totalLessons = student.courses.reduce((acc, c) => acc + c.remainingLessons, 0);
+      const isLow = totalLessons <= 2;
+      const themeColor = getThemeBadgeStyle(student.colorTheme || 'amber');
+      const studentDebts = getStudentDebts(student.id);
+      return `
+      <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs space-y-2" data-student-page-id="${student.id}">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-full ${themeColor.bg} ${themeColor.text} flex items-center justify-center font-bold text-sm shrink-0">${student.name.substring(0, 1)}</div>
+            <div>
+              <div class="font-bold text-sm text-slate-800">${student.name}</div>
+              <div class="text-[10px] text-slate-400"><i class="fa-solid fa-phone text-[9px]"></i> ${student.phone || '无电话'}</div>
+            </div>
+          </div>
+          <span class="text-[10px] font-bold ${isLow ? 'text-rose-600 bg-rose-50 border border-rose-200' : 'text-amber-700 bg-amber-50'} px-1.5 py-0.5 rounded">共剩${totalLessons}课时</span>
+        </div>
+        ${studentDebts.length ? `<div class="text-[10px] text-rose-600 bg-rose-50 border border-rose-200 px-2 py-1 rounded-lg"><i class="fa-solid fa-triangle-exclamation"></i> 欠课: ${studentDebts.map((d) => `${d.courseName} ${d.amount}节`).join('、')}</div>` : ''}
+        <div class="space-y-1">
+          ${student.courses.map((c) => `
+            <div class="flex items-center justify-between text-[11px] bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100">
+              <span class="font-semibold text-slate-700">${c.name}</span>
+              <span class="font-bold ${c.remainingLessons <= 2 ? 'text-rose-600' : 'text-slate-500'}">剩${c.remainingLessons}课时${c.unitPrice > 0 ? ` · ¥${c.unitPrice}/节` : ''}</span>
+            </div>`).join('')}
+        </div>
+        <div class="flex gap-2 pt-1">
+          <button class="flex-1 py-2 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-bold page-edit-student" data-id="${student.id}"><i class="fa-solid fa-pen-to-square"></i> 编辑</button>
+          <button class="flex-1 py-2 rounded-lg bg-emerald-500 text-white text-[11px] font-bold page-recharge-student" data-id="${student.id}"><i class="fa-solid fa-circle-plus"></i> 充值</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    container.querySelectorAll('.page-edit-student').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const st = students.find((s) => s.id === btn.getAttribute('data-id'));
+        if (st) openStudentModal(st);
+      });
+    });
+    container.querySelectorAll('.page-recharge-student').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const st = students.find((s) => s.id === btn.getAttribute('data-id'));
+        if (st) openRechargeModal(st);
+      });
+    });
+  }
+
+  // 财务分页：完整经营面板（本月课消/收入明细/欠课名单）
+  function renderPageFinance() {
+    const container = document.getElementById('pageFinanceContent');
+    if (!container) return;
+
+    const now = new Date();
+    const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const monthLogs = checkInLogs.filter((l) => (l.checkInTime || '').startsWith(monthPrefix)).slice().sort((a, b) => (b.checkInTime || '').localeCompare(a.checkInTime || ''));
+
+    const monthLessons = monthLogs.reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
+    const monthValue = monthLogs.reduce((acc, l) => acc + (l.paymentAmount || 0), 0);
+    const totalRemaining = students.reduce((acc, st) => acc + (st.courses || []).reduce((a, c) => a + Math.max(0, c.remainingLessons), 0), 0);
+    const totalStockValue = students.reduce((acc, st) => acc + (st.courses || []).reduce((a, c) => a + Math.max(0, c.remainingLessons) * (c.unitPrice || 0), 0), 0);
+    const debtors = debts.filter((d) => d.amount > 0);
+
+    container.innerHTML = `
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div class="bg-white border border-amber-100 rounded-2xl p-4">
+          <div class="text-[10px] text-amber-600/70 font-bold">本月课消</div>
+          <div class="text-xl font-black text-amber-700 mt-1">${monthLessons.toFixed(1)} <span class="text-xs">节</span></div>
+        </div>
+        <div class="bg-white border border-emerald-100 rounded-2xl p-4">
+          <div class="text-[10px] text-emerald-600/70 font-bold">课消价值</div>
+          <div class="text-xl font-black text-emerald-700 mt-1">¥${monthValue.toFixed(0)}</div>
+        </div>
+        <div class="bg-white border border-sky-100 rounded-2xl p-4">
+          <div class="text-[10px] text-sky-600/70 font-bold">待消存量</div>
+          <div class="text-xl font-black text-sky-700 mt-1">${totalRemaining.toFixed(1)} <span class="text-xs">节</span></div>
+        </div>
+        <div class="bg-white border ${debtors.length ? 'border-rose-200' : 'border-slate-100'} rounded-2xl p-4">
+          <div class="text-[10px] ${debtors.length ? 'text-rose-600/70' : 'text-slate-400'} font-bold">欠课学员</div>
+          <div class="text-xl font-black ${debtors.length ? 'text-rose-600' : 'text-slate-300'} mt-1">${debtors.length} <span class="text-xs">人</span></div>
+        </div>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-2xl p-4">
+        <div class="font-bold text-xs text-slate-800 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-receipt text-amber-500"></i> 本月收入明细（消课流水）</div>
+        ${monthLogs.length === 0 ? '<div class="text-[11px] text-slate-400 py-4 text-center">本月暂无消课记录</div>' : `
+        <div class="space-y-1.5 max-h-64 overflow-y-auto custom-scrollbar">
+          ${monthLogs.map((l) => `
+            <div class="flex items-center justify-between text-[11px] bg-slate-50 px-3 py-2 rounded-lg">
+              <div>
+                <span class="font-bold text-slate-700">${l.studentName}</span>
+                <span class="text-slate-400 ml-1.5">${l.courseName}</span>
+                ${l.remarks ? `<span class="text-amber-600 ml-1">${l.remarks}</span>` : ''}
+              </div>
+              <div class="text-right shrink-0 ml-2">
+                <div class="font-bold text-slate-600">${l.deductedLessons}节 ${l.paymentAmount > 0 ? `· ¥${l.paymentAmount.toFixed(0)}` : ''}</div>
+                <div class="text-[9px] text-slate-400">${(l.checkInTime || '').replace('T', ' ').slice(5, 16)}</div>
+              </div>
+            </div>`).join('')}
+        </div>`}
+      </div>
+
+      <div class="bg-white border ${debtors.length ? 'border-rose-200' : 'border-slate-200'} rounded-2xl p-4">
+        <div class="font-bold text-xs text-slate-800 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-triangle-exclamation text-rose-500"></i> 欠课名单</div>
+        ${debtors.length === 0 ? '<div class="text-[11px] text-slate-400 py-4 text-center">没有欠课学员，太棒了 🎉</div>' : `
+        <div class="space-y-1.5">
+          ${debtors.map((d) => {
+            const st = students.find((s) => s.id === d.studentId);
+            return `
+            <div class="flex items-center justify-between text-[11px] bg-rose-50/60 px-3 py-2 rounded-lg">
+              <span class="font-bold text-slate-700">${st ? st.name : '未知学员'} · ${d.courseName}</span>
+              <span class="font-black text-rose-600">欠 ${d.amount} 节</span>
+            </div>`;}).join('')}
+          <div class="text-[10px] text-slate-400 pt-1">💡 到"学员"页点对应学员的"充值"按钮，会自动抵扣欠课</div>
+        </div>`}
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-2xl p-4">
+        <div class="font-bold text-xs text-slate-800 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-wallet text-emerald-500"></i> 课时存量价值</div>
+        <div class="flex items-baseline gap-2">
+          <span class="text-2xl font-black text-emerald-600">¥${totalStockValue.toFixed(0)}</span>
+          <span class="text-[10px] text-slate-400">全部学员剩余课时按单价折算</span>
+        </div>
+      </div>
+    `;
   }
 
   function renderTeacherOptions() {
@@ -2266,7 +2480,7 @@
   }
 
   function exportScheduleData() {
-    const jsonText = JSON.stringify({ students, schedules, teachers }, null, 2);
+    const jsonText = JSON.stringify({ students, schedules, teachers, courseTypes, checkInLogs, debts }, null, 2);
 
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(jsonText).then(() => {

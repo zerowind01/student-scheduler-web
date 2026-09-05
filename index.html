@@ -116,6 +116,30 @@
   <!-- 主内容区 Main Layout -->
   <div class="flex flex-1 overflow-hidden relative">
 
+    <!-- 左侧 主导航栏（桌面端图标条 / 手机端隐藏） -->
+    <nav id="mainSideNav" class="hidden md:flex flex-col items-center w-14 bg-slate-900 text-white py-3 gap-1.5 shrink-0 z-20">
+      <button class="nav-page-btn active flex flex-col items-center justify-center w-11 py-2 rounded-xl text-[9px] font-bold gap-0.5 transition" data-page="schedule" title="课表">
+        <i class="fa-solid fa-calendar-week text-base"></i><span>课表</span>
+      </button>
+      <button class="nav-page-btn flex flex-col items-center justify-center w-11 py-2 rounded-xl text-[9px] font-bold gap-0.5 transition text-slate-400 hover:text-white hover:bg-slate-800" data-page="students" title="学员">
+        <i class="fa-solid fa-users text-base"></i><span>学员</span>
+      </button>
+      <button class="nav-page-btn flex flex-col items-center justify-center w-11 py-2 rounded-xl text-[9px] font-bold gap-0.5 transition text-slate-400 hover:text-white hover:bg-slate-800 relative" data-page="finance" title="财务">
+        <i class="fa-solid fa-coins text-base"></i><span>财务</span>
+        <span id="navDebtBadge" class="hidden absolute top-1 right-1.5 w-2 h-2 rounded-full bg-rose-500"></span>
+      </button>
+      <button class="nav-page-btn flex flex-col items-center justify-center w-11 py-2 rounded-xl text-[9px] font-bold gap-0.5 transition text-slate-400 hover:text-white hover:bg-slate-800" data-page="settings" title="设置">
+        <i class="fa-solid fa-gear text-base"></i><span>设置</span>
+      </button>
+      <div class="flex-1"></div>
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-500 to-orange-400 flex items-center justify-center text-white shadow-xs shrink-0 mb-1">
+        <i class="fa-solid fa-mobile-screen text-sm"></i>
+      </div>
+    </nav>
+
+    <!-- ============ 分页：课表 (默认) ============ -->
+    <section id="pageSchedule" class="flex-1 flex overflow-hidden">
+
     <!-- 左侧：学生名单 Sidebar (桌面端与手机底拉片自适应) -->
     <aside id="sidebarStudent" class="w-72 bg-white border-r border-amber-100 flex flex-col z-10 shrink-0 shadow-2xs transition-all duration-300 relative">
 
@@ -217,25 +241,90 @@
 
     </main>
 
+    </section><!-- /pageSchedule -->
+
+    <!-- ============ 分页：学员 ============ -->
+    <section id="pageStudents" class="flex-1 overflow-y-auto custom-scrollbar bg-slate-50 hidden p-4 md:p-6">
+      <div class="max-w-3xl mx-auto space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-black text-slate-800 flex items-center gap-2"><i class="fa-solid fa-users text-amber-500"></i> 学员管理</h2>
+          <button id="btnPageNewStudent" class="px-3 py-2 bg-slate-800 text-white rounded-xl text-xs font-bold hover:bg-slate-700 transition flex items-center gap-1.5">
+            <i class="fa-solid fa-user-plus text-xs"></i> 新建学员
+          </button>
+        </div>
+        <div id="pageStudentsList" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <!-- 动态渲染学员卡片（完整版） -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 分页：财务 ============ -->
+    <section id="pageFinance" class="flex-1 overflow-y-auto custom-scrollbar bg-slate-50 hidden p-4 md:p-6">
+      <div class="max-w-3xl mx-auto space-y-4">
+        <h2 class="text-lg font-black text-slate-800 flex items-center gap-2"><i class="fa-solid fa-coins text-amber-500"></i> 财务经营</h2>
+        <div id="pageFinanceContent" class="space-y-4">
+          <!-- 动态渲染：本月经营 + 收入明细 + 欠课名单 -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 分页：设置 ============ -->
+    <section id="pageSettings" class="flex-1 overflow-y-auto custom-scrollbar bg-slate-50 hidden p-4 md:p-6">
+      <div class="max-w-3xl mx-auto space-y-4">
+        <h2 class="text-lg font-black text-slate-800 flex items-center gap-2"><i class="fa-solid fa-gear text-amber-500"></i> 设置与工具</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button id="btnPageCloudSync" class="p-4 bg-white border border-slate-200 rounded-2xl text-left hover:border-amber-300 hover:shadow-sm transition">
+            <div class="font-bold text-sm text-slate-800 flex items-center gap-2"><i class="fa-solid fa-cloud-arrow-up text-amber-600"></i> 实时云同步</div>
+            <div class="text-[11px] text-slate-400 mt-1">设置机构专属同步码，多设备实时互通</div>
+          </button>
+          <button id="btnPageQrSync" class="p-4 bg-white border border-slate-200 rounded-2xl text-left hover:border-amber-300 hover:shadow-sm transition">
+            <div class="font-bold text-sm text-slate-800 flex items-center gap-2"><i class="fa-solid fa-qrcode text-amber-600"></i> 扫码同步</div>
+            <div class="text-[11px] text-slate-400 mt-1">手机扫一扫，1秒把电脑排课同步到手机</div>
+          </button>
+          <button id="btnPageManageTeachers" class="p-4 bg-white border border-slate-200 rounded-2xl text-left hover:border-amber-300 hover:shadow-sm transition">
+            <div class="font-bold text-sm text-slate-800 flex items-center gap-2"><i class="fa-solid fa-chalkboard-user text-amber-600"></i> 教师管理</div>
+            <div class="text-[11px] text-slate-400 mt-1">添加或编辑任课老师</div>
+          </button>
+          <button id="btnPageImport" class="p-4 bg-white border border-slate-200 rounded-2xl text-left hover:border-amber-300 hover:shadow-sm transition">
+            <div class="font-bold text-sm text-slate-800 flex items-center gap-2"><i class="fa-solid fa-file-import text-amber-600"></i> 导入数据</div>
+            <div class="text-[11px] text-slate-400 mt-1">导入 JS/JSON 课表数据文件或文本</div>
+          </button>
+          <button id="btnPageExport" class="p-4 bg-white border border-slate-200 rounded-2xl text-left hover:border-amber-300 hover:shadow-sm transition">
+            <div class="font-bold text-sm text-slate-800 flex items-center gap-2"><i class="fa-solid fa-download text-amber-600"></i> 导出数据</div>
+            <div class="text-[11px] text-slate-400 mt-1">备份全部学员、课表与财务数据</div>
+          </button>
+          <button id="btnPageClearAll" class="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-left hover:border-rose-300 transition">
+            <div class="font-bold text-sm text-rose-700 flex items-center gap-2"><i class="fa-solid fa-trash-can text-rose-600"></i> 清空数据</div>
+            <div class="text-[11px] text-rose-400 mt-1">清空全部学员与课程，重新开始</div>
+          </button>
+        </div>
+      </div>
+    </section>
+
   </div>
 
   <!-- 手机端专属 底部浮动快捷操作栏 -->
-  <div id="mobileBottomNav" class="md:hidden bg-white/95 backdrop-blur-md border-t border-slate-200 px-4 py-2 flex items-center justify-around z-30 shadow-lg">
-    <button id="btnMobileOpenStudents" class="flex flex-col items-center text-amber-600 font-bold text-[11px] gap-0.5">
+  <div id="mobileBottomNav" class="md:hidden bg-white/95 backdrop-blur-md border-t border-slate-200 px-2 py-2 flex items-center justify-around z-30 shadow-lg">
+    <button id="mnavSchedule" class="mnav-btn flex flex-col items-center text-amber-600 font-bold text-[10px] gap-0.5 px-1" data-page="schedule">
+      <i class="fa-solid fa-calendar-week text-sm"></i>
+      <span>课表</span>
+    </button>
+    <button id="btnMobileOpenStudents" class="mnav-btn flex flex-col items-center text-slate-700 font-semibold text-[10px] gap-0.5 px-1" data-page="students">
       <i class="fa-solid fa-users text-sm"></i>
-      <span>待排学员</span>
+      <span>学员</span>
+    </button>
+    <button id="mnavFinance" class="mnav-btn flex flex-col items-center text-slate-700 font-semibold text-[10px] gap-0.5 px-1 relative" data-page="finance">
+      <i class="fa-solid fa-coins text-sm text-amber-500"></i>
+      <span>财务</span>
+      <span id="mnavDebtBadge" class="hidden absolute top-0 right-1 w-2 h-2 rounded-full bg-rose-500"></span>
     </button>
     <button id="btnMobileNewStudent" class="flex flex-col items-center text-slate-700 font-semibold text-[11px] gap-0.5">
       <i class="fa-solid fa-user-plus text-sm text-slate-800"></i>
       <span>新建学员</span>
     </button>
-    <button id="btnMobileToday" class="flex flex-col items-center text-slate-700 font-semibold text-[11px] gap-0.5">
-      <i class="fa-solid fa-calendar-day text-sm text-amber-500"></i>
-      <span>今天</span>
-    </button>
-    <button id="btnMobileOpenMenu" class="flex flex-col items-center text-slate-700 font-semibold text-[11px] gap-0.5">
-      <i class="fa-solid fa-bars text-sm text-slate-600"></i>
-      <span>更多菜单</span>
+    <button id="mnavSettings" class="mnav-btn flex flex-col items-center text-slate-700 font-semibold text-[10px] gap-0.5 px-1" data-page="settings">
+      <i class="fa-solid fa-gear text-sm text-slate-600"></i>
+      <span>设置</span>
     </button>
   </div>
 

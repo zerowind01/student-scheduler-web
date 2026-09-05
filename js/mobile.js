@@ -549,41 +549,55 @@
       renderMobile3DayView();
     });
 
-    safeBind('navTabSchedule', 'click', () => {
-      const sView = document.getElementById('viewSchedule');
-      const stView = document.getElementById('viewStudents');
-      if (sView) sView.classList.remove('hidden');
-      if (stView) stView.classList.add('hidden');
+    // ============ 四视图切换（课表/学员/财务/设置） ============
+    const MOBILE_VIEWS = ['schedule', 'students', 'finance', 'settings'];
 
-      const tab1 = document.getElementById('navTabSchedule');
-      const tab2 = document.getElementById('navTabStudents');
-      if (tab1) {
-        tab1.classList.add('text-amber-600', 'font-bold');
-        tab1.classList.remove('text-slate-400', 'font-medium');
-      }
-      if (tab2) {
-        tab2.classList.remove('text-amber-600', 'font-bold');
-        tab2.classList.add('text-slate-400', 'font-medium');
-      }
+    function switchMobileView(view) {
+      MOBILE_VIEWS.forEach((v) => {
+        const el = document.getElementById('view' + v.charAt(0).toUpperCase() + v.slice(1));
+        if (el) el.classList.toggle('hidden', v !== view);
+      });
+      document.querySelectorAll('.nav-tab').forEach((tab) => {
+        const active = tab.getAttribute('data-view') === view;
+        tab.classList.toggle('text-amber-600', active);
+        tab.classList.toggle('font-bold', active);
+        tab.classList.toggle('text-slate-400', !active);
+        tab.classList.toggle('font-medium', !active);
+      });
+      // 日期导航栏只在课表视图显示
+      const dateBar = document.getElementById('mobileDateBar');
+      if (dateBar) dateBar.classList.toggle('hidden', view !== 'schedule');
+      if (view === 'students') renderMobileStudents();
+      if (view === 'finance') renderMobileFinance();
+    }
+
+    safeBind('navTabSchedule', 'click', () => switchMobileView('schedule'));
+    safeBind('navTabStudents', 'click', () => switchMobileView('students'));
+    safeBind('navTabFinance', 'click', () => switchMobileView('finance'));
+    safeBind('navTabSettings', 'click', () => switchMobileView('settings'));
+
+    // 设置页按钮
+    safeBind('msetCloudSync', 'click', () => {
+      const el = document.getElementById('inputSyncKey');
+      if (el) el.value = schoolSyncKey;
+      showModal('modalSyncKey');
     });
-
-    safeBind('navTabStudents', 'click', () => {
-      const sView = document.getElementById('viewSchedule');
-      const stView = document.getElementById('viewStudents');
-      if (stView) stView.classList.remove('hidden');
-      if (sView) sView.classList.add('hidden');
-
-      const tab1 = document.getElementById('navTabSchedule');
-      const tab2 = document.getElementById('navTabStudents');
-      if (tab2) {
-        tab2.classList.add('text-amber-600', 'font-bold');
-        tab2.classList.remove('text-slate-400', 'font-medium');
+    safeBind('msetManageTeachers', 'click', () => {
+      // 手机版复用云同步弹窗所在层级：直接跳电脑版教师管理不可行，
+      // 这里用 prompt 系列快速编辑不可靠，改为引导到电脑版
+      showToast('教师管理请在电脑版操作（顶栏 → 教师管理）');
+    });
+    safeBind('msetExport', 'click', () => {
+      const payload = JSON.stringify({ students, schedules, teachers, checkInLogs, debts, updatedAt: Date.now() });
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(payload).then(() => {
+          showToast('已复制全部数据到剪贴板，可粘贴到电脑版导入');
+        }).catch(() => {
+          showToast('复制失败，请用电脑版导出');
+        });
+      } else {
+        showToast('当前浏览器不支持复制，请用电脑版导出');
       }
-      if (tab1) {
-        tab1.classList.remove('text-amber-600', 'font-bold');
-        tab1.classList.add('text-slate-400', 'font-medium');
-      }
-      renderMobileStudents();
     });
 
     safeBind('navTabQuickAdd', 'click', () => {
@@ -1192,6 +1206,78 @@
       el.classList.remove('opacity-100');
       setTimeout(() => el.classList.add('hidden'), 200);
     }
+  }
+
+  // 手机端财务视图渲染
+  function renderMobileFinance() {
+    const container = document.getElementById('mobileFinanceContent');
+    if (!container) return;
+
+    const now = new Date();
+    const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const monthLogs = checkInLogs.filter((l) => (l.checkInTime || '').startsWith(monthPrefix)).slice().sort((a, b) => (b.checkInTime || '').localeCompare(a.checkInTime || ''));
+
+    const monthLessons = monthLogs.reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
+    const monthValue = monthLogs.reduce((acc, l) => acc + (l.paymentAmount || 0), 0);
+    const totalRemaining = students.reduce((acc, st) => acc + (st.courses || []).reduce((a, c) => a + Math.max(0, c.remainingLessons), 0), 0);
+    const debtors = debts.filter((d) => d.amount > 0);
+
+    container.innerHTML = `
+      <div class="grid grid-cols-2 gap-2.5">
+        <div class="bg-white border border-amber-100 rounded-2xl p-3.5">
+          <div class="text-[10px] text-amber-600/70 font-bold">本月课消</div>
+          <div class="text-lg font-black text-amber-700 mt-0.5">${monthLessons.toFixed(1)} <span class="text-[10px]">节</span></div>
+        </div>
+        <div class="bg-white border border-emerald-100 rounded-2xl p-3.5">
+          <div class="text-[10px] text-emerald-600/70 font-bold">课消价值</div>
+          <div class="text-lg font-black text-emerald-700 mt-0.5">¥${monthValue.toFixed(0)}</div>
+        </div>
+        <div class="bg-white border border-sky-100 rounded-2xl p-3.5">
+          <div class="text-[10px] text-sky-600/70 font-bold">待消存量</div>
+          <div class="text-lg font-black text-sky-700 mt-0.5">${totalRemaining.toFixed(1)} <span class="text-[10px]">节</span></div>
+        </div>
+        <div class="bg-white border ${debtors.length ? 'border-rose-200' : 'border-slate-100'} rounded-2xl p-3.5">
+          <div class="text-[10px] ${debtors.length ? 'text-rose-600/70' : 'text-slate-400'} font-bold">欠课学员</div>
+          <div class="text-lg font-black ${debtors.length ? 'text-rose-600' : 'text-slate-300'} mt-0.5">${debtors.length} <span class="text-[10px]">人</span></div>
+        </div>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-2xl p-3.5">
+        <div class="font-bold text-xs text-slate-800 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-receipt text-amber-500"></i> 本月收入明细</div>
+        ${monthLogs.length === 0 ? '<div class="text-[11px] text-slate-400 py-4 text-center">本月暂无消课记录</div>' : `
+        <div class="space-y-1.5">
+          ${monthLogs.map((l) => `
+            <div class="flex items-center justify-between text-[11px] bg-slate-50 px-3 py-2 rounded-lg">
+              <div class="min-w-0">
+                <span class="font-bold text-slate-700">${l.studentName}</span>
+                <span class="text-slate-400 ml-1">${l.courseName}</span>
+              </div>
+              <div class="text-right shrink-0 ml-2">
+                <div class="font-bold text-slate-600">${l.deductedLessons}节${l.paymentAmount > 0 ? ` · ¥${l.paymentAmount.toFixed(0)}` : ''}</div>
+                <div class="text-[9px] text-slate-400">${(l.checkInTime || '').replace('T', ' ').slice(5, 16)}</div>
+              </div>
+            </div>`).join('')}
+        </div>`}
+      </div>
+
+      <div class="bg-white border ${debtors.length ? 'border-rose-200' : 'border-slate-200'} rounded-2xl p-3.5">
+        <div class="font-bold text-xs text-slate-800 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-triangle-exclamation text-rose-500"></i> 欠课名单</div>
+        ${debtors.length === 0 ? '<div class="text-[11px] text-slate-400 py-4 text-center">没有欠课学员 🎉</div>' : `
+        <div class="space-y-1.5">
+          ${debtors.map((d) => {
+            const st = students.find((s) => s.id === d.studentId);
+            return `
+            <div class="flex items-center justify-between text-[11px] bg-rose-50/60 px-3 py-2 rounded-lg">
+              <span class="font-bold text-slate-700">${st ? st.name : '未知学员'} · ${d.courseName}</span>
+              <span class="font-black text-rose-600">欠 ${d.amount} 节</span>
+            </div>`;}).join('')}
+        </div>`}
+      </div>
+    `;
+
+    // 欠课红点
+    const badge = document.getElementById('mobileNavDebtBadge');
+    if (badge) badge.classList.toggle('hidden', debtors.length === 0);
   }
 
   function openMobileScheduleActionMenu(schedule) {
