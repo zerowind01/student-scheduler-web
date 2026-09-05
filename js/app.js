@@ -216,6 +216,29 @@
     }
   }
 
+  // 同步某学员某课程的欠课账 = max(0, -remainingLessons)
+  // （手动填负课时/消课扣成负数后调用，保证财务页欠课名单与课时一致）
+  function syncDebtForCourse(studentId, courseName, remainingLessons) {
+    const owed = Math.max(0, -(remainingLessons || 0));
+    const d = debts.find((x) => x.studentId === studentId && x.courseName === courseName);
+    if (owed > 0) {
+      if (d) {
+        d.amount = owed;
+      } else {
+        debts.push({ id: 'debt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4), studentId, courseName, amount: owed });
+      }
+    } else if (d) {
+      debts = debts.filter((x) => x !== d);
+    }
+  }
+
+  // 全量校准：把所有负课时学员的欠课账与课时对齐（数据加载后调用，兼容历史手动填的负课时）
+  function syncAllDebts() {
+    students.forEach((st) => {
+      (st.courses || []).forEach((c) => syncDebtForCourse(st.id, c.name, c.remainingLessons));
+    });
+  }
+
   // 归还欠课（新购/充值时自动抵扣）：返回实际抵扣掉的节数
   function repayDebt(studentId, courseName, amount) {
     const d = debts.find((x) => x.studentId === studentId && x.courseName === courseName);
@@ -312,6 +335,9 @@
     }
 
     schedules = schedules.map(normalizeSchedule);
+
+    // 欠课账校准：负课时（手动填的欠课）同步进欠课账，保证财务页欠课名单完整
+    syncAllDebts();
 
     saveDataLocalOnly();
   }

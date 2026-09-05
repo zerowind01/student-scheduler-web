@@ -114,6 +114,28 @@
     }
   }
 
+  // 同步某学员某课程的欠课账 = max(0, -remainingLessons)
+  function syncDebtForCourse(studentId, courseName, remainingLessons) {
+    const owed = Math.max(0, -(remainingLessons || 0));
+    const d = debts.find((x) => x.studentId === studentId && x.courseName === courseName);
+    if (owed > 0) {
+      if (d) {
+        d.amount = owed;
+      } else {
+        debts.push({ id: 'debt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4), studentId, courseName, amount: owed });
+      }
+    } else if (d) {
+      debts = debts.filter((x) => x !== d);
+    }
+  }
+
+  // 全量校准：把负课时（手动填的欠课）同步进欠课账
+  function syncAllDebts() {
+    students.forEach((st) => {
+      (st.courses || []).forEach((c) => syncDebtForCourse(st.id, c.name, c.remainingLessons));
+    });
+  }
+
   function repayDebt(studentId, courseName, amount) {
     const d = debts.find((x) => x.studentId === studentId && x.courseName === courseName);
     if (!d || d.amount <= 0) return 0;
@@ -301,6 +323,9 @@
     }
 
     schedules = schedules.map(normalizeSchedule);
+
+    // 欠课账校准：负课时（手动填的欠课）同步进欠课账
+    syncAllDebts();
 
     saveDataLocalOnly();
   }
