@@ -21,7 +21,7 @@
   let checkInLogs = [];
   let debts = [];
   let selectedTeacherFilter = 'all';
-  let mobileStartDate = getMonday(new Date()); // 默认从本周一开启 3 日日历
+  let mobileStartDate = getToday(); // 默认从今天开始显示 3 日日历（周末也能直接看到今天）
 
   function getToday() {
     const d = new Date();
@@ -545,7 +545,8 @@
     });
 
     safeBind('btnMobileToday', 'click', () => {
-      mobileStartDate = getMonday(new Date());
+      // 以今天为窗口起点，保证今天永远在3日视图内（旧逻辑回到周一，周末时看不到今天）
+      mobileStartDate = getToday();
       renderMobile3DayView();
     });
 
