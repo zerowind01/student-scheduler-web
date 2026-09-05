@@ -120,8 +120,9 @@
     <!-- ============ 分页：课表 (默认) ============ -->
     <section id="pageSchedule" class="flex-1 flex overflow-hidden">
 
-    <!-- 左侧：学生名单 Sidebar (桌面端与手机底拉片自适应) -->
-    <aside id="sidebarStudent" class="w-72 bg-white border-r border-amber-100 flex flex-col z-10 shrink-0 shadow-2xs transition-all duration-300 relative">
+    <!-- 左侧：待排课学员侧边栏（点击"批量排课"按钮后弹出） -->
+    <div id="batchSidebarBackdrop" class="hidden absolute inset-0 bg-slate-900/30 z-20"></div>
+    <aside id="sidebarStudent" class="absolute left-14 top-0 bottom-0 z-30 w-72 bg-white border-r border-amber-100 flex-col shadow-2xl hidden">
 
       <!-- 侧边栏标题 & 搜索框 -->
       <div class="p-3 border-b border-slate-100 space-y-2 bg-slate-50/50">
@@ -132,8 +133,8 @@
           </div>
           <div class="flex items-center gap-1">
             <span id="studentCountBadge" class="bg-amber-100 text-amber-800 text-[11px] px-1.5 py-0.2 rounded-full font-semibold">0 人</span>
-            <button id="btnToggleSidebar" class="w-5 h-5 rounded text-slate-400 hover:text-amber-600 hover:bg-slate-200/60 transition flex items-center justify-center" title="折叠侧边栏">
-              <i class="fa-solid fa-chevron-left text-[10px]"></i>
+            <button id="btnCloseBatchSidebar" class="w-5 h-5 rounded text-slate-400 hover:text-rose-500 hover:bg-slate-200/60 transition flex items-center justify-center" title="关闭">
+              <i class="fa-solid fa-xmark text-[10px]"></i>
             </button>
           </div>
         </div>
@@ -167,9 +168,9 @@
     <!-- 右侧：周日历视图 Main Calendar View -->
     <main class="flex-1 bg-slate-50 flex flex-col overflow-hidden relative">
 
-      <!-- 侧边栏折叠时的浮动展开按钮 -->
-      <button id="btnExpandSidebarFloating" class="hidden absolute top-3 left-3 z-30 bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-xl shadow-lg font-bold text-xs flex items-center gap-1.5 transition">
-        <i class="fa-solid fa-angles-right text-xs"></i> 展开学员列表
+      <!-- 批量排课按钮（弹出待排课学员列表） -->
+      <button id="btnBatchSchedule" class="absolute top-3 left-3 z-30 bg-slate-800 hover:bg-slate-700 text-white px-3.5 py-1.5 rounded-xl shadow-lg font-bold text-xs flex items-center gap-1.5 transition">
+        <i class="fa-solid fa-calendar-plus text-amber-400 text-xs"></i> 批量排课
       </button>
 
       <!-- 日历头部：星期 标题行 -->

@@ -771,31 +771,34 @@
     safeBind('btnCancelTapSchedule', 'click', clearStudentForTap);
 
     const sidebar = document.getElementById('sidebarStudent');
-    const btnToggleSidebar = document.getElementById('btnToggleSidebar');
-    const btnExpandSidebarFloating = document.getElementById('btnExpandSidebarFloating');
-    const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+    const btnBatchSchedule = document.getElementById('btnBatchSchedule');
+    const batchBackdrop = document.getElementById('batchSidebarBackdrop');
 
     function collapseSidebar() {
-      if (sidebar) sidebar.classList.add('sidebar-collapsed');
-      if (btnExpandSidebarFloating) btnExpandSidebarFloating.classList.remove('hidden');
-      if (sidebarBackdrop) sidebarBackdrop.classList.add('hidden');
+      if (sidebar) {
+        sidebar.classList.add('hidden');
+        sidebar.classList.remove('flex');
+      }
+      if (batchBackdrop) batchBackdrop.classList.add('hidden');
     }
 
     function expandSidebar() {
-      if (sidebar) sidebar.classList.remove('sidebar-collapsed');
-      if (btnExpandSidebarFloating) btnExpandSidebarFloating.classList.add('hidden');
-      if (window.innerWidth < 768 && sidebarBackdrop) {
-        sidebarBackdrop.classList.remove('hidden');
+      if (sidebar) {
+        sidebar.classList.remove('hidden');
+        sidebar.classList.add('flex');
       }
+      if (batchBackdrop) batchBackdrop.classList.remove('hidden');
     }
 
-    if (btnToggleSidebar) btnToggleSidebar.addEventListener('click', collapseSidebar);
-    if (btnExpandSidebarFloating) btnExpandSidebarFloating.addEventListener('click', expandSidebar);
-    if (sidebarBackdrop) sidebarBackdrop.addEventListener('click', collapseSidebar);
-
-    if (window.innerWidth < 1080) {
-      collapseSidebar();
-    }
+    if (btnBatchSchedule) btnBatchSchedule.addEventListener('click', () => {
+      if (sidebar && !sidebar.classList.contains('hidden')) {
+        collapseSidebar();
+      } else {
+        expandSidebar();
+      }
+    });
+    safeBind('btnCloseBatchSidebar', 'click', collapseSidebar);
+    if (batchBackdrop) batchBackdrop.addEventListener('click', collapseSidebar);
   }
 
   function refreshView() {

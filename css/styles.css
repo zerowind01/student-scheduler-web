@@ -61,21 +61,9 @@ body {
   background: rgba(148, 163, 184, 1);
 }
 
-/* 侧边栏折叠自适应动画 */
-aside.sidebar-collapsed {
-  width: 0 !important;
-  min-width: 0 !important;
-  max-width: 0 !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  opacity: 0;
-  pointer-events: none;
-  border-right: none !important;
-}
-
 /* 移动端 (手机屏幕 < 768px) 学员侧边栏 Overlay 抽屉效果 */
 @media (max-width: 767px) {
-  #sidebarStudent:not(.sidebar-collapsed) {
+  #sidebarStudent:not(.hidden) {
     position: fixed !important;
     top: 0;
     bottom: 0;
