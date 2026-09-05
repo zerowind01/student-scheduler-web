@@ -512,13 +512,17 @@
     showToast(`✅ 已消课：${sch.studentName} · ${sch.subject}（${deducted}节）`, 'circle-check');
   }
 
-  // 学员请假：退还排课时扣掉的课时
+  // 学员请假：退还排课时扣掉的课时（不限课程时间，已消课的也可改为请假）
   function markStudentLeave(scheduleId) {
     const sch = schedules.find((s) => s.id === scheduleId);
     if (!sch) return;
-    if (sch.status !== SCHEDULE_STATUS.SCHEDULED) {
-      showToast('仅待上课的课程可以办理请假', 'circle-info');
+    if (sch.status === SCHEDULE_STATUS.STUDENT_LEAVE) {
+      showToast('该课程已是请假状态', 'circle-info');
       return;
+    }
+    if (sch.status === SCHEDULE_STATUS.COMPLETED) {
+      // 已消课 → 改为请假：删除消课流水（回滚财务）+ 退还课时
+      checkInLogs = checkInLogs.filter((l) => l.scheduleId !== sch.id);
     }
 
     const student = students.find((st) => st.id === sch.studentId);
@@ -1622,14 +1626,19 @@
     menu.className = 'fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4';
 
     let actionsHtml = '';
-    if (status === SCHEDULE_STATUS.SCHEDULED) {
+    if (status !== SCHEDULE_STATUS.STUDENT_LEAVE) {
       actionsHtml += `
+        ${status === SCHEDULE_STATUS.SCHEDULED ? `
         <button data-act="checkin" class="w-full py-3 rounded-xl font-bold text-sm bg-emerald-500 text-white hover:bg-emerald-600 transition flex items-center justify-center gap-2">
           <i class="fa-solid fa-circle-check"></i> 消课签到（${getLessonCost(schedule)}节）
-        </button>
+        </button>` : ''}
         <button data-act="leave" class="w-full py-3 rounded-xl font-bold text-sm bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 transition flex items-center justify-center gap-2">
-          <i class="fa-solid fa-person-walking-arrow-right"></i> 学员请假（退还${getLessonCost(schedule)}节）
+          <i class="fa-solid fa-person-walking-arrow-right"></i> 学员请假（退还${getLessonCost(schedule)}节）${status === SCHEDULE_STATUS.COMPLETED ? ' · 改请假' : ''}
         </button>
+        ${status === SCHEDULE_STATUS.COMPLETED ? `
+        <button data-act="revert" class="w-full py-3 rounded-xl font-bold text-sm bg-amber-500 text-white hover:bg-amber-600 transition flex items-center justify-center gap-2">
+          <i class="fa-solid fa-rotate-left"></i> 撤销消课（还原为待上课）
+        </button>` : ''}
       `;
     } else {
       actionsHtml += `
@@ -2135,7 +2144,7 @@
         <input type="text" class="course-name-input flex-1 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:ring-1 focus:ring-amber-400" placeholder="课程名称（如：钢琴一对一）" value="${c.name || ''}" required>
         <div class="flex items-center gap-1 shrink-0">
           <span class="text-slate-400 text-[10px]">剩</span>
-          <input type="number" class="course-lessons-input w-16 px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-amber-800 outline-none focus:ring-1 focus:ring-amber-400" min="0" value="${c.remainingLessons ?? 10}" required>
+          <input type="number" class="course-lessons-input w-16 px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-amber-800 outline-none focus:ring-1 focus:ring-amber-400" value="${c.remainingLessons ?? 10}" required>
           <span class="text-slate-400 text-[10px]">课时</span>
         </div>
         ${
@@ -2164,7 +2173,7 @@
       <input type="text" class="course-name-input flex-1 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:ring-1 focus:ring-amber-400" placeholder="课程名称（如：乐理基础）" required>
       <div class="flex items-center gap-1 shrink-0">
         <span class="text-slate-400 text-[10px]">剩</span>
-        <input type="number" class="course-lessons-input w-16 px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-amber-800 outline-none focus:ring-1 focus:ring-amber-400" min="0" value="10" required>
+        <input type="number" class="course-lessons-input w-16 px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-amber-800 outline-none focus:ring-1 focus:ring-amber-400" placeholder="可填负数=欠课" value="10" required>
         <span class="text-slate-400 text-[10px]">课时</span>
       </div>
       <button type="button" class="btn-remove-course-row text-slate-300 hover:text-rose-500 px-1 py-1 transition" title="删除该课程"><i class="fa-solid fa-trash-can"></i></button>

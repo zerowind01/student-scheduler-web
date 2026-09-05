@@ -167,12 +167,17 @@
     showToast(`✅ 已消课：${sch.studentName} · ${sch.subject}（${deducted}节）`);
   }
 
+  // 学员请假：退还排课时扣掉的课时（不限课程时间，已消课的也可改为请假）
   function markStudentLeave(scheduleId) {
     const sch = schedules.find((s) => s.id === scheduleId);
     if (!sch) return;
-    if (sch.status !== SCHEDULE_STATUS.SCHEDULED) {
-      showToast('仅待上课的课程可以办理请假');
+    if (sch.status === SCHEDULE_STATUS.STUDENT_LEAVE) {
+      showToast('该课程已是请假状态');
       return;
+    }
+    if (sch.status === SCHEDULE_STATUS.COMPLETED) {
+      // 已消课 → 改为请假：删除消课流水（回滚财务）+ 退还课时
+      checkInLogs = checkInLogs.filter((l) => l.scheduleId !== sch.id);
     }
 
     const student = students.find((st) => st.id === sch.studentId);
@@ -1289,14 +1294,19 @@
     menu.style.paddingBottom = 'calc(64px + env(safe-area-inset-bottom))';
 
     let actionsHtml = '';
-    if (status === SCHEDULE_STATUS.SCHEDULED) {
+    if (status !== SCHEDULE_STATUS.STUDENT_LEAVE) {
       actionsHtml += `
+        ${status === SCHEDULE_STATUS.SCHEDULED ? `
         <button data-act="checkin" class="w-full py-3.5 rounded-xl font-bold text-sm bg-emerald-500 text-white active:bg-emerald-600 flex items-center justify-center gap-2">
           <i class="fa-solid fa-circle-check"></i> 消课签到（${getLessonCost(schedule)}节）
-        </button>
+        </button>` : ''}
         <button data-act="leave" class="w-full py-3.5 rounded-xl font-bold text-sm bg-rose-50 text-rose-600 border border-rose-200 active:bg-rose-100 flex items-center justify-center gap-2">
-          <i class="fa-solid fa-person-walking-arrow-right"></i> 学员请假（退还${getLessonCost(schedule)}节）
+          <i class="fa-solid fa-person-walking-arrow-right"></i> 学员请假（退还${getLessonCost(schedule)}节）${status === SCHEDULE_STATUS.COMPLETED ? ' · 改请假' : ''}
         </button>
+        ${status === SCHEDULE_STATUS.COMPLETED ? `
+        <button data-act="revert" class="w-full py-3.5 rounded-xl font-bold text-sm bg-amber-500 text-white active:bg-amber-600 flex items-center justify-center gap-2">
+          <i class="fa-solid fa-rotate-left"></i> 撤销消课（还原为待上课）
+        </button>` : ''}
       `;
     } else {
       actionsHtml += `
@@ -1418,7 +1428,7 @@
       <div class="flex items-center gap-1 shrink-0 bg-white border border-slate-200 rounded-xl px-2 py-1">
         <span class="text-slate-400 text-[10px]">剩</span>
         <input type="number" class="m-course-lessons w-12 text-center border-0 outline-none text-xs font-bold text-amber-800"
-               min="0" value="${course ? (course.remainingLessons ?? 10) : 10}" required>
+               placeholder="负数=欠课" value="${course ? (course.remainingLessons ?? 10) : 10}" required>
         <span class="text-slate-400 text-[10px]">课时</span>
       </div>
       <button type="button" class="m-course-remove text-slate-300 hover:text-rose-500 px-1.5 py-2 transition" title="删除该课程">
