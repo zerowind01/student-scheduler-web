@@ -100,7 +100,117 @@
       paymentAmount: payment,
       checkInTime: new Date().toISOString(),
       remarks: remarks || '',
+      teacherName: schedule.teacherName || '',
+      date: schedule.date || '',
     });
+  }
+
+  // ==========================================
+  // 学员详情弹窗（课时/单价/欠课/消课记录）
+  // ==========================================
+  function openMobileStudentDetail(studentId) {
+    const student = students.find((s) => s.id === studentId);
+    if (!student) return;
+    normalizeStudent(student);
+
+    const titleEl = document.getElementById('mobileStudentDetailTitle');
+    if (titleEl) titleEl.textContent = `${student.name} · 详情`;
+    const body = document.getElementById('mobileStudentDetailBody');
+    if (!body) return;
+
+    const studentDebts = getStudentDebts(student.id);
+    const logs = checkInLogs
+      .filter((l) => l.studentId === student.id)
+      .slice()
+      .sort((a, b) => (b.checkInTime || '').localeCompare(a.checkInTime || ''))
+      .slice(0, 30);
+    const leaves = schedules
+      .filter((s) => s.studentId === student.id && s.status === SCHEDULE_STATUS.STUDENT_LEAVE)
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+      .slice(0, 10);
+
+    const totalLessons = student.courses.reduce((acc, c) => acc + c.remainingLessons, 0);
+    const totalOwed = studentDebts.reduce((acc, d) => acc + d.amount, 0);
+
+    body.innerHTML = `
+      <div class="flex items-center gap-3 bg-slate-50 rounded-2xl p-3">
+        <div class="w-12 h-12 rounded-full bg-amber-500 text-white flex items-center justify-center font-bold text-base">${student.name.substring(0, 1)}</div>
+        <div class="flex-1">
+          <div class="font-bold text-sm text-slate-800">${student.name}</div>
+          <div class="text-[11px] text-slate-500">${student.phone ? '📞 ' + student.phone : '未填电话'}</div>
+        </div>
+        <div class="text-right">
+          <div class="text-xl font-black ${totalOwed > 0 ? 'text-rose-600' : 'text-amber-700'}">${totalLessons}</div>
+          <div class="text-[9px] text-slate-400 font-bold">总剩课时${totalOwed > 0 ? ' · 欠' + totalOwed + '节' : ''}</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="font-bold text-[11px] text-slate-500 uppercase tracking-wider mb-1.5">课程与课时</div>
+        <div class="space-y-1.5">
+          ${student.courses.map((c) => {
+            const isDebt = c.remainingLessons < 0;
+            const isLow = !isDebt && c.remainingLessons <= 2;
+            return `
+            <div class="flex items-center justify-between bg-white border ${isDebt ? 'border-rose-200 bg-rose-50/40' : isLow ? 'border-amber-200' : 'border-slate-200/70'} rounded-xl px-3 py-2.5">
+              <div>
+                <span class="font-bold text-slate-800">${c.name}</span>
+                ${isDebt ? '<span class="text-[9px] font-bold text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded ml-1.5">欠课</span>' : isLow ? '<span class="text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded ml-1.5">课时不足</span>' : ''}
+              </div>
+              <div class="flex items-center gap-3 text-[11px]">
+                ${c.unitPrice > 0 ? `<span class="text-slate-500">¥${c.unitPrice}/节</span>` : ''}
+                <span class="font-black ${isDebt ? 'text-rose-600' : isLow ? 'text-amber-700' : 'text-slate-700'}">${c.remainingLessons} 课时</span>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+
+      ${studentDebts.length ? `
+      <div>
+        <div class="font-bold text-[11px] text-rose-500 uppercase tracking-wider mb-1.5">⚠️ 欠课账</div>
+        <div class="space-y-1.5">
+          ${studentDebts.map((d) => `
+          <div class="flex items-center justify-between bg-rose-50 border border-rose-200 rounded-xl px-3 py-2.5">
+            <span class="font-bold text-slate-700">${d.courseName}</span>
+            <span class="font-black text-rose-600">欠 ${d.amount} 节</span>
+          </div>`).join('')}
+        </div>
+      </div>` : ''}
+
+      <div>
+        <div class="font-bold text-[11px] text-slate-500 uppercase tracking-wider mb-1.5">🕘 消课记录（最近 ${logs.length} 条）</div>
+        ${logs.length === 0 ? '<div class="text-[11px] text-slate-400 py-4 text-center bg-slate-50 rounded-2xl">暂无消课记录</div>' : `
+        <div class="space-y-1 max-h-52 overflow-y-auto">
+          ${logs.map((l) => `
+          <div class="flex items-center justify-between bg-slate-50 px-3 py-2.5 rounded-xl">
+            <div class="min-w-0">
+              <span class="font-bold text-slate-700">${l.courseName}</span>
+              ${l.teacherName ? `<span class="text-slate-400 ml-1.5">${l.teacherName}</span>` : ''}
+              ${l.remarks ? `<span class="text-amber-600 ml-1">${l.remarks}</span>` : ''}
+            </div>
+            <div class="text-right shrink-0 ml-2">
+              <div class="font-bold text-slate-600">${l.deductedLessons}节${l.paymentAmount > 0 ? ' ¥' + l.paymentAmount.toFixed(0) : ''}</div>
+              <div class="text-[9px] text-slate-400">${(l.date || (l.checkInTime || '').slice(0, 10))}</div>
+            </div>
+          </div>`).join('')}
+        </div>`}
+      </div>
+
+      ${leaves.length ? `
+      <div>
+        <div class="font-bold text-[11px] text-slate-500 uppercase tracking-wider mb-1.5">🏖️ 请假记录（最近 ${leaves.length} 次）</div>
+        <div class="space-y-1">
+          ${leaves.map((s) => `
+          <div class="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-xl text-[11px]">
+            <span class="text-slate-600">${s.date} ${s.startTime || ''}</span>
+            <span class="text-slate-500">${s.subject || ''}</span>
+          </div>`).join('')}
+        </div>
+      </div>` : ''}
+    `;
+
+    showModal('modalMobileStudentDetail');
   }
 
   function addDebt(studentId, courseName, amount) {
@@ -653,6 +763,18 @@
     safeBind('formMobileSchedule', 'submit', handleSaveMobileSchedule);
     safeBind('btnDeleteMobileSchedule', 'click', handleDeleteMobileSchedule);
 
+    // 重复排课选择联动
+    safeBind('selectMobileRepeatRule', 'change', (e) => {
+      const endWrap = document.getElementById('mobileRepeatEndDateWrap');
+      const hint = document.getElementById('mobileRepeatHint');
+      const on = e.target.value !== 'none';
+      if (endWrap) endWrap.classList.toggle('hidden', !on);
+      if (hint) hint.classList.toggle('hidden', !on);
+    });
+
+    // 学员详情弹窗关闭
+    safeBind('btnCloseMobileStudentDetail', 'click', () => hideModal('modalMobileStudentDetail'));
+
     safeBind('selectMobileStudent', 'change', (e) => {
       const stId = e.target.value;
       const st = students.find((x) => x.id === stId);
@@ -974,7 +1096,7 @@
       card.className = 'bg-slate-50 border border-slate-200/80 p-3 rounded-2xl flex items-center justify-between space-x-2';
 
       const total = st.courses.reduce((acc, c) => acc + c.remainingLessons, 0);
-      const coursesStr = st.courses.map((c) => `${c.name}(剩${c.remainingLessons}课时)`).join(', ');
+      const coursesStr = st.courses.map((c) => `${c.name}(剩${c.remainingLessons}课时${c.unitPrice > 0 ? ` ¥${c.unitPrice}/节` : ''})`).join(', ');
 
       card.innerHTML = `
         <div class="flex items-center space-x-2.5 flex-1 min-w-0">
@@ -990,6 +1112,9 @@
           </div>
         </div>
         <div class="flex items-center gap-1.5 shrink-0">
+          <button class="btn-detail-mobile-student px-2 py-1.5 bg-sky-50 text-sky-500 text-xs rounded-xl active:bg-sky-100" title="详情">
+            <i class="fa-solid fa-circle-info"></i>
+          </button>
           <button class="btn-edit-mobile-student px-2 py-1.5 bg-slate-100 text-slate-500 text-xs rounded-xl active:bg-slate-200" title="编辑学员">
             <i class="fa-solid fa-pen"></i>
           </button>
@@ -998,6 +1123,10 @@
           </button>
         </div>
       `;
+
+      card.querySelector('.btn-detail-mobile-student').addEventListener('click', () => {
+        openMobileStudentDetail(st.id);
+      });
 
       card.querySelector('.btn-edit-mobile-student').addEventListener('click', () => {
         openMobileStudentModal(st);
@@ -1048,6 +1177,22 @@
     const delBtn = document.getElementById('btnDeleteMobileSchedule');
     if (delBtn) delBtn.classList.add('hidden');
 
+    // 重复排课：仅新增时显示
+    const repeatBlock = document.getElementById('mobileRepeatOptionsBlock');
+    const ruleEl = document.getElementById('selectMobileRepeatRule');
+    const endWrap = document.getElementById('mobileRepeatEndDateWrap');
+    const endEl = document.getElementById('inputMobileRepeatEndDate');
+    const hintEl = document.getElementById('mobileRepeatHint');
+    if (repeatBlock) repeatBlock.classList.remove('hidden');
+    if (ruleEl) ruleEl.value = 'none';
+    if (endWrap) endWrap.classList.add('hidden');
+    if (endEl) {
+      const def = new Date();
+      def.setMonth(def.getMonth() + 3);
+      endEl.value = formatDate(def);
+    }
+    if (hintEl) hintEl.classList.add('hidden');
+
     showModal('modalMobileSchedule');
   }
 
@@ -1091,6 +1236,10 @@
 
     const delBtn = document.getElementById('btnDeleteMobileSchedule');
     if (delBtn) delBtn.classList.remove('hidden');
+
+    // 编辑模式隐藏重复排课块
+    const repeatBlock = document.getElementById('mobileRepeatOptionsBlock');
+    if (repeatBlock) repeatBlock.classList.add('hidden');
 
     showModal('modalMobileSchedule');
   }
@@ -1180,8 +1329,8 @@
         showToast('修改成功！');
       }
     } else {
-      const newSchedule = {
-        id: 'sch_' + Date.now(),
+      const makeSchedule = (id, d) => ({
+        id,
         studentId,
         studentName: student ? student.name : '未知学生',
         courseId,
@@ -1190,17 +1339,43 @@
         teacherName,
         assistantTeacherId,
         assistantTeacherName,
-        date,
+        date: d,
         startTime,
         durationMinutes,
         room,
         colorTheme: student ? student.colorTheme : 'amber',
-      };
-      schedules.push(newSchedule);
+      });
+      schedules.push(makeSchedule('sch_' + Date.now(), date));
 
       // 课时在消课时扣除（App 语义），排课不再扣——避免"排了又消"重复扣的困惑
 
-      showToast(`已成功为 [${student ? student.name : ''}] 排课！`);
+      // 重复排课
+      const ruleEl = document.getElementById('selectMobileRepeatRule');
+      const endEl = document.getElementById('inputMobileRepeatEndDate');
+      const rule = ruleEl ? ruleEl.value : 'none';
+      const endDateStr = endEl ? endEl.value : '';
+      if (rule !== 'none' && endDateStr) {
+        const stepDays = rule === 'biweekly' ? 14 : 7;
+        const base = new Date(date + 'T00:00:00');
+        const end = new Date(endDateStr + 'T00:00:00');
+        let cursor = new Date(base);
+        let created = 0;
+        let skipped = 0;
+        while (created < 52) {
+          cursor.setDate(cursor.getDate() + stepDays);
+          if (cursor > end) break;
+          const dStr = formatDate(cursor);
+          const clash = schedules.some((s) => s.date === dStr && s.startTime === startTime && (s.teacherId === teacherId || (assistantTeacherId && s.assistantTeacherId === assistantTeacherId)));
+          if (clash) { skipped++; continue; }
+          schedules.push(makeSchedule('sch_' + Date.now() + '_' + created, dStr));
+          created++;
+        }
+        let msg = `已排 ${created + 1} 节课（含首次）`;
+        if (skipped > 0) msg += `，${skipped} 节因冲突跳过`;
+        showToast('📅 ' + msg);
+      } else {
+        showToast(`已成功为 [${student ? student.name : ''}] 排课！`);
+      }
     }
 
     saveData();
@@ -1212,14 +1387,36 @@
     const idEl = document.getElementById('inputMobileScheduleId');
     const schId = idEl ? idEl.value : '';
     if (!schId) return;
+    const sch = schedules.find((s) => s.id === schId);
+    if (!sch) return;
 
-    if (confirm('确定要删除此节课程安排吗？')) {
+    // 查找重复系列（同学员+课程+老师+时段）
+    const series = schedules
+      .filter((s) => s.id !== sch.id && s.studentId === sch.studentId && s.courseId === sch.courseId && s.startTime === sch.startTime && (s.teacherId || '') === (sch.teacherId || '') && s.status === 'scheduled')
+      .sort((a, b) => a.date.localeCompare(b.date));
+    const laterCount = series.filter((s) => s.date > sch.date).length;
+
+    if (laterCount > 0) {
+      const choice = prompt(`这节课属于重复排课系列（之后还有 ${laterCount} 节同样的课）。\n\n输入 1：仅删除本次\n输入 2：删除本次及之后所有的排课`, '1');
+      if (choice === null) return;
+      if (choice === '1') {
+        schedules = schedules.filter((s) => s.id !== schId);
+        showToast('已删除本次课程安排');
+      } else if (choice === '2') {
+        const ids = [schId, ...series.filter((s) => s.date >= sch.date).map((s) => s.id)];
+        schedules = schedules.filter((s) => !ids.includes(s.id));
+        showToast(`已删除本次及之后 ${ids.length - 1} 节排课`);
+      } else {
+        return;
+      }
+    } else {
+      if (!confirm('确定要删除此节课程安排吗？')) return;
       schedules = schedules.filter((s) => s.id !== schId);
-      saveData();
-      closeMobileScheduleModal();
-      renderMobile3DayView();
       showToast('已删除课程');
     }
+    saveData();
+    closeMobileScheduleModal();
+    renderMobile3DayView();
   }
 
   function showModal(id) {

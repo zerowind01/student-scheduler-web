@@ -203,7 +203,118 @@
       paymentAmount: payment,
       checkInTime: new Date().toISOString(),
       remarks: remarks || '',
+      teacherName: schedule.teacherName || '',
+      date: schedule.date || '',
     });
+  }
+
+  // ==========================================
+  // 学员详情弹窗（课时/单价/欠课/消课记录）
+  // ==========================================
+  function openStudentDetail(studentId) {
+    const student = students.find((s) => s.id === studentId);
+    if (!student) return;
+    normalizeStudent(student);
+
+    const titleEl = document.getElementById('studentDetailTitle');
+    if (titleEl) titleEl.textContent = `${student.name} · 学员详情`;
+    const body = document.getElementById('studentDetailBody');
+    if (!body) return;
+
+    const themeColor = getThemeBadgeStyle(student.colorTheme || 'amber');
+    const studentDebts = getStudentDebts(student.id);
+    const logs = checkInLogs
+      .filter((l) => l.studentId === student.id)
+      .slice()
+      .sort((a, b) => (b.checkInTime || '').localeCompare(a.checkInTime || ''))
+      .slice(0, 30);
+    const leaves = schedules
+      .filter((s) => s.studentId === student.id && s.status === SCHEDULE_STATUS.STUDENT_LEAVE)
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+      .slice(0, 10);
+
+    const totalLessons = student.courses.reduce((acc, c) => acc + c.remainingLessons, 0);
+    const totalOwed = studentDebts.reduce((acc, d) => acc + d.amount, 0);
+
+    body.innerHTML = `
+      <div class="flex items-center gap-3 bg-slate-50 rounded-xl p-3">
+        <div class="w-11 h-11 rounded-full ${themeColor.bg} ${themeColor.text} flex items-center justify-center font-bold text-base">${student.name.substring(0, 1)}</div>
+        <div class="flex-1">
+          <div class="font-bold text-sm text-slate-800">${student.name}</div>
+          <div class="text-[11px] text-slate-500">${student.phone ? '<i class="fa-solid fa-phone text-[9px]"></i> ' + student.phone : '未填电话'}</div>
+        </div>
+        <div class="text-right">
+          <div class="text-lg font-black ${totalOwed > 0 ? 'text-rose-600' : 'text-amber-700'}">${totalLessons}</div>
+          <div class="text-[9px] text-slate-400 font-bold">总剩课时${totalOwed > 0 ? ' · 欠' + totalOwed + '节' : ''}</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="font-bold text-[11px] text-slate-500 uppercase tracking-wider mb-1.5">课程与课时</div>
+        <div class="space-y-1.5">
+          ${student.courses.map((c) => {
+            const isDebt = c.remainingLessons < 0;
+            const isLow = !isDebt && c.remainingLessons <= 2;
+            return `
+            <div class="flex items-center justify-between bg-white border ${isDebt ? 'border-rose-200 bg-rose-50/40' : isLow ? 'border-amber-200' : 'border-slate-200/70'} rounded-xl px-3 py-2">
+              <div>
+                <span class="font-bold text-slate-800">${c.name}</span>
+                ${isDebt ? '<span class="text-[9px] font-bold text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded ml-1.5">欠课</span>' : isLow ? '<span class="text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded ml-1.5">课时不足</span>' : ''}
+              </div>
+              <div class="flex items-center gap-3 text-[11px]">
+                ${c.unitPrice > 0 ? `<span class="text-slate-500">¥${c.unitPrice}/节</span>` : ''}
+                <span class="font-black ${isDebt ? 'text-rose-600' : isLow ? 'text-amber-700' : 'text-slate-700'}">${c.remainingLessons} 课时</span>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+
+      ${studentDebts.length ? `
+      <div>
+        <div class="font-bold text-[11px] text-rose-500 uppercase tracking-wider mb-1.5"><i class="fa-solid fa-triangle-exclamation"></i> 欠课账</div>
+        <div class="space-y-1.5">
+          ${studentDebts.map((d) => `
+          <div class="flex items-center justify-between bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
+            <span class="font-bold text-slate-700">${d.courseName}</span>
+            <span class="font-black text-rose-600">欠 ${d.amount} 节</span>
+          </div>`).join('')}
+        </div>
+      </div>` : ''}
+
+      <div>
+        <div class="font-bold text-[11px] text-slate-500 uppercase tracking-wider mb-1.5"><i class="fa-solid fa-clock-rotate-left"></i> 消课记录（最近 ${logs.length} 条）</div>
+        ${logs.length === 0 ? '<div class="text-[11px] text-slate-400 py-3 text-center bg-slate-50 rounded-xl">暂无消课记录</div>' : `
+        <div class="space-y-1 max-h-56 overflow-y-auto custom-scrollbar">
+          ${logs.map((l) => `
+          <div class="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-lg">
+            <div>
+              <span class="font-bold text-slate-700">${l.courseName}</span>
+              ${l.teacherName ? `<span class="text-slate-400 ml-1.5">${l.teacherName}</span>` : ''}
+              ${l.remarks ? `<span class="text-amber-600 ml-1">${l.remarks}</span>` : ''}
+            </div>
+            <div class="text-right shrink-0 ml-2">
+              <div class="font-bold text-slate-600">${l.deductedLessons}节${l.paymentAmount > 0 ? ' ¥' + l.paymentAmount.toFixed(0) : ''}</div>
+              <div class="text-[9px] text-slate-400">${(l.date || (l.checkInTime || '').slice(0, 10))}</div>
+            </div>
+          </div>`).join('')}
+        </div>`}
+      </div>
+
+      ${leaves.length ? `
+      <div>
+        <div class="font-bold text-[11px] text-slate-500 uppercase tracking-wider mb-1.5"><i class="fa-solid fa-umbrella-beach"></i> 请假记录（最近 ${leaves.length} 次）</div>
+        <div class="space-y-1">
+          ${leaves.map((s) => `
+          <div class="flex items-center justify-between bg-slate-50 px-3 py-1.5 rounded-lg text-[11px]">
+            <span class="text-slate-600">${s.date} ${s.startTime || ''}</span>
+            <span class="text-slate-500">${s.subject || ''}</span>
+          </div>`).join('')}
+        </div>
+      </div>` : ''}
+    `;
+
+    showModal('modalStudentDetail');
   }
 
   // 欠课账：按 学员+课程名 归并累加（与 App 的 studentCourseTypeDebts 语义对齐）
@@ -765,6 +876,18 @@
     safeBind('formSchedule', 'submit', handleSaveSchedule);
     safeBind('btnDeleteSchedule', 'click', handleDeleteSchedule);
 
+    // 重复排课选择联动
+    safeBind('selectRepeatRule', 'change', (e) => {
+      const endWrap = document.getElementById('repeatEndDateWrap');
+      const hint = document.getElementById('repeatHint');
+      const on = e.target.value !== 'none';
+      if (endWrap) endWrap.classList.toggle('hidden', !on);
+      if (hint) hint.classList.toggle('hidden', !on);
+    });
+
+    // 学员详情弹窗
+    safeBind('btnCloseStudentDetail', 'click', () => hideModal('modalStudentDetail'));
+
     safeBind('btnImport', 'click', openImportModal);
     safeBind('btnCloseImportModal', 'click', closeImportModal);
     safeBind('btnCancelImportModal', 'click', closeImportModal);
@@ -1183,7 +1306,7 @@
         .map(
           (c) => `
         <div class="flex items-center justify-between text-[11px] bg-slate-50/90 px-2.5 py-1 rounded-lg border border-slate-100">
-          <span class="font-semibold text-slate-700 truncate">${c.name}</span>
+          <span class="font-semibold text-slate-700 truncate">${c.name}${c.unitPrice > 0 ? `<span class="text-slate-400 font-normal ml-1">¥${c.unitPrice}/节</span>` : ''}</span>
           <span class="font-bold shrink-0 ml-1.5 ${c.remainingLessons <= 2 ? 'text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200' : 'text-slate-500'}">
             ${c.remainingLessons <= 2 ? '<span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping inline-block mr-1"></span>' : ''}剩${c.remainingLessons}课时
           </span>
@@ -1213,6 +1336,9 @@
           </div>
 
           <div class="flex items-center gap-2">
+            <button class="btn-detail-student text-sky-400 hover:text-sky-600 transition" title="查看详情">
+              <i class="fa-solid fa-circle-info"></i>
+            </button>
             <button class="btn-edit-student text-slate-400 hover:text-slate-700 transition" title="编辑学生课程">
               <i class="fa-solid fa-pen-to-square"></i>
             </button>
@@ -1260,6 +1386,11 @@
         if (!e.target.closest('.btn-edit-student')) {
           selectStudentForTap(student, card);
         }
+      });
+
+      card.querySelector('.btn-detail-student').addEventListener('click', (e) => {
+        e.stopPropagation();
+        openStudentDetail(student.id);
       });
 
       card.querySelector('.btn-edit-student').addEventListener('click', (e) => {
@@ -1807,6 +1938,22 @@
     const delBtn = document.getElementById('btnDeleteSchedule');
     if (delBtn) delBtn.classList.add('hidden');
 
+    // 重复排课：仅新增时显示，默认"不重复"，结束日期默认3个月后
+    const repeatBlock = document.getElementById('repeatOptionsBlock');
+    const ruleEl = document.getElementById('selectRepeatRule');
+    const endWrap = document.getElementById('repeatEndDateWrap');
+    const endEl = document.getElementById('inputRepeatEndDate');
+    const hintEl = document.getElementById('repeatHint');
+    if (repeatBlock) repeatBlock.classList.remove('hidden');
+    if (ruleEl) ruleEl.value = 'none';
+    if (endWrap) endWrap.classList.add('hidden');
+    if (endEl) {
+      const def = new Date();
+      def.setMonth(def.getMonth() + 3);
+      endEl.value = formatDate(def);
+    }
+    if (hintEl) hintEl.classList.add('hidden');
+
     showModal('modalSchedule');
   }
 
@@ -1874,6 +2021,10 @@
     const delBtn = document.getElementById('btnDeleteSchedule');
     if (delBtn) delBtn.classList.remove('hidden');
 
+    // 编辑模式隐藏重复排课块
+    const repeatBlock = document.getElementById('repeatOptionsBlock');
+    if (repeatBlock) repeatBlock.classList.add('hidden');
+
     showModal('modalSchedule');
   }
 
@@ -1930,8 +2081,8 @@
         showToast('课程排期修改成功！', 'check');
       }
     } else {
-      const newSchedule = {
-        id: 'sch_' + Date.now(),
+      const makeSchedule = (id, d) => ({
+        id,
         studentId,
         studentName: student ? student.name : '未知学生',
         courseId,
@@ -1940,18 +2091,46 @@
         teacherName,
         assistantTeacherId,
         assistantTeacherName,
-        date,
+        date: d,
         startTime,
         durationMinutes,
         room,
         notes,
         colorTheme,
-      };
-      schedules.push(newSchedule);
+      });
+      schedules.push(makeSchedule('sch_' + Date.now(), date));
 
       // 课时在消课时扣除（App 语义），排课不再扣
 
-      showToast(`已成功为 [${student ? student.name : ''}] 安排【${subject}】课程！`, 'circle-check');
+      // 重复排课：按每周/隔周生成，冲突跳过，最多52节
+      const rule = document.getElementById('selectRepeatRule') ? document.getElementById('selectRepeatRule').value : 'none';
+      const endDateStr = document.getElementById('inputRepeatEndDate') ? document.getElementById('inputRepeatEndDate').value : '';
+      if (rule !== 'none' && endDateStr) {
+        const stepDays = rule === 'biweekly' ? 14 : 7;
+        const base = new Date(date + 'T00:00:00');
+        const end = new Date(endDateStr + 'T00:00:00');
+        let cursor = new Date(base);
+        let created = 0;
+        let skipped = 0;
+        while (created < 52) {
+          cursor.setDate(cursor.getDate() + stepDays);
+          if (cursor > end) break;
+          const dStr = formatDate(cursor);
+          // 冲突检测：同一天同一时段同一老师已有课 → 跳过
+          const clash = schedules.some((s) => s.date === dStr && s.startTime === startTime && (s.teacherId === teacherId || (assistantTeacherId && s.assistantTeacherId === assistantTeacherId)));
+          if (clash) {
+            skipped++;
+            continue;
+          }
+          schedules.push(makeSchedule('sch_' + Date.now() + '_' + created, dStr));
+          created++;
+        }
+        let msg = `已排 ${created + 1} 节课（含首次）`;
+        if (skipped > 0) msg += `，${skipped} 节因时段冲突被跳过`;
+        showToast(`📅 ${msg}`, 'circle-check');
+      } else {
+        showToast(`已成功为 [${student ? student.name : ''}] 安排【${subject}】课程！`, 'circle-check');
+      }
     }
 
     saveData();
@@ -1971,13 +2150,39 @@
   function handleDeleteSchedule() {
     const schId = document.getElementById('inputScheduleId').value;
     if (!schId) return;
+    const sch = schedules.find((s) => s.id === schId);
+    if (!sch) return;
 
-    if (confirm('确定要删除此节课程安排吗？')) {
+    // 查找同一学员+课程+老师+时段的"重复系列"（按周/隔周规律）
+    const series = schedules
+      .filter((s) => s.id !== sch.id && s.studentId === sch.studentId && s.courseId === sch.courseId && s.startTime === sch.startTime && (s.teacherId || '') === (sch.teacherId || '') && s.status === 'scheduled')
+      .sort((a, b) => a.date.localeCompare(b.date));
+    const laterCount = series.filter((s) => s.date > sch.date).length;
+
+    if (laterCount > 0) {
+      // 属于重复系列 → 提供两种删除方式
+      const choice = prompt(
+        `这节课属于重复排课系列（之后还有 ${laterCount} 节同样的课）。\n\n输入 1：仅删除本次\n输入 2：删除本次及之后所有的排课`,
+        '1'
+      );
+      if (choice === null) return; // 取消
+      if (choice === '1') {
+        handleDeleteScheduleWithCleanup(schId);
+        showToast('已删除本次课程安排', 'trash-can');
+      } else if (choice === '2') {
+        const toDelete = series.filter((s) => s.date >= sch.date).map((s) => s.id);
+        [schId, ...toDelete].forEach((id) => handleDeleteScheduleWithCleanup(id));
+        showToast(`已删除本次及之后 ${toDelete.length} 节排课`, 'trash-can');
+      } else {
+        return; // 无效输入
+      }
+    } else {
+      if (!confirm('确定要删除此节课程安排吗？')) return;
       handleDeleteScheduleWithCleanup(schId);
-      closeScheduleModal();
-      refreshView();
       showToast('已取消该课程安排', 'trash-can');
     }
+    closeScheduleModal();
+    refreshView();
   }
 
   // ==========================================
