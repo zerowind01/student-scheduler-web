@@ -10,10 +10,16 @@
   const STORAGE_KEY_STUDENTS = 'edu_scheduler_students_v2';
   const STORAGE_KEY_SCHEDULES = 'edu_scheduler_schedules_v2';
   const STORAGE_KEY_TEACHERS = 'edu_scheduler_teachers_v2';
+  const STORAGE_KEY_COURSE_TYPES = 'edu_scheduler_course_types_v2';
+  const STORAGE_KEY_CHECKIN_LOGS = 'edu_scheduler_checkin_logs_v2';
+  const STORAGE_KEY_DEBTS = 'edu_scheduler_debts_v2';
 
   let students = [];
   let schedules = [];
   let teachers = [];
+  let courseTypes = [];
+  let checkInLogs = [];
+  let debts = [];
   let selectedTeacherFilter = 'all';
   let mobileStartDate = getMonday(new Date()); // 默认从本周一开启 3 日日历
 
@@ -56,6 +62,155 @@
     return st;
   }
 
+  // ============ 教务扩展（与桌面端 app.js 保持一致） ============
+  const SCHEDULE_STATUS = { SCHEDULED: 'scheduled', COMPLETED: 'completed', STUDENT_LEAVE: 'student_leave' };
+
+  function normalizeSchedule(sch) {
+    if (!sch.status) sch.status = SCHEDULE_STATUS.SCHEDULED;
+    return sch;
+  }
+
+  function migrateStudentCourses(st) {
+    if (!st.courses) return;
+    st.courses.forEach((c) => {
+      if (typeof c.unitPrice !== 'number') c.unitPrice = 0;
+    });
+  }
+
+  function ensureDefaultCourseTypes() {
+    if (courseTypes.length === 0) {
+      courseTypes = ['钢琴', '美术', '乐理', '吉他'].map((n) => ({ id: 'ct_' + n, name: n }));
+    }
+  }
+
+  function normalizeDebt(d) {
+    if (!d.id) d.id = 'debt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+    if (typeof d.amount !== 'number') d.amount = 0;
+    return d;
+  }
+
+  function recordCheckInLog(schedule, deducted, payment, remarks) {
+    checkInLogs.push({
+      id: 'cil_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+      scheduleId: schedule.id,
+      studentId: schedule.studentId,
+      studentName: schedule.studentName,
+      courseName: schedule.subject,
+      deductedLessons: deducted,
+      paymentAmount: payment,
+      checkInTime: new Date().toISOString(),
+      remarks: remarks || '',
+    });
+  }
+
+  function addDebt(studentId, courseName, amount) {
+    if (amount <= 0) return;
+    let d = debts.find((x) => x.studentId === studentId && x.courseName === courseName);
+    if (d) {
+      d.amount += amount;
+    } else {
+      d = { id: 'debt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4), studentId, courseName, amount };
+      debts.push(d);
+    }
+  }
+
+  function repayDebt(studentId, courseName, amount) {
+    const d = debts.find((x) => x.studentId === studentId && x.courseName === courseName);
+    if (!d || d.amount <= 0) return 0;
+    const repaid = Math.min(d.amount, amount);
+    d.amount -= repaid;
+    if (d.amount <= 0.0001) {
+      debts = debts.filter((x) => x.id !== d.id);
+    }
+    return repaid;
+  }
+
+  function getStudentDebts(studentId) {
+    return debts.filter((d) => d.studentId === studentId && d.amount > 0);
+  }
+
+  function getLessonCost(schedule) {
+    return Math.max(1, Math.round((schedule.durationMinutes || 60) / 60));
+  }
+
+  function executeCheckIn(scheduleId, remarks) {
+    const sch = schedules.find((s) => s.id === scheduleId);
+    if (!sch) return;
+    if (sch.status === SCHEDULE_STATUS.COMPLETED) {
+      showToast('该课程已消课，无需重复操作');
+      return;
+    }
+    if (sch.status === SCHEDULE_STATUS.STUDENT_LEAVE) {
+      showToast('该课程为请假状态，请先撤销请假');
+      return;
+    }
+
+    const student = students.find((st) => st.id === sch.studentId);
+    const deducted = getLessonCost(sch);
+    let payment = 0;
+    if (student) {
+      const course = (student.courses || []).find((c) => c.id === sch.courseId || c.name === sch.subject);
+      if (course) {
+        if (course.unitPrice > 0) payment = deducted * course.unitPrice;
+        if (course.remainingLessons < 0) {
+          addDebt(student.id, course.name, -course.remainingLessons);
+          course.remainingLessons = 0;
+        }
+      }
+    }
+
+    sch.status = SCHEDULE_STATUS.COMPLETED;
+    recordCheckInLog(sch, deducted, payment, remarks);
+    saveData();
+    renderMobile3DayView();
+    renderMobileStudents();
+    showToast(`✅ 已消课：${sch.studentName} · ${sch.subject}（${deducted}节）`);
+  }
+
+  function markStudentLeave(scheduleId) {
+    const sch = schedules.find((s) => s.id === scheduleId);
+    if (!sch) return;
+    if (sch.status !== SCHEDULE_STATUS.SCHEDULED) {
+      showToast('仅待上课的课程可以办理请假');
+      return;
+    }
+
+    const student = students.find((st) => st.id === sch.studentId);
+    const deducted = getLessonCost(sch);
+    if (student) {
+      const course = (student.courses || []).find((c) => c.id === sch.courseId || c.name === sch.subject);
+      if (course) course.remainingLessons += deducted;
+    }
+
+    sch.status = SCHEDULE_STATUS.STUDENT_LEAVE;
+    saveData();
+    renderMobile3DayView();
+    renderMobileStudents();
+    showToast(`🏖️ 已为 ${sch.studentName} 办理请假，退还 ${deducted} 节课时`);
+  }
+
+  function revertScheduleStatus(scheduleId) {
+    const sch = schedules.find((s) => s.id === scheduleId);
+    if (!sch || sch.status === SCHEDULE_STATUS.SCHEDULED) return;
+
+    if (sch.status === SCHEDULE_STATUS.COMPLETED) {
+      checkInLogs = checkInLogs.filter((l) => l.scheduleId !== sch.id);
+    } else if (sch.status === SCHEDULE_STATUS.STUDENT_LEAVE) {
+      const student = students.find((st) => st.id === sch.studentId);
+      const deducted = getLessonCost(sch);
+      if (student) {
+        const course = (student.courses || []).find((c) => c.id === sch.courseId || c.name === sch.subject);
+        if (course) course.remainingLessons = Math.max(0, course.remainingLessons - deducted);
+      }
+    }
+
+    sch.status = SCHEDULE_STATUS.SCHEDULED;
+    saveData();
+    renderMobile3DayView();
+    renderMobileStudents();
+    showToast('已撤销状态，还原为待上课');
+  }
+
   function loadData() {
     const rawStudents =
       localStorage.getItem(STORAGE_KEY_STUDENTS) ||
@@ -71,6 +226,10 @@
       localStorage.getItem(STORAGE_KEY_TEACHERS) ||
       localStorage.getItem('edu_scheduler_teachers_v1') ||
       localStorage.getItem('edu_scheduler_teachers');
+
+    const rawCourseTypes = localStorage.getItem(STORAGE_KEY_COURSE_TYPES);
+    const rawCheckInLogs = localStorage.getItem(STORAGE_KEY_CHECKIN_LOGS);
+    const rawDebts = localStorage.getItem(STORAGE_KEY_DEBTS);
 
     if (rawTeachers !== null) {
       try {
@@ -98,6 +257,27 @@
       students = []; // 新设备登录默认留空！
     }
 
+    students.forEach((st) => {
+      migrateStudentCourses(st);
+      normalizeStudent(st);
+    });
+
+    if (rawCourseTypes !== null) {
+      try { courseTypes = JSON.parse(rawCourseTypes); } catch (e) { courseTypes = []; }
+    }
+    ensureDefaultCourseTypes();
+
+    if (rawCheckInLogs !== null) {
+      try { checkInLogs = JSON.parse(rawCheckInLogs); } catch (e) { checkInLogs = []; }
+    } else {
+      checkInLogs = [];
+    }
+    if (rawDebts !== null) {
+      try { debts = JSON.parse(rawDebts).map(normalizeDebt); } catch (e) { debts = []; }
+    } else {
+      debts = [];
+    }
+
     if (rawSchedules !== null) {
       try {
         schedules = JSON.parse(rawSchedules);
@@ -107,6 +287,8 @@
     } else {
       schedules = []; // 新设备登录默认留空！
     }
+
+    schedules = schedules.map(normalizeSchedule);
 
     saveDataLocalOnly();
   }
@@ -134,6 +316,9 @@
         students,
         schedules,
         teachers,
+        courseTypes,
+        checkInLogs,
+        debts,
       };
 
       localStorage.setItem('edu_scheduler_last_sync_time', String(now));
@@ -184,6 +369,9 @@
             students = remoteData.students || [];
             schedules = remoteData.schedules || [];
             teachers = remoteData.teachers || teachers;
+            courseTypes = remoteData.courseTypes || courseTypes;
+            checkInLogs = remoteData.checkInLogs || [];
+            debts = (remoteData.debts || []).map(normalizeDebt);
 
             localStorage.setItem('edu_scheduler_last_sync_time', String(remoteData.updatedAt));
             saveDataLocalOnly();
@@ -212,6 +400,9 @@
           students = event.data.students || students;
           schedules = event.data.schedules || schedules;
           teachers = event.data.teachers || teachers;
+          courseTypes = event.data.courseTypes || courseTypes;
+          checkInLogs = event.data.checkInLogs || [];
+          debts = (event.data.debts || []).map(normalizeDebt);
           saveDataLocalOnly();
           renderMobileTeacherSelect();
           renderMobile3DayView();
@@ -231,6 +422,9 @@
     localStorage.setItem(STORAGE_KEY_STUDENTS, JSON.stringify(students));
     localStorage.setItem(STORAGE_KEY_SCHEDULES, JSON.stringify(schedules));
     localStorage.setItem(STORAGE_KEY_TEACHERS, JSON.stringify(teachers));
+    localStorage.setItem(STORAGE_KEY_COURSE_TYPES, JSON.stringify(courseTypes));
+    localStorage.setItem(STORAGE_KEY_CHECKIN_LOGS, JSON.stringify(checkInLogs));
+    localStorage.setItem(STORAGE_KEY_DEBTS, JSON.stringify(debts));
   }
 
   function checkUrlSyncData() {
@@ -591,7 +785,19 @@
     if (schedule.assistantTeacherName) teacherText += `&${schedule.assistantTeacherName}`;
     const roomText = schedule.room ? `📍${schedule.room}` : '';
 
+    // 状态角标 + 视觉弱化（与桌面端一致）
+    let statusBadge = '';
+    if (schedule.status === SCHEDULE_STATUS.COMPLETED) {
+      statusBadge = `<span class="absolute top-0.5 right-1 text-[9px] font-black text-white bg-emerald-500 px-1 py-0.2 rounded-md z-10">✓ 消</span>`;
+      card.style.opacity = '0.65';
+    } else if (schedule.status === SCHEDULE_STATUS.STUDENT_LEAVE) {
+      statusBadge = `<span class="absolute top-0.5 right-1 text-[9px] font-black text-white bg-rose-400 px-1 py-0.2 rounded-md z-10">假</span>`;
+      card.style.opacity = '0.5';
+      card.classList.add('grayscale');
+    }
+
     card.innerHTML = `
+      ${statusBadge}
       <div class="flex flex-col justify-between h-full space-y-0.5 pointer-events-none px-1.5 py-1">
         <div class="flex items-center justify-between font-extrabold text-[12px] text-slate-900 leading-tight">
           <span class="truncate flex-1">${schedule.studentName}</span>
@@ -614,7 +820,7 @@
 
     card.addEventListener('click', (e) => {
       e.stopPropagation();
-      openMobileScheduleModalForEdit(schedule);
+      openMobileScheduleActionMenu(schedule);
     });
 
     return card;
@@ -986,6 +1192,85 @@
       el.classList.remove('opacity-100');
       setTimeout(() => el.classList.add('hidden'), 200);
     }
+  }
+
+  function openMobileScheduleActionMenu(schedule) {
+    const status = schedule.status || SCHEDULE_STATUS.SCHEDULED;
+    const student = students.find((st) => st.id === schedule.studentId);
+    const menu = document.createElement('div');
+    menu.id = 'mobileScheduleActionMenu';
+    menu.className = 'fixed inset-0 bg-slate-900/40 z-50 flex items-end justify-center';
+    menu.style.paddingBottom = 'calc(64px + env(safe-area-inset-bottom))';
+
+    let actionsHtml = '';
+    if (status === SCHEDULE_STATUS.SCHEDULED) {
+      actionsHtml += `
+        <button data-act="checkin" class="w-full py-3.5 rounded-xl font-bold text-sm bg-emerald-500 text-white active:bg-emerald-600 flex items-center justify-center gap-2">
+          <i class="fa-solid fa-circle-check"></i> 消课签到（${getLessonCost(schedule)}节）
+        </button>
+        <button data-act="leave" class="w-full py-3.5 rounded-xl font-bold text-sm bg-rose-50 text-rose-600 border border-rose-200 active:bg-rose-100 flex items-center justify-center gap-2">
+          <i class="fa-solid fa-person-walking-arrow-right"></i> 学员请假（退还${getLessonCost(schedule)}节）
+        </button>
+      `;
+    } else {
+      actionsHtml += `
+        <button data-act="revert" class="w-full py-3.5 rounded-xl font-bold text-sm bg-amber-500 text-white active:bg-amber-600 flex items-center justify-center gap-2">
+          <i class="fa-solid fa-rotate-left"></i> 撤销状态（还原为待上课）
+        </button>
+      `;
+    }
+    actionsHtml += `
+      <button data-act="edit" class="w-full py-3.5 rounded-xl font-bold text-sm bg-slate-100 text-slate-700 active:bg-slate-200 flex items-center justify-center gap-2">
+        <i class="fa-solid fa-pen-to-square"></i> 编辑课程信息
+      </button>
+      ${status !== SCHEDULE_STATUS.SCHEDULED ? `
+      <button data-act="delete" class="w-full py-3.5 rounded-xl font-bold text-sm bg-rose-50 text-rose-600 border border-rose-200 active:bg-rose-100 flex items-center justify-center gap-2">
+        <i class="fa-solid fa-trash-can"></i> 删除该课程
+      </button>` : ''}
+    `;
+
+    const statusText = status === SCHEDULE_STATUS.COMPLETED ? '已消课 ✓' : status === SCHEDULE_STATUS.STUDENT_LEAVE ? '学员请假 🏖️' : '待上课';
+    menu.innerHTML = `
+      <div class="bg-white rounded-t-3xl w-full p-5 pb-2 space-y-2.5 shadow-2xl max-w-md mx-auto">
+        <div class="w-10 h-1 bg-slate-200 rounded-full mx-auto mb-1"></div>
+        <div class="pb-3 border-b border-slate-100">
+          <div class="font-bold text-sm text-slate-800">${schedule.studentName} · ${schedule.subject}</div>
+          <div class="text-[11px] text-slate-400 mt-0.5">${schedule.date} ${schedule.startTime} · ${schedule.durationMinutes}分钟 · ${statusText}</div>
+          ${student && getStudentDebts(student.id).length ? `<div class="text-[10px] text-rose-500 mt-1">⚠ 欠课：${getStudentDebts(student.id).map(d => d.courseName + ' ' + d.amount + '节').join('、')}</div>` : ''}
+        </div>
+        ${actionsHtml}
+        <button data-act="close" class="w-full py-3 text-slate-400 text-xs">取消</button>
+      </div>
+    `;
+
+    menu.addEventListener('click', (e) => {
+      if (e.target === menu) { menu.remove(); return; }
+      const btn = e.target.closest('[data-act]');
+      if (!btn) return;
+      const act = btn.getAttribute('data-act');
+      menu.remove();
+      if (act === 'checkin') executeCheckIn(schedule.id);
+      else if (act === 'leave') markStudentLeave(schedule.id);
+      else if (act === 'revert') revertScheduleStatus(schedule.id);
+      else if (act === 'edit') openMobileScheduleModalForEdit(schedule);
+      else if (act === 'delete') {
+        if (confirm('确定删除该课程？待上课状态的课程会退还已扣课时。')) {
+          const student1 = students.find((st) => st.id === schedule.studentId);
+          checkInLogs = checkInLogs.filter((l) => l.scheduleId !== schedule.id);
+          schedules = schedules.filter((s) => s.id !== schedule.id);
+          if (schedule.status === SCHEDULE_STATUS.SCHEDULED && student1) {
+            const course = (student1.courses || []).find((c) => c.id === schedule.courseId || c.name === schedule.subject);
+            if (course) course.remainingLessons += getLessonCost(schedule);
+          }
+          saveData();
+          renderMobile3DayView();
+          renderMobileStudents();
+          showToast('已删除该课程');
+        }
+      }
+    });
+
+    document.body.appendChild(menu);
   }
 
   function showToast(msg) {

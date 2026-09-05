@@ -12,6 +12,9 @@
   const STORAGE_KEY_STUDENTS = 'edu_scheduler_students_v2';
   const STORAGE_KEY_SCHEDULES = 'edu_scheduler_schedules_v2';
   const STORAGE_KEY_TEACHERS = 'edu_scheduler_teachers_v2';
+  const STORAGE_KEY_COURSE_TYPES = 'edu_scheduler_course_types_v2';
+  const STORAGE_KEY_CHECKIN_LOGS = 'edu_scheduler_checkin_logs_v2';
+  const STORAGE_KEY_DEBTS = 'edu_scheduler_debts_v2';
 
   const COLOR_THEMES = ['amber', 'emerald', 'sky', 'purple', 'rose'];
 
@@ -22,6 +25,9 @@
   let students = [];
   let schedules = [];
   let teachers = [];
+  let courseTypes = [];   // 课程类型（如 钢琴/美术/乐理）
+  let checkInLogs = [];   // 消课流水（财务核心）
+  let debts = [];         // 学员欠课账 { id, studentId, courseName, amount(节) }
   let selectedTeacherFilter = 'all'; // 筛选老师：all 或 teacherId
   let currentWeekStart = getMonday(new Date()); // 当前视图对应的周一
   let draggedStudent = null; // 当前正在拖拽的学生
@@ -148,6 +154,83 @@
     return st;
   }
 
+  // ============ 教务扩展：数据迁移与规范化 ============
+  // 排课状态：web 版语义（排课即扣课时）：
+  //   scheduled  待上课（课时已在排课时扣除）
+  //   completed  已消课（签到，记入财务流水）
+  //   studentLeave 学员请假（退还排课时扣掉的课时）
+  const SCHEDULE_STATUS = { SCHEDULED: 'scheduled', COMPLETED: 'completed', STUDENT_LEAVE: 'student_leave' };
+
+  function normalizeSchedule(sch) {
+    if (!sch.status) sch.status = SCHEDULE_STATUS.SCHEDULED;
+    return sch;
+  }
+
+  // 旧数据迁移：students[].courses[] (name+remainingLessons) 语义不变，
+  // 补充单价 unitPrice（默认 0 = 未设置）与课程类型标记
+  function migrateStudentCourses(st) {
+    if (!st.courses) return;
+    st.courses.forEach((c) => {
+      if (typeof c.unitPrice !== 'number') c.unitPrice = 0;
+    });
+  }
+
+  function ensureDefaultCourseTypes() {
+    if (courseTypes.length === 0) {
+      courseTypes = ['钢琴', '美术', '乐理', '吉他'].map((n) => ({ id: 'ct_' + n, name: n }));
+    }
+  }
+
+  function normalizeDebt(d) {
+    if (!d.id) d.id = 'debt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+    if (typeof d.amount !== 'number') d.amount = 0;
+    return d;
+  }
+
+  // 消课流水规范字段：
+  // { id, scheduleId, studentId, studentName, courseName, deductedLessons, paymentAmount, checkInTime, remarks }
+  function recordCheckInLog(schedule, deducted, payment, remarks) {
+    checkInLogs.push({
+      id: 'cil_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+      scheduleId: schedule.id,
+      studentId: schedule.studentId,
+      studentName: schedule.studentName,
+      courseName: schedule.subject,
+      deductedLessons: deducted,
+      paymentAmount: payment,
+      checkInTime: new Date().toISOString(),
+      remarks: remarks || '',
+    });
+  }
+
+  // 欠课账：按 学员+课程名 归并累加（与 App 的 studentCourseTypeDebts 语义对齐）
+  function addDebt(studentId, courseName, amount) {
+    if (amount <= 0) return;
+    let d = debts.find((x) => x.studentId === studentId && x.courseName === courseName);
+    if (d) {
+      d.amount += amount;
+    } else {
+      d = { id: 'debt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4), studentId, courseName, amount };
+      debts.push(d);
+    }
+  }
+
+  // 归还欠课（新购/充值时自动抵扣）：返回实际抵扣掉的节数
+  function repayDebt(studentId, courseName, amount) {
+    const d = debts.find((x) => x.studentId === studentId && x.courseName === courseName);
+    if (!d || d.amount <= 0) return 0;
+    const repaid = Math.min(d.amount, amount);
+    d.amount -= repaid;
+    if (d.amount <= 0.0001) {
+      debts = debts.filter((x) => x.id !== d.id);
+    }
+    return repaid;
+  }
+
+  function getStudentDebts(studentId) {
+    return debts.filter((d) => d.studentId === studentId && d.amount > 0);
+  }
+
   function loadData() {
     const rawStudents =
       localStorage.getItem(STORAGE_KEY_STUDENTS) ||
@@ -163,6 +246,10 @@
       localStorage.getItem(STORAGE_KEY_TEACHERS) ||
       localStorage.getItem('edu_scheduler_teachers_v1') ||
       localStorage.getItem('edu_scheduler_teachers');
+
+    const rawCourseTypes = localStorage.getItem(STORAGE_KEY_COURSE_TYPES);
+    const rawCheckInLogs = localStorage.getItem(STORAGE_KEY_CHECKIN_LOGS);
+    const rawDebts = localStorage.getItem(STORAGE_KEY_DEBTS);
 
     if (rawTeachers !== null) {
       try {
@@ -190,6 +277,29 @@
       students = []; // 新设备登录默认留空！
     }
 
+    students.forEach((st) => {
+      migrateStudentCourses(st);
+      normalizeStudent(st);
+    });
+
+    // 课程类型
+    if (rawCourseTypes !== null) {
+      try { courseTypes = JSON.parse(rawCourseTypes); } catch (e) { courseTypes = []; }
+    }
+    ensureDefaultCourseTypes();
+
+    // 消课流水 + 欠课账
+    if (rawCheckInLogs !== null) {
+      try { checkInLogs = JSON.parse(rawCheckInLogs); } catch (e) { checkInLogs = []; }
+    } else {
+      checkInLogs = [];
+    }
+    if (rawDebts !== null) {
+      try { debts = JSON.parse(rawDebts).map(normalizeDebt); } catch (e) { debts = []; }
+    } else {
+      debts = [];
+    }
+
     if (rawSchedules !== null) {
       try {
         schedules = JSON.parse(rawSchedules);
@@ -199,6 +309,8 @@
     } else {
       schedules = []; // 新设备登录默认留空！
     }
+
+    schedules = schedules.map(normalizeSchedule);
 
     saveDataLocalOnly();
   }
@@ -229,6 +341,9 @@
         students,
         schedules,
         teachers,
+        courseTypes,
+        checkInLogs,
+        debts,
       };
 
       localStorage.setItem('edu_scheduler_last_sync_time', String(now));
@@ -280,6 +395,9 @@
             students = remoteData.students || [];
             schedules = remoteData.schedules || [];
             teachers = remoteData.teachers || teachers;
+            courseTypes = remoteData.courseTypes || courseTypes;
+            checkInLogs = remoteData.checkInLogs || [];
+            debts = (remoteData.debts || []).map(normalizeDebt);
 
             localStorage.setItem('edu_scheduler_last_sync_time', String(remoteData.updatedAt));
             saveDataLocalOnly();
@@ -307,6 +425,9 @@
           students = event.data.students || students;
           schedules = event.data.schedules || schedules;
           teachers = event.data.teachers || teachers;
+          courseTypes = event.data.courseTypes || courseTypes;
+          checkInLogs = event.data.checkInLogs || [];
+          debts = (event.data.debts || []).map(normalizeDebt);
           saveDataLocalOnly();
           renderTeacherOptions();
           refreshView();
@@ -325,6 +446,9 @@
     localStorage.setItem(STORAGE_KEY_STUDENTS, JSON.stringify(students));
     localStorage.setItem(STORAGE_KEY_SCHEDULES, JSON.stringify(schedules));
     localStorage.setItem(STORAGE_KEY_TEACHERS, JSON.stringify(teachers));
+    localStorage.setItem(STORAGE_KEY_COURSE_TYPES, JSON.stringify(courseTypes));
+    localStorage.setItem(STORAGE_KEY_CHECKIN_LOGS, JSON.stringify(checkInLogs));
+    localStorage.setItem(STORAGE_KEY_DEBTS, JSON.stringify(debts));
   }
 
   function addDays(date, days) {
@@ -336,6 +460,154 @@
   function safeBind(id, eventName, handler) {
     const el = document.getElementById(id);
     if (el) el.addEventListener(eventName, handler);
+  }
+
+  // ==========================================
+  // 教务核心操作（移植自 Teacher-manager App）
+  // ==========================================
+
+  // 从排课推导扣费节数（与排课时的扣课逻辑一致：1小时=1节，最低1节）
+  function getLessonCost(schedule) {
+    return Math.max(1, Math.round((schedule.durationMinutes || 60) / 60));
+  }
+
+  // 消课（签到确认）：状态→completed，记财务流水；课时不足部分记欠课账
+  function executeCheckIn(scheduleId, remarks) {
+    const sch = schedules.find((s) => s.id === scheduleId);
+    if (!sch) return;
+    if (sch.status === SCHEDULE_STATUS.COMPLETED) {
+      showToast('该课程已消课，无需重复操作', 'circle-info');
+      return;
+    }
+    if (sch.status === SCHEDULE_STATUS.STUDENT_LEAVE) {
+      showToast('该课程为请假状态，请先撤销请假', 'circle-info');
+      return;
+    }
+
+    const student = students.find((st) => st.id === sch.studentId);
+    const deducted = getLessonCost(sch);
+    let payment = 0;
+    let finalRemarks = remarks || '';
+
+    if (student) {
+      const course = (student.courses || []).find((c) => c.id === sch.courseId || c.name === sch.subject);
+      if (course) {
+        if (course.unitPrice > 0) {
+          payment = deducted * course.unitPrice;
+        }
+        // 排课时课时被扣成负数（超上）→ 消课时转正式欠课账
+        if (course.remainingLessons < 0) {
+          addDebt(student.id, course.name, -course.remainingLessons);
+          finalRemarks = (finalRemarks ? finalRemarks + '；' : '') + '超上' + -course.remainingLessons + '节转欠课';
+          course.remainingLessons = 0;
+        }
+      }
+    }
+
+    sch.status = SCHEDULE_STATUS.COMPLETED;
+    recordCheckInLog(sch, deducted, payment, finalRemarks);
+    saveData();
+    refreshView();
+    showToast(`✅ 已消课：${sch.studentName} · ${sch.subject}（${deducted}节）`, 'circle-check');
+  }
+
+  // 学员请假：退还排课时扣掉的课时
+  function markStudentLeave(scheduleId) {
+    const sch = schedules.find((s) => s.id === scheduleId);
+    if (!sch) return;
+    if (sch.status !== SCHEDULE_STATUS.SCHEDULED) {
+      showToast('仅待上课的课程可以办理请假', 'circle-info');
+      return;
+    }
+
+    const student = students.find((st) => st.id === sch.studentId);
+    const deducted = getLessonCost(sch);
+    if (student) {
+      const course = (student.courses || []).find((c) => c.id === sch.courseId || c.name === sch.subject);
+      if (course) {
+        course.remainingLessons += deducted; // 退还课时
+      }
+    }
+
+    sch.status = SCHEDULE_STATUS.STUDENT_LEAVE;
+    saveData();
+    refreshView();
+    showToast(`🏖️ 已为 ${sch.studentName} 办理请假，退还 ${deducted} 节课时`, 'circle-check');
+  }
+
+  // 撤销状态（completed/student_leave → scheduled）
+  function revertScheduleStatus(scheduleId) {
+    const sch = schedules.find((s) => s.id === scheduleId);
+    if (!sch || sch.status === SCHEDULE_STATUS.SCHEDULED) return;
+
+    if (sch.status === SCHEDULE_STATUS.COMPLETED) {
+      // 删除对应消课流水（回滚财务）
+      checkInLogs = checkInLogs.filter((l) => l.scheduleId !== sch.id);
+    } else if (sch.status === SCHEDULE_STATUS.STUDENT_LEAVE) {
+      // 重新扣回请假时退还的课时
+      const student = students.find((st) => st.id === sch.studentId);
+      const deducted = getLessonCost(sch);
+      if (student) {
+        const course = (student.courses || []).find((c) => c.id === sch.courseId || c.name === sch.subject);
+        if (course) {
+          course.remainingLessons = Math.max(0, course.remainingLessons - deducted);
+        }
+      }
+    }
+
+    sch.status = SCHEDULE_STATUS.SCHEDULED;
+    saveData();
+    refreshView();
+    showToast('已撤销状态，还原为待上课', 'rotate-left');
+  }
+
+  // 删除排课时同步清理流水
+  function handleDeleteScheduleWithCleanup(schId) {
+    const sch = schedules.find((s) => s.id === schId);
+    checkInLogs = checkInLogs.filter((l) => l.scheduleId !== schId);
+    schedules = schedules.filter((s) => s.id !== schId);
+    if (sch && sch.status === SCHEDULE_STATUS.SCHEDULED) {
+      // 待上课的课程删除时退还课时（保持"课时只随消课消耗"的一致性）
+      const student = students.find((st) => st.id === sch.studentId);
+      if (student) {
+        const course = (student.courses || []).find((c) => c.id === sch.courseId || c.name === sch.subject);
+        if (course) course.remainingLessons += getLessonCost(sch);
+      }
+    }
+    saveData();
+  }
+
+  // 新购/充值课时包（自动抵扣同课程名欠课）
+  function purchaseCoursePack(studentId, courseName, lessons, unitPrice) {
+    const student = students.find((st) => st.id === studentId);
+    if (!student) return;
+    normalizeStudent(student);
+    migrateStudentCourses(student);
+
+    let remaining = lessons;
+    let remark = '';
+    const repaid = repayDebt(studentId, courseName, lessons);
+    if (repaid > 0) {
+      remaining -= repaid;
+      remark = ` (自动抵扣欠课 ${repaid} 节)`;
+    }
+
+    const existing = (student.courses || []).find((c) => c.name === courseName);
+    if (existing) {
+      existing.remainingLessons += remaining;
+      if (unitPrice > 0) existing.unitPrice = unitPrice;
+    } else {
+      student.courses.push({
+        id: 'course_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+        name: courseName,
+        remainingLessons: remaining,
+        unitPrice,
+      });
+    }
+
+    saveData();
+    refreshView();
+    showToast(`💳 ${student.name} 充值「${courseName}」${lessons} 节${remark}`, 'circle-check');
   }
 
   // ==========================================
@@ -651,6 +923,12 @@
       const totalLessons = student.courses.reduce((acc, c) => acc + c.remainingLessons, 0);
       const isLow = totalLessons <= 2;
       const themeColor = getThemeBadgeStyle(student.colorTheme || 'amber');
+      const studentDebts = getStudentDebts(student.id);
+      const debtsHtml = studentDebts.length
+        ? `<div class="flex items-center gap-1 text-[10px] text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
+             <i class="fa-solid fa-triangle-exclamation"></i> 欠课: ${studentDebts.map((d) => `${d.courseName} ${d.amount}节`).join('、')}
+           </div>`
+        : '';
 
       const coursesHtml = student.courses
         .map(
@@ -692,8 +970,13 @@
             <button class="btn-edit-student text-slate-400 hover:text-slate-700 transition" title="编辑学生课程">
               <i class="fa-solid fa-pen-to-square"></i>
             </button>
+            <button class="btn-recharge-student text-emerald-500 hover:text-emerald-600 transition" title="充值课时">
+              <i class="fa-solid fa-circle-plus"></i>
+            </button>
           </div>
         </div>
+
+        ${debtsHtml}
 
         <div class="space-y-1 pt-1 border-t border-slate-100">
           ${coursesHtml}
@@ -730,6 +1013,11 @@
       card.querySelector('.btn-edit-student').addEventListener('click', (e) => {
         e.stopPropagation();
         openStudentModal(student);
+      });
+
+      card.querySelector('.btn-recharge-student').addEventListener('click', (e) => {
+        e.stopPropagation();
+        openRechargeModal(student);
       });
 
       container.appendChild(card);
@@ -997,7 +1285,22 @@
     const badgeFontSize = isSpacious ? 'text-[11px] font-bold' : 'text-[10px] font-bold';
     const textFontSize = isSpacious ? 'text-[10.5px] font-semibold' : 'text-[9.5px] font-medium';
 
+    // 状态角标（待上课/已消课/请假）
+    let statusBadge = '';
+    if (schedule.status === SCHEDULE_STATUS.COMPLETED) {
+      statusBadge = `<span class="absolute top-0.5 right-1 text-[8px] font-black text-white bg-emerald-500 px-1 py-0.2 rounded-md shadow-xs z-10" title="已消课">✓ 消</span>`;
+    } else if (schedule.status === SCHEDULE_STATUS.STUDENT_LEAVE) {
+      statusBadge = `<span class="absolute top-0.5 right-1 text-[8px] font-black text-white bg-rose-400 px-1 py-0.2 rounded-md shadow-xs z-10" title="学员请假">假</span>`;
+    }
+    if (schedule.status === SCHEDULE_STATUS.COMPLETED) {
+      card.style.opacity = '0.65';
+    } else if (schedule.status === SCHEDULE_STATUS.STUDENT_LEAVE) {
+      card.style.opacity = '0.5';
+      card.classList.add('grayscale');
+    }
+
     card.innerHTML = `
+      ${statusBadge}
       <div class="flex flex-col justify-between h-full space-y-0.5 pointer-events-none px-2 py-1">
         <div class="flex items-center justify-between gap-1 leading-none shrink-0">
           <span class="truncate text-slate-900 ${nameFontSize} flex-1 tracking-normal font-sans">${schedule.studentName}</span>
@@ -1041,10 +1344,80 @@
 
     card.addEventListener('click', (e) => {
       e.stopPropagation();
-      openScheduleModalForEdit(schedule);
+      openScheduleActionMenu(schedule);
     });
 
     return card;
+  }
+
+  // 课程卡片点击 → 操作菜单（消课/请假/撤销/编辑/删除）
+  function openScheduleActionMenu(schedule) {
+    const status = schedule.status || SCHEDULE_STATUS.SCHEDULED;
+    const student = students.find((st) => st.id === schedule.studentId);
+    const menu = document.createElement('div');
+    menu.id = 'scheduleActionMenu';
+    menu.className = 'fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4';
+
+    let actionsHtml = '';
+    if (status === SCHEDULE_STATUS.SCHEDULED) {
+      actionsHtml += `
+        <button data-act="checkin" class="w-full py-3 rounded-xl font-bold text-sm bg-emerald-500 text-white hover:bg-emerald-600 transition flex items-center justify-center gap-2">
+          <i class="fa-solid fa-circle-check"></i> 消课签到（${getLessonCost(schedule)}节）
+        </button>
+        <button data-act="leave" class="w-full py-3 rounded-xl font-bold text-sm bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 transition flex items-center justify-center gap-2">
+          <i class="fa-solid fa-person-walking-arrow-right"></i> 学员请假（退还${getLessonCost(schedule)}节）
+        </button>
+      `;
+    } else {
+      actionsHtml += `
+        <button data-act="revert" class="w-full py-3 rounded-xl font-bold text-sm bg-amber-500 text-white hover:bg-amber-600 transition flex items-center justify-center gap-2">
+          <i class="fa-solid fa-rotate-left"></i> 撤销状态（还原为待上课）
+        </button>
+      `;
+    }
+    actionsHtml += `
+      <button data-act="edit" class="w-full py-3 rounded-xl font-bold text-sm bg-slate-100 text-slate-700 hover:bg-slate-200 transition flex items-center justify-center gap-2">
+        <i class="fa-solid fa-pen-to-square"></i> 编辑课程信息
+      </button>
+      ${status !== SCHEDULE_STATUS.SCHEDULED ? `
+      <button data-act="delete" class="w-full py-3 rounded-xl font-bold text-sm bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 transition flex items-center justify-center gap-2">
+        <i class="fa-solid fa-trash-can"></i> 删除该课程
+      </button>` : ''}
+    `;
+
+    const statusText = status === SCHEDULE_STATUS.COMPLETED ? '已消课 ✓' : status === SCHEDULE_STATUS.STUDENT_LEAVE ? '学员请假 🏖️' : '待上课';
+    menu.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5 space-y-2.5">
+        <div class="pb-3 border-b border-slate-100">
+          <div class="font-bold text-sm text-slate-800">${schedule.studentName} · ${schedule.subject}</div>
+          <div class="text-[11px] text-slate-400 mt-0.5">${schedule.date} ${schedule.startTime} · ${schedule.durationMinutes}分钟 · 状态：${statusText}</div>
+          ${student && getStudentDebts(student.id).length ? `<div class="text-[10px] text-rose-500 mt-1">⚠ 该学员有欠课：${getStudentDebts(student.id).map(d => d.courseName + ' ' + d.amount + '节').join('、')}</div>` : ''}
+        </div>
+        ${actionsHtml}
+        <button data-act="close" class="w-full py-2 text-slate-400 text-xs hover:text-slate-600 transition">取消</button>
+      </div>
+    `;
+
+    menu.addEventListener('click', (e) => {
+      if (e.target === menu) { menu.remove(); return; }
+      const btn = e.target.closest('[data-act]');
+      if (!btn) return;
+      const act = btn.getAttribute('data-act');
+      menu.remove();
+      if (act === 'checkin') executeCheckIn(schedule.id);
+      else if (act === 'leave') markStudentLeave(schedule.id);
+      else if (act === 'revert') revertScheduleStatus(schedule.id);
+      else if (act === 'edit') openScheduleModalForEdit(schedule);
+      else if (act === 'delete') {
+        if (confirm('确定删除该课程？待上课状态的课程会退还已扣课时。')) {
+          handleDeleteScheduleWithCleanup(schedule.id);
+          refreshView();
+          showToast('已删除该课程', 'trash-can');
+        }
+      }
+    });
+
+    document.body.appendChild(menu);
   }
 
   // ==========================================
@@ -1349,8 +1722,7 @@
     if (!schId) return;
 
     if (confirm('确定要删除此节课程安排吗？')) {
-      schedules = schedules.filter((s) => s.id !== schId);
-      saveData();
+      handleDeleteScheduleWithCleanup(schId);
       closeScheduleModal();
       refreshView();
       showToast('已取消该课程安排', 'trash-can');
@@ -1756,6 +2128,141 @@
 
     const hEl = document.getElementById('statWeeklyHours');
     if (hEl) hEl.textContent = `${totalHours} 小时`;
+
+    updateFinancePanel();
+  }
+
+  // ==========================================
+  // 财务看板（简单版，移植自 Teacher-manager）
+  // ==========================================
+  function updateFinancePanel() {
+    const panel = document.getElementById('financePanel');
+    if (!panel) return;
+
+    const now = new Date();
+    const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const monthLogs = checkInLogs.filter((l) => (l.checkInTime || '').startsWith(monthPrefix));
+
+    const monthLessons = monthLogs.reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
+    const monthValue = monthLogs.reduce((acc, l) => acc + (l.paymentAmount || 0), 0);
+    const totalRemaining = students.reduce(
+      (acc, st) => acc + (st.courses || []).reduce((a, c) => a + Math.max(0, c.remainingLessons), 0), 0
+    );
+    const totalStockValue = students.reduce(
+      (acc, st) => acc + (st.courses || []).reduce((a, c) => a + Math.max(0, c.remainingLessons) * (c.unitPrice || 0), 0), 0
+    );
+    const debtors = debts.filter((d) => d.amount > 0);
+
+    panel.innerHTML = `
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">本月经营</span>
+        <span class="text-[9px] text-slate-300">${monthPrefix}</span>
+      </div>
+      <div class="grid grid-cols-2 gap-1.5">
+        <div class="bg-amber-50 border border-amber-100 rounded-lg p-2">
+          <div class="text-[9px] text-amber-600/70">本月课消</div>
+          <div class="text-sm font-black text-amber-700">${monthLessons.toFixed(1)} 节</div>
+        </div>
+        <div class="bg-emerald-50 border border-emerald-100 rounded-lg p-2">
+          <div class="text-[9px] text-emerald-600/70">课消价值</div>
+          <div class="text-sm font-black text-emerald-700">¥${monthValue.toFixed(0)}</div>
+        </div>
+        <div class="bg-sky-50 border border-sky-100 rounded-lg p-2">
+          <div class="text-[9px] text-sky-600/70">待消存量</div>
+          <div class="text-sm font-black text-sky-700">${totalRemaining.toFixed(1)} 节</div>
+        </div>
+        <div class="${debtors.length ? 'bg-rose-50 border-rose-100' : 'bg-slate-50 border-slate-100'} border rounded-lg p-2">
+          <div class="text-[9px] ${debtors.length ? 'text-rose-600/70' : 'text-slate-400'}">欠课学员</div>
+          <div class="text-sm font-black ${debtors.length ? 'text-rose-600' : 'text-slate-400'}">${debtors.length} 人</div>
+        </div>
+      </div>
+      ${debtors.length ? `
+      <div class="mt-2 space-y-1">
+        ${debtors.map((d) => {
+          const st = students.find((s) => s.id === d.studentId);
+          return `<div class="flex items-center justify-between text-[10px] bg-rose-50/60 px-2 py-1 rounded-md">
+            <span class="text-slate-600 font-semibold">${st ? st.name : '未知学员'} · ${d.courseName}</span>
+            <span class="text-rose-500 font-bold">欠 ${d.amount} 节</span>
+          </div>`;
+        }).join('')}
+      </div>` : ''}
+    `;
+  }
+
+  // 充值课时弹窗（新购/充值二合一，自动抵扣欠课）
+  function openRechargeModal(student) {
+    normalizeStudent(student);
+    migrateStudentCourses(student);
+
+    const old = document.getElementById('rechargeModal');
+    if (old) old.remove();
+
+    const courseOptions = (student.courses || [])
+      .map((c) => `<option value="${c.name}">${c.name}（余 ${c.remainingLessons}）</option>`)
+      .join('');
+
+    const modal = document.createElement('div');
+    modal.id = 'rechargeModal';
+    modal.className = 'fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4';
+    modal.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5 space-y-3" onclick="event.stopPropagation()">
+        <div class="font-bold text-sm text-slate-800 pb-2 border-b border-slate-100">
+          <i class="fa-solid fa-circle-plus text-emerald-500"></i>
+          为 ${student.name} 充值课时
+        </div>
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">课程</label>
+          <select id="rechargeCourseSelect" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-300">
+            ${courseOptions}
+            <option value="__new__">➕ 新课程包...</option>
+          </select>
+        </div>
+        <div id="rechargeNewNameWrap" class="hidden">
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">新课程名称</label>
+          <input type="text" id="rechargeNewName" placeholder="如：美术一对一" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-300">
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-500 mb-1">充值节数</label>
+            <input type="number" id="rechargeLessons" min="1" value="10" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300">
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-500 mb-1">单价 (元/节)</label>
+            <input type="number" id="rechargePrice" min="0" value="200" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300">
+          </div>
+        </div>
+        <div class="text-[10px] text-slate-400">💡 若该课程有欠课，充值会自动抵扣</div>
+        <div class="flex gap-2 pt-1">
+          <button id="rechargeCancel" class="flex-1 py-2.5 rounded-xl text-slate-600 bg-slate-100 font-bold text-xs">取消</button>
+          <button id="rechargeConfirm" class="flex-1 py-2.5 rounded-xl bg-emerald-500 text-white font-bold text-xs hover:bg-emerald-600">确认充值</button>
+        </div>
+      </div>
+    `;
+
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+
+    const courseSelect = modal.querySelector('#rechargeCourseSelect');
+    courseSelect.addEventListener('change', () => {
+      modal.querySelector('#rechargeNewNameWrap').classList.toggle('hidden', courseSelect.value !== '__new__');
+      if (courseSelect.value !== '__new__') {
+        const c = student.courses.find((x) => x.name === courseSelect.value);
+        if (c && c.unitPrice > 0) modal.querySelector('#rechargePrice').value = c.unitPrice;
+      }
+    });
+    modal.querySelector('#rechargeCancel').addEventListener('click', () => modal.remove());
+    modal.querySelector('#rechargeConfirm').addEventListener('click', () => {
+      const lessons = parseFloat(modal.querySelector('#rechargeLessons').value) || 0;
+      const price = parseFloat(modal.querySelector('#rechargePrice').value) || 0;
+      if (lessons <= 0) { showToast('请输入有效的充值节数', 'circle-info'); return; }
+      let courseName = courseSelect.value;
+      if (courseName === '__new__') {
+        courseName = (modal.querySelector('#rechargeNewName').value || '').trim();
+        if (!courseName) { showToast('请填写新课程名称', 'circle-info'); return; }
+      }
+      modal.remove();
+      purchaseCoursePack(student.id, courseName, lessons, price);
+    });
   }
 
   function exportScheduleData() {
