@@ -911,7 +911,6 @@
               <div class="text-[10px] text-slate-400"><i class="fa-solid fa-phone text-[9px]"></i> ${student.phone || '无电话'}</div>
             </div>
           </div>
-          <span class="text-[10px] font-bold ${isLow ? 'text-rose-600 bg-rose-50 border border-rose-200' : 'text-amber-700 bg-amber-50'} px-1.5 py-0.5 rounded">共剩${totalLessons}课时</span>
         </div>
         ${studentDebts.length ? `<div class="text-[10px] text-rose-600 bg-rose-50 border border-rose-200 px-2 py-1 rounded-lg"><i class="fa-solid fa-triangle-exclamation"></i> 欠课: ${studentDebts.map((d) => `${d.courseName} ${d.amount}节`).join('、')}</div>` : ''}
         <div class="space-y-1">
@@ -1185,9 +1184,6 @@
           </div>
 
           <div class="flex items-center gap-2">
-            <span class="text-[10px] font-bold ${isLow ? 'text-rose-600 bg-rose-50 border border-rose-200' : 'text-amber-700 bg-amber-50'} px-1.5 py-0.5 rounded">
-              共剩${totalLessons}课时
-            </span>
             <button class="btn-edit-student text-slate-400 hover:text-slate-700 transition" title="编辑学生课程">
               <i class="fa-solid fa-pen-to-square"></i>
             </button>
@@ -1208,6 +1204,12 @@
         draggedStudent = student;
         draggedSchedule = null;
         card.classList.add('dragging');
+
+        // 抽屉遮罩会挡住日历的 drop 区域 → 拖拽开始时自动收起抽屉
+        const drawer = document.getElementById('sidebarStudent');
+        const backdrop = document.getElementById('batchSidebarBackdrop');
+        if (drawer) { drawer.classList.add('hidden'); drawer.classList.remove('flex'); }
+        if (backdrop) backdrop.classList.add('hidden');
 
         e.dataTransfer.effectAllowed = 'copy';
         e.dataTransfer.setData('application/json', JSON.stringify({ type: 'student', id: student.id }));
