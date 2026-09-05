@@ -1426,10 +1426,10 @@
       <input type="text" class="m-course-name flex-1 min-w-0 px-3 py-2.5 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-amber-400 bg-white"
              placeholder="课程名称（如：钢琴一对一）" value="${course ? course.name || '' : ''}" required>
       <div class="flex items-center gap-1 shrink-0 bg-white border border-slate-200 rounded-xl px-2 py-1">
-        <span class="text-slate-400 text-[10px]">剩</span>
-        <input type="number" class="m-course-lessons w-12 text-center border-0 outline-none text-xs font-bold text-amber-800"
-               placeholder="负数=欠课" value="${course ? (course.remainingLessons ?? 10) : 10}" required>
-        <span class="text-slate-400 text-[10px]">课时</span>
+        <button type="button" class="m-course-debt-toggle w-6 h-6 rounded-lg text-[10px] font-bold transition ${course && course.remainingLessons < 0 ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-400'}" title="点一下切换欠课">${course && course.remainingLessons < 0 ? '欠' : '＋'}</button>
+        <input type="number" min="0" class="m-course-lessons w-12 text-center border-0 outline-none text-xs font-bold ${course && course.remainingLessons < 0 ? 'text-rose-600' : 'text-amber-800'}"
+               placeholder="0" value="${course ? Math.abs(course.remainingLessons ?? 10) : 10}" required>
+        <span class="m-course-unit text-slate-400 text-[10px]">${course && course.remainingLessons < 0 ? '欠课' : '课时'}</span>
       </div>
       <button type="button" class="m-course-remove text-slate-300 hover:text-rose-500 px-1.5 py-2 transition" title="删除该课程">
         <i class="fa-solid fa-trash-can"></i>
@@ -1442,6 +1442,28 @@
         row.remove();
       } else {
         showToast('至少保留一门课程');
+      }
+    });
+
+    // 欠课切换：＋→欠（数值取负），欠→＋（恢复正数）
+    const debtBtn = row.querySelector('.m-course-debt-toggle');
+    const lessonsEl = row.querySelector('.m-course-lessons');
+    const unitEl = row.querySelector('.m-course-unit');
+    debtBtn.addEventListener('click', () => {
+      const isDebt = debtBtn.textContent.trim() === '欠';
+      if (isDebt) {
+        debtBtn.textContent = '＋';
+        debtBtn.className = 'm-course-debt-toggle w-6 h-6 rounded-lg text-[10px] font-bold transition bg-slate-100 text-slate-400';
+        lessonsEl.className = 'm-course-lessons w-12 text-center border-0 outline-none text-xs font-bold text-amber-800';
+        unitEl.textContent = '课时';
+        lessonsEl.value = Math.abs(parseInt(lessonsEl.value, 10) || 0);
+      } else {
+        debtBtn.textContent = '欠';
+        debtBtn.className = 'm-course-debt-toggle w-6 h-6 rounded-lg text-[10px] font-bold transition bg-rose-500 text-white';
+        lessonsEl.className = 'm-course-lessons w-12 text-center border-0 outline-none text-xs font-bold text-rose-600';
+        unitEl.textContent = '欠课';
+        const v = parseInt(lessonsEl.value, 10) || 0;
+        lessonsEl.value = v > 0 ? -v : v;
       }
     });
 
@@ -1469,7 +1491,10 @@
       const nameInput = row.querySelector('.m-course-name');
       const lessonsInput = row.querySelector('.m-course-lessons');
       const cName = nameInput ? nameInput.value.trim() : '';
-      const cLessons = lessonsInput ? (parseInt(lessonsInput.value, 10) || 0) : 0;
+      // 欠课模式下输入框存的是负值（切换按钮负责正负），直接取实际值
+      const rawLessons = lessonsInput ? parseInt(lessonsInput.value, 10) : 0;
+      const isDebtMode = row.querySelector('.m-course-debt-toggle').textContent.trim() === '欠';
+      const cLessons = isNaN(rawLessons) ? 0 : (isDebtMode && rawLessons > 0 ? -rawLessons : rawLessons);
       if (!cName && idx > 0) return;
       courses.push({
         id: 'c_m_' + (editId || 'st') + '_' + idx + '_' + Date.now(),
