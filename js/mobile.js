@@ -148,26 +148,31 @@
     const student = students.find((st) => st.id === sch.studentId);
     const deducted = getLessonCost(sch);
     let payment = 0;
+    let finalRemarks = remarks || '';
     if (student) {
       const course = (student.courses || []).find((c) => c.id === sch.courseId || c.name === sch.subject);
       if (course) {
         if (course.unitPrice > 0) payment = deducted * course.unitPrice;
+        // 消课时扣除课时（App 语义：排课不扣，消课才扣）
+        course.remainingLessons -= deducted;
+        // 扣成负数（超上）→ 转正式欠课账
         if (course.remainingLessons < 0) {
           addDebt(student.id, course.name, -course.remainingLessons);
-          course.remainingLessons = 0;
+          finalRemarks = (finalRemarks ? finalRemarks + '；' : '') + '超上' + -course.remainingLessons + '节转欠课';
         }
       }
     }
 
     sch.status = SCHEDULE_STATUS.COMPLETED;
-    recordCheckInLog(sch, deducted, payment, remarks);
+    recordCheckInLog(sch, deducted, payment, finalRemarks);
     saveData();
     renderMobile3DayView();
     renderMobileStudents();
     showToast(`✅ 已消课：${sch.studentName} · ${sch.subject}（${deducted}节）`);
   }
 
-  // 学员请假：退还排课时扣掉的课时（不限课程时间，已消课的也可改为请假）
+  // 学员请假（不限课程时间，已消课的也可改为请假）
+  // App 语义：请假本不扣课时；只有已消课改请假时，才把消课扣掉的课时退回
   function markStudentLeave(scheduleId) {
     const sch = schedules.find((s) => s.id === scheduleId);
     if (!sch) return;
@@ -176,22 +181,23 @@
       return;
     }
     if (sch.status === SCHEDULE_STATUS.COMPLETED) {
-      // 已消课 → 改为请假：删除消课流水（回滚财务）+ 退还课时
+      // 已消课 → 改为请假：删除消课流水（回滚财务）+ 退还消课时扣掉的课时
       checkInLogs = checkInLogs.filter((l) => l.scheduleId !== sch.id);
-    }
-
-    const student = students.find((st) => st.id === sch.studentId);
-    const deducted = getLessonCost(sch);
-    if (student) {
-      const course = (student.courses || []).find((c) => c.id === sch.courseId || c.name === sch.subject);
-      if (course) course.remainingLessons += deducted;
+      const student = students.find((st) => st.id === sch.studentId);
+      const deducted = getLessonCost(sch);
+      if (student) {
+        const course = (student.courses || []).find((c) => c.id === sch.courseId || c.name === sch.subject);
+        if (course) course.remainingLessons += deducted;
+      }
+      showToast(`🏖️ 已消课的课程改为请假，退还 ${deducted} 节课时`);
+    } else {
+      showToast('🏖️ 已为 ' + sch.studentName + ' 办理请假');
     }
 
     sch.status = SCHEDULE_STATUS.STUDENT_LEAVE;
     saveData();
     renderMobile3DayView();
     renderMobileStudents();
-    showToast(`🏖️ 已为 ${sch.studentName} 办理请假，退还 ${deducted} 节课时`);
   }
 
   function revertScheduleStatus(scheduleId) {
@@ -199,15 +205,16 @@
     if (!sch || sch.status === SCHEDULE_STATUS.SCHEDULED) return;
 
     if (sch.status === SCHEDULE_STATUS.COMPLETED) {
+      // 撤销消课：删流水 + 退还消课扣掉的课时
       checkInLogs = checkInLogs.filter((l) => l.scheduleId !== sch.id);
-    } else if (sch.status === SCHEDULE_STATUS.STUDENT_LEAVE) {
       const student = students.find((st) => st.id === sch.studentId);
       const deducted = getLessonCost(sch);
       if (student) {
         const course = (student.courses || []).find((c) => c.id === sch.courseId || c.name === sch.subject);
-        if (course) course.remainingLessons = Math.max(0, course.remainingLessons - deducted);
+        if (course) course.remainingLessons += deducted;
       }
     }
+    // 请假撤销：App 语义下请假本不扣课时，直接还原状态即可
 
     sch.status = SCHEDULE_STATUS.SCHEDULED;
     saveData();
@@ -1163,13 +1170,7 @@
       };
       schedules.push(newSchedule);
 
-      if (student && student.courses) {
-        const targetCourse = student.courses.find((c) => c.id === courseId || c.name === subject);
-        if (targetCourse) {
-          const cost = Math.max(1, Math.round(durationMinutes / 60));
-          targetCourse.remainingLessons = Math.max(0, targetCourse.remainingLessons - cost);
-        }
-      }
+      // 课时在消课时扣除（App 语义），排课不再扣——避免"排了又消"重复扣的困惑
 
       showToast(`已成功为 [${student ? student.name : ''}] 排课！`);
     }
