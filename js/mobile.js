@@ -396,6 +396,14 @@
       openMobileScheduleModalForNew();
     });
 
+    // ============ 手机端 新增/编辑学员 ============
+    safeBind('btnCloseMobileStudent', 'click', closeMobileStudentModal);
+    safeBind('btnCancelMobileStudent', 'click', closeMobileStudentModal);
+    safeBind('formMobileStudent', 'submit', handleSaveMobileStudent);
+    safeBind('btnDeleteMobileStudent', 'click', handleDeleteMobileStudent);
+    safeBind('btnAddMobileCourseRow', 'click', () => addMobileCourseRow());
+    safeBind('btnMobileAddStudent', 'click', () => openMobileStudentModal());
+
     safeBind('btnCloseMobileSchedule', 'click', closeMobileScheduleModal);
     safeBind('btnCancelMobileSchedule', 'click', closeMobileScheduleModal);
     safeBind('formMobileSchedule', 'submit', handleSaveMobileSchedule);
@@ -694,7 +702,14 @@
     });
 
     if (list.length === 0) {
-      container.innerHTML = `<div class="text-center py-10 text-slate-400 text-xs">暂无学员记录</div>`;
+      const emptyText = query || filter === 'low'
+        ? '没有符合条件的学员'
+        : '还没有学员，点击右上角"+ 新增"开始添加';
+      container.innerHTML = `
+        <div class="text-center py-10 text-slate-400 text-xs">
+          <i class="fa-solid fa-user-ghost text-3xl mb-2 block opacity-40"></i>
+          ${emptyText}
+        </div>`;
       return;
     }
 
@@ -718,10 +733,19 @@
             <div class="text-[10.5px] text-slate-400 truncate mt-0.5">${coursesStr}</div>
           </div>
         </div>
-        <button class="btn-schedule-mobile px-3 py-1.5 bg-amber-500 text-white font-bold text-xs rounded-xl shadow-xs shrink-0">
-          排课
-        </button>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button class="btn-edit-mobile-student px-2 py-1.5 bg-slate-100 text-slate-500 text-xs rounded-xl active:bg-slate-200" title="编辑学员">
+            <i class="fa-solid fa-pen"></i>
+          </button>
+          <button class="btn-schedule-mobile px-3 py-1.5 bg-amber-500 text-white font-bold text-xs rounded-xl shadow-xs shrink-0">
+            排课
+          </button>
+        </div>
       `;
+
+      card.querySelector('.btn-edit-mobile-student').addEventListener('click', () => {
+        openMobileStudentModal(st);
+      });
 
       card.querySelector('.btn-schedule-mobile').addEventListener('click', () => {
         const tabEl = document.getElementById('navTabSchedule');
@@ -975,6 +999,156 @@
         toast.classList.add('translate-y-10', 'opacity-0', 'pointer-events-none');
         toast.classList.remove('translate-y-0', 'opacity-100');
       }, 2500);
+    }
+  }
+
+  // ============ 手机端 新增/编辑学员弹窗逻辑 ============
+  function openMobileStudentModal(student = null) {
+    const modal = document.getElementById('modalMobileStudent');
+    const titleEl = document.getElementById('modalMobileStudentTitle');
+    const editEl = document.getElementById('editMobileStudentId');
+    const nameEl = document.getElementById('mobileStudentNameInput');
+    const phoneEl = document.getElementById('mobileStudentPhoneInput');
+    const colorEl = document.getElementById('mobileStudentColorSelect');
+    const delBtn = document.getElementById('btnDeleteMobileStudent');
+    const container = document.getElementById('mobileStudentCoursesContainer');
+    if (!modal) return;
+
+    if (editEl) editEl.value = student ? student.id : '';
+    if (nameEl) nameEl.value = student ? student.name : '';
+    if (phoneEl) phoneEl.value = student ? (student.phone || '') : '';
+    if (colorEl) colorEl.value = student ? (student.colorTheme || 'amber') : 'amber';
+    if (titleEl) titleEl.textContent = student ? '编辑学员' : '添加新学员';
+    if (delBtn) delBtn.classList.toggle('hidden', !student);
+
+    if (container) {
+      container.innerHTML = '';
+      const courses = student && student.courses && student.courses.length
+        ? student.courses
+        : [{ name: '', remainingLessons: 10 }];
+      courses.forEach((c) => addMobileCourseRow(c));
+    }
+
+    showModal('modalMobileStudent');
+  }
+
+  function closeMobileStudentModal() {
+    hideModal('modalMobileStudent');
+  }
+
+  function addMobileCourseRow(course = null) {
+    const container = document.getElementById('mobileStudentCoursesContainer');
+    if (!container) return;
+    const row = document.createElement('div');
+    row.className = 'mobile-course-row flex items-center gap-2';
+    row.innerHTML = `
+      <input type="text" class="m-course-name flex-1 min-w-0 px-3 py-2.5 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+             placeholder="课程名称（如：钢琴一对一）" value="${course ? course.name || '' : ''}" required>
+      <div class="flex items-center gap-1 shrink-0 bg-white border border-slate-200 rounded-xl px-2 py-1">
+        <span class="text-slate-400 text-[10px]">剩</span>
+        <input type="number" class="m-course-lessons w-12 text-center border-0 outline-none text-xs font-bold text-amber-800"
+               min="0" value="${course ? (course.remainingLessons ?? 10) : 10}" required>
+        <span class="text-slate-400 text-[10px]">课时</span>
+      </div>
+      <button type="button" class="m-course-remove text-slate-300 hover:text-rose-500 px-1.5 py-2 transition" title="删除该课程">
+        <i class="fa-solid fa-trash-can"></i>
+      </button>
+    `;
+
+    row.querySelector('.m-course-remove').addEventListener('click', () => {
+      const rows = container.querySelectorAll('.mobile-course-row');
+      if (rows.length > 1) {
+        row.remove();
+      } else {
+        showToast('至少保留一门课程');
+      }
+    });
+
+    container.appendChild(row);
+  }
+
+  function handleSaveMobileStudent(e) {
+    e.preventDefault();
+    const editIdEl = document.getElementById('editMobileStudentId');
+    const editId = editIdEl ? editIdEl.value : '';
+    const nameEl = document.getElementById('mobileStudentNameInput');
+    const name = nameEl ? nameEl.value.trim() : '';
+    const phoneEl = document.getElementById('mobileStudentPhoneInput');
+    const phone = phoneEl ? phoneEl.value.trim() : '';
+    const colorEl = document.getElementById('mobileStudentColorSelect');
+    const colorTheme = colorEl ? colorEl.value : 'amber';
+
+    if (!name) {
+      showToast('请填写学员姓名');
+      return;
+    }
+
+    const courses = [];
+    document.querySelectorAll('#mobileStudentCoursesContainer .mobile-course-row').forEach((row, idx) => {
+      const nameInput = row.querySelector('.m-course-name');
+      const lessonsInput = row.querySelector('.m-course-lessons');
+      const cName = nameInput ? nameInput.value.trim() : '';
+      const cLessons = lessonsInput ? (parseInt(lessonsInput.value, 10) || 0) : 0;
+      if (!cName && idx > 0) return;
+      courses.push({
+        id: 'c_m_' + (editId || 'st') + '_' + idx + '_' + Date.now(),
+        name: cName || '通用课程',
+        remainingLessons: cLessons,
+      });
+    });
+
+    if (courses.length === 0) {
+      showToast('请至少填写一门课程');
+      return;
+    }
+
+    if (editId) {
+      const idx = students.findIndex((s) => s.id === editId);
+      if (idx !== -1) {
+        // 编辑：沿用原课程 id，保证历史排课记录的引用不断
+        const oldCourses = students[idx].courses || [];
+        students[idx] = {
+          ...students[idx],
+          name,
+          phone,
+          colorTheme,
+          courses: courses.map((c, i) => ({
+            ...c,
+            id: oldCourses[i] ? oldCourses[i].id : c.id,
+          })),
+        };
+        showToast('学员信息已更新');
+      }
+    } else {
+      students.push({
+        id: 'st_' + Date.now(),
+        name,
+        phone,
+        colorTheme,
+        courses,
+      });
+      showToast('成功添加新学员！');
+    }
+
+    saveData();
+    closeMobileStudentModal();
+    renderMobileStudents();
+    renderMobile3DayView();
+  }
+
+  function handleDeleteMobileStudent() {
+    const editIdEl = document.getElementById('editMobileStudentId');
+    const editId = editIdEl ? editIdEl.value : '';
+    if (!editId) return;
+
+    if (confirm('确定要删除该学员吗？其所有排课记录也会被清理。')) {
+      students = students.filter((s) => s.id !== editId);
+      schedules = schedules.filter((sch) => sch.studentId !== editId);
+      saveData();
+      closeMobileStudentModal();
+      renderMobileStudents();
+      renderMobile3DayView();
+      showToast('已删除学员记录');
     }
   }
 

@@ -107,8 +107,15 @@
       <!-- 搜索与筛选 -->
       <div class="space-y-2 pb-3 border-b border-slate-100">
         <div class="relative">
-          <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
-          <input type="text" id="mobileSearchStudent" placeholder="搜索学员姓名/科目..." class="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-xl outline-none focus:ring-1 focus:ring-amber-400">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-slate-400 text-xs"></i>
+          <div class="flex items-center gap-2">
+            <input type="text" id="mobileSearchStudent" placeholder="搜索学员姓名/科目..." class="flex-1 min-w-0 pl-8 pr-3 py-2.5 text-xs border border-slate-200 rounded-xl outline-none focus:ring-1 focus:ring-amber-400">
+            <button id="btnMobileAddStudent"
+                    class="shrink-0 px-3 py-2.5 bg-amber-500 text-white rounded-xl font-bold text-xs shadow-xs flex items-center gap-1 active:bg-amber-600 transition"
+                    title="新增学员">
+              <i class="fa-solid fa-user-plus text-[11px]"></i> 新增
+            </button>
+          </div>
         </div>
         <div class="flex items-center space-x-1.5 text-xs">
           <button class="mobile-student-filter active px-2.5 py-1 rounded-lg bg-amber-500 text-white font-bold" data-filter="all">全部学员</button>
@@ -233,6 +240,81 @@
   </div>
 
   <!-- 云端实时同步设置 Modal 弹窗 -->
+  <!-- 手机端 新增/编辑学员 Modal 弹窗 (适配手机: 底部抽屉式 + 大号触控区域) -->
+  <div id="modalMobileStudent" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-end justify-center z-50 hidden transition-opacity">
+    <div class="bg-white rounded-t-3xl shadow-2xl border-t border-amber-200 w-full max-h-[92dvh] overflow-y-auto p-5 space-y-3.5 text-xs transform transition-all modal-box">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <h3 id="modalMobileStudentTitle" class="font-bold text-base text-slate-800">添加新学员</h3>
+        <button id="btnCloseMobileStudent" class="text-slate-400 hover:text-slate-700 transition">
+          <i class="fa-solid fa-xmark text-xl"></i>
+        </button>
+      </div>
+
+      <form id="formMobileStudent" class="space-y-3">
+        <input type="hidden" id="editMobileStudentId">
+
+        <!-- 姓名 (整行大号输入框, 手机上好按) -->
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">学员姓名 <span class="text-rose-500">*</span></label>
+          <input type="text" id="mobileStudentNameInput" required placeholder="如：李小明"
+                 class="w-full px-3.5 py-3 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-400 bg-amber-50/40">
+        </div>
+
+        <!-- 联系电话 + 卡片颜色 -->
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">联系电话</label>
+            <input type="tel" id="mobileStudentPhoneInput" placeholder="138****0000"
+                   class="w-full px-3 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-amber-400">
+          </div>
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">卡片颜色</label>
+            <select id="mobileStudentColorSelect"
+                    class="w-full px-3 py-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-amber-400 bg-white font-semibold">
+              <option value="amber">暖阳橙</option>
+              <option value="emerald">薄荷绿</option>
+              <option value="sky">天空蓝</option>
+              <option value="purple">优雅紫</option>
+              <option value="rose">珊瑚粉</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 报读课程列表 -->
+        <div class="bg-slate-50 border border-slate-200/80 p-3 rounded-xl space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="block font-bold text-slate-700">报读课程及剩余课时</label>
+            <button type="button" id="btnAddMobileCourseRow"
+                    class="text-amber-600 font-bold text-[11px] flex items-center gap-1 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200 active:bg-amber-100 transition">
+              <i class="fa-solid fa-plus text-[10px]"></i> 添加课程
+            </button>
+          </div>
+          <div id="mobileStudentCoursesContainer" class="space-y-2">
+            <!-- 动态课程行 -->
+          </div>
+        </div>
+
+        <!-- 操作按钮 (大号, 手机易点) -->
+        <div class="flex items-center justify-between pt-3 border-t border-slate-100 gap-2">
+          <button type="button" id="btnDeleteMobileStudent"
+                  class="px-4 py-3 text-rose-600 bg-rose-50 rounded-xl font-bold transition hidden">
+            删除
+          </button>
+          <div class="flex items-center space-x-2 ml-auto">
+            <button type="button" id="btnCancelMobileStudent"
+                    class="px-4 py-3 text-slate-600 bg-slate-100 rounded-xl font-medium active:bg-slate-200">
+              取消
+            </button>
+            <button type="submit"
+                    class="px-5 py-3 bg-amber-500 text-white rounded-xl font-bold shadow-md shadow-amber-200 active:bg-amber-600">
+              保存学员
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div id="modalSyncKey" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
     <div class="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full sm:w-[420px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
       <div class="bg-amber-500 px-5 py-3.5 text-white flex items-center justify-between">
