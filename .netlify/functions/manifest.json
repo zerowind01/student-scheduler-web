@@ -1,0 +1,1 @@
+{"functions":[{"bundler":"zisi","buildData":{"runtimeAPIVersion":1},"mainFile":"/tmp/ssw/netlify/functions/sync.js","name":"sync","priority":10,"runtimeVersion":"nodejs22.x","path":"/tmp/ssw/.netlify/functions/sync.zip","runtime":"js"}],"system":{"arch":"x64","platform":"linux"},"timestamp":1788584672560,"version":1}

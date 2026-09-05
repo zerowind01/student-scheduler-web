@@ -2,6 +2,48 @@
    学生排课工作台 - 高颜值 UI 样式 & 移动端/桌面端自适应适配
    ========================================================================== */
 
+/* ==========================================================================
+   0. 手机浏览器视口适配（地址栏 / 刘海屏安全区）
+   问题：100vh 在手机浏览器里包含被地址栏遮挡的区域，导致底部导航被挡。
+   方案：
+   1) body 用 100dvh（动态视口高度，地址栏收放时自动适应）；
+   2) 老浏览器不支持 dvh 时回退 100vh（先写 vh 再写 dvh，后者覆盖前者）；
+   3) 配合 viewport-fit=cover，用 env(safe-area-inset-*) 给底部导航和
+      Toast 预留 iPhone 小白条等安全区，避免内容压到屏幕圆角外。
+   ========================================================================== */
+html, body {
+  /* 兜底：不支持 dvh 的老浏览器 */
+  height: 100vh;
+  /* 现代浏览器：动态视口高度，地址栏收放自动适应 */
+  height: 100dvh;
+}
+
+body {
+  overflow: hidden; /* 页面级不滚动，内部区域各自滚动 */
+}
+
+/* 底部导航栏：上内边距保证按钮间距，下内边距预留安全区（小白条） */
+.mobile-bottom-nav {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  /* iPhone 底部安全区；非刘海屏 env() 返回 0，无需担心 */
+  padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* Toast 通知：底部位置同样避开安全区，否则会被小白条压住 */
+.toast-safe-bottom {
+  bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* iOS Safari: 键盘弹出时 100dvh 自动收缩，但要防止 body 被橡皮筋拉动 */
+@supports (-webkit-touch-callout: none) {
+  body {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+  }
+}
+
 /* 1. 基础布局与极简滚动条 */
 .custom-scrollbar::-webkit-scrollbar {
   width: 5px;

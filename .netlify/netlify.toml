@@ -1,0 +1,39 @@
+functionsDirectory = "/tmp/ssw/netlify/functions"
+functionsDirectoryOrigin = "default"
+plugins = []
+headers = []
+
+[build]
+publish = "/tmp/ssw"
+publishOrigin = "default"
+functions = "/tmp/ssw/netlify/functions"
+
+[build.environment]
+
+[build.processing]
+
+[build.processing.css]
+
+[build.processing.html]
+
+[build.processing.images]
+
+[build.processing.js]
+
+[build.services]
+
+[functions]
+
+[functions."*"]
+
+[[redirects]]
+from = "/api/sync"
+to = "/.netlify/functions/sync"
+status = 200.0
+force = false
+
+[redirects.query]
+
+[redirects.conditions]
+
+[redirects.headers]
