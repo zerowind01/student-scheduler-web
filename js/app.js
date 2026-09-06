@@ -1081,12 +1081,19 @@
             </div>`).join('')}
         </div>
         <div class="flex gap-2 pt-1">
+          <button class="flex-1 py-2 rounded-lg bg-sky-50 text-sky-700 text-[11px] font-bold border border-sky-200 hover:bg-sky-100 transition page-detail-student" data-id="${student.id}"><i class="fa-solid fa-circle-info"></i> 详情</button>
           <button class="flex-1 py-2 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-bold page-edit-student" data-id="${student.id}"><i class="fa-solid fa-pen-to-square"></i> 编辑</button>
           <button class="flex-1 py-2 rounded-lg bg-emerald-500 text-white text-[11px] font-bold page-recharge-student" data-id="${student.id}"><i class="fa-solid fa-circle-plus"></i> 充值</button>
         </div>
       </div>`;
     }).join('');
 
+    container.querySelectorAll('.page-detail-student').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const st = students.find((s) => s.id === btn.getAttribute('data-id'));
+        if (st) openStudentDetail(st.id);
+      });
+    });
     container.querySelectorAll('.page-edit-student').forEach((btn) => {
       btn.addEventListener('click', () => {
         const st = students.find((s) => s.id === btn.getAttribute('data-id'));
