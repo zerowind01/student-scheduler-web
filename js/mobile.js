@@ -1831,5 +1831,15 @@
     }
   }
 
+  // 可访问性：Esc 键关闭最上层弹窗（等价于点右上角 ✕）
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const openOverlays = Array.from(document.querySelectorAll('.fixed[id^="modal"]:not(.hidden)'));
+    const top = openOverlays[openOverlays.length - 1];
+    if (!top) return;
+    const closeBtn = top.querySelector('[id^="btnClose"]');
+    if (closeBtn) closeBtn.click();
+  });
+
   document.addEventListener('DOMContentLoaded', initMobileApp);
 })();

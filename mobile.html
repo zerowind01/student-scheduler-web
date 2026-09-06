@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>LessonMate - 手机版</title>
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
   <link rel="apple-touch-icon" href="assets/logo.svg">
@@ -120,7 +120,7 @@
         <div class="relative">
           <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-slate-400 text-xs"></i>
           <div class="flex items-center gap-2">
-            <input type="text" id="mobileSearchStudent" placeholder="搜索学员姓名/科目..." class="flex-1 min-w-0 pl-8 pr-3 py-2.5 text-xs border border-slate-200 rounded-xl outline-none focus:ring-1 focus:ring-amber-400">
+            <input type="text" id="mobileSearchStudent" placeholder="搜索学员姓名/科目…" class="flex-1 min-w-0 pl-8 pr-3 py-2.5 text-xs border border-slate-200 rounded-xl outline-none focus:ring-1 focus:ring-amber-400">
             <button id="btnMobileAddStudent"
                     class="shrink-0 px-3 py-2.5 bg-amber-500 text-white rounded-xl font-bold text-xs shadow-xs flex items-center gap-1 active:bg-amber-600 transition"
                     title="新增学员">
@@ -186,7 +186,7 @@
       <i class="fa-solid fa-users text-base fn-students"></i>
       <span>学员</span>
     </button>
-    <button id="navTabQuickAdd" class="flex flex-col items-center justify-center -mt-5 w-12 h-12 rounded-full bg-gradient-to-tr from-amber-500 to-orange-400 text-white shadow-lg shadow-orange-200 border-4 border-white transition active:scale-95">
+    <button id="navTabQuickAdd" aria-label="新增" class="flex flex-col items-center justify-center -mt-5 w-12 h-12 rounded-full bg-gradient-to-tr from-amber-500 to-orange-400 text-white shadow-lg shadow-orange-200 border-4 border-white transition active:scale-95">
       <i class="fa-solid fa-plus text-lg"></i>
     </button>
     <button id="navTabFinance" class="nav-tab flex flex-col items-center gap-0.5 text-slate-400 font-medium text-[10px] px-2 relative" data-view="finance">
@@ -201,16 +201,16 @@
   </nav>
 
   <!-- 手机端 安排新课程 Modal 弹窗 -->
-  <div id="modalMobileSchedule" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-end justify-center z-50 hidden transition-opacity">
+  <div id="modalMobileSchedule" role="dialog" aria-modal="true" aria-labelledby="modalMobileScheduleTitle" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-end justify-center z-50 hidden transition-opacity">
     <div class="bg-white rounded-t-3xl shadow-2xl border-t border-amber-200 w-full max-h-[92vh] overflow-y-auto p-5 space-y-3.5 text-xs transform transition-all modal-box">
       <div class="flex items-center justify-between pb-2 border-b border-slate-100">
         <h3 id="modalMobileScheduleTitle" class="font-bold text-base text-slate-800">安排新课程</h3>
-        <button id="btnCloseMobileSchedule" class="text-slate-400 hover:text-slate-700 transition">
+        <button id="btnCloseMobileSchedule" aria-label="关闭" class="text-slate-400 hover:text-slate-700 transition">
           <i class="fa-solid fa-xmark text-xl"></i>
         </button>
       </div>
 
-      <form id="formMobileSchedule" class="space-y-3">
+      <form id="formMobileSchedule" autocomplete="off" class="space-y-3">
         <input type="hidden" id="inputMobileScheduleId">
 
         <!-- 选择学员 -->
@@ -311,11 +311,11 @@
   </div>
 
   <!-- 手机端 学员详情 Modal 弹窗 (底部抽屉式) -->
-  <div id="modalMobileStudentDetail" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-end justify-center z-50 hidden transition-opacity">
+  <div id="modalMobileStudentDetail" role="dialog" aria-modal="true" aria-labelledby="mobileStudentDetailTitle" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-end justify-center z-50 hidden transition-opacity">
     <div class="bg-white rounded-t-3xl shadow-2xl border-t border-sky-200 w-full max-h-[88dvh] overflow-y-auto p-5 space-y-3.5 text-xs transform transition-all modal-box">
       <div class="flex items-center justify-between pb-2 border-b border-slate-100">
         <h3 id="mobileStudentDetailTitle" class="font-bold text-base text-slate-800">学员详情</h3>
-        <button id="btnCloseMobileStudentDetail" class="text-slate-400 hover:text-slate-700 transition">
+        <button id="btnCloseMobileStudentDetail" aria-label="关闭" class="text-slate-400 hover:text-slate-700 transition">
           <i class="fa-solid fa-xmark text-xl"></i>
         </button>
       </div>
@@ -327,16 +327,16 @@
 
   <!-- 云端实时同步设置 Modal 弹窗 -->
   <!-- 手机端 新增/编辑学员 Modal 弹窗 (适配手机: 底部抽屉式 + 大号触控区域) -->
-  <div id="modalMobileStudent" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-end justify-center z-50 hidden transition-opacity">
+  <div id="modalMobileStudent" role="dialog" aria-modal="true" aria-labelledby="modalMobileStudentTitle" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-end justify-center z-50 hidden transition-opacity">
     <div class="bg-white rounded-t-3xl shadow-2xl border-t border-amber-200 w-full max-h-[92dvh] overflow-y-auto p-5 space-y-3.5 text-xs transform transition-all modal-box">
       <div class="flex items-center justify-between pb-2 border-b border-slate-100">
         <h3 id="modalMobileStudentTitle" class="font-bold text-base text-slate-800">添加新学员</h3>
-        <button id="btnCloseMobileStudent" class="text-slate-400 hover:text-slate-700 transition">
+        <button id="btnCloseMobileStudent" aria-label="关闭" class="text-slate-400 hover:text-slate-700 transition">
           <i class="fa-solid fa-xmark text-xl"></i>
         </button>
       </div>
 
-      <form id="formMobileStudent" class="space-y-3">
+      <form id="formMobileStudent" autocomplete="off" class="space-y-3">
         <input type="hidden" id="editMobileStudentId">
 
         <!-- 姓名 (整行大号输入框, 手机上好按) -->
@@ -401,14 +401,14 @@
     </div>
   </div>
 
-  <div id="modalSyncKey" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
+  <div id="modalSyncKey" role="dialog" aria-modal="true" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
     <div class="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full sm:w-[420px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
       <div class="bg-amber-500 px-5 py-3.5 text-white flex items-center justify-between">
         <div class="flex items-center gap-2">
           <i class="fa-solid fa-cloud-arrow-up text-amber-100 text-base"></i>
           <h3 class="font-bold text-sm sm:text-base">云端跨设备实时同步设置</h3>
         </div>
-        <button id="btnCloseSyncModal" class="text-amber-100 hover:text-white transition">
+        <button id="btnCloseSyncModal" aria-label="关闭" class="text-amber-100 hover:text-white transition">
           <i class="fa-solid fa-xmark text-lg"></i>
         </button>
       </div>
@@ -449,7 +449,7 @@
   </div>
 
   <!-- 提示 Toast 通知 -->
-  <div id="toast" class="fixed toast-safe-bottom left-1/2 -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-2xl shadow-xl text-xs font-medium flex items-center space-x-2 z-50 transform transition-all translate-y-10 opacity-0 pointer-events-none whitespace-nowrap">
+  <div id="toast" role="status" aria-live="polite" class="fixed toast-safe-bottom left-1/2 -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-2xl shadow-xl text-xs font-medium flex items-center space-x-2 z-50 transform transition-all translate-y-10 opacity-0 pointer-events-none whitespace-nowrap">
     <i id="toastIcon" class="fa-solid fa-circle-check text-amber-400"></i>
     <span id="toastMsg">操作成功</span>
   </div>

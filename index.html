@@ -2,8 +2,9 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LessonMate - 智能教务排课系统</title>
+  <meta name="theme-color" content="#fafaf9">
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
   <script>
     // 手机屏自动跳转至专属手机版 (mobile.html)
@@ -92,7 +93,7 @@
     </div>
 
     <!-- 手机端 菜单入口按钮 -->
-    <button id="btnOpenMobileMenu" class="md:hidden w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition">
+    <button id="btnOpenMobileMenu" aria-label="更多教务工具" class="md:hidden w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition">
       <i class="fa-solid fa-ellipsis-vertical text-sm"></i>
     </button>
   </header>
@@ -138,7 +139,7 @@
           </div>
           <div class="flex items-center gap-1">
             <span id="studentCountBadge" class="bg-amber-100 text-amber-800 text-[11px] px-1.5 py-0.2 rounded-full font-semibold">0 人</span>
-            <button id="btnCloseBatchSidebar" class="w-5 h-5 rounded text-slate-400 hover:text-rose-500 hover:bg-slate-200/60 transition flex items-center justify-center" title="关闭">
+            <button id="btnCloseBatchSidebar" aria-label="关闭" class="w-5 h-5 rounded text-slate-400 hover:text-rose-500 hover:bg-slate-200/60 transition flex items-center justify-center" title="关闭">
               <i class="fa-solid fa-xmark text-[10px]"></i>
             </button>
           </div>
@@ -147,7 +148,7 @@
         <!-- 搜索框 -->
         <div class="relative">
           <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2 text-slate-400 text-[10px]"></i>
-          <input type="text" id="searchStudentInput" aria-label="搜索学生" placeholder="搜索姓名/科目..." class="w-full pl-7 pr-2.5 py-1 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-400 transition">
+          <input type="text" id="searchStudentInput" aria-label="搜索学生" placeholder="搜索姓名/科目…" class="w-full pl-7 pr-2.5 py-1 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-400 transition">
         </div>
 
         <!-- 分类筛选 -->
@@ -315,11 +316,11 @@
   </div>
 
   <!-- 手机端菜单 弹窗 Sheet -->
-  <div id="modalMobileMenu" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-end justify-center z-50 hidden transition-opacity">
+  <div id="modalMobileMenu" role="dialog" aria-modal="true" aria-label="更多教务工具" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-end justify-center z-50 hidden transition-opacity">
     <div class="bg-white rounded-t-3xl shadow-2xl border-t border-amber-200 w-full p-6 space-y-4 text-xs transform transition-all scale-100 modal-box">
       <div class="flex items-center justify-between pb-3 border-b border-slate-100">
         <h3 class="font-bold text-base text-slate-800">更多教务工具</h3>
-        <button id="btnCloseMobileMenu" class="text-slate-400 hover:text-slate-700 transition">
+        <button id="btnCloseMobileMenu" aria-label="关闭" class="text-slate-400 hover:text-slate-700 transition">
           <i class="fa-solid fa-xmark text-lg"></i>
         </button>
       </div>
@@ -346,19 +347,19 @@
   </div>
 
   <!-- 排课 Modal 弹窗 -->
-  <div id="modalSchedule" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center sm:items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
+  <div id="modalSchedule" role="dialog" aria-modal="true" aria-labelledby="modalScheduleTitle" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center sm:items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
     <div class="bg-white rounded-2xl sm:rounded-2xl shadow-2xl border border-slate-100 w-full sm:w-[480px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
       <div class="bg-gradient-to-r from-amber-500 to-orange-400 px-5 py-3.5 text-white flex items-center justify-between">
         <div class="flex items-center gap-2">
           <i class="fa-solid fa-calendar-plus text-base"></i>
           <h3 id="modalScheduleTitle" class="font-bold text-sm sm:text-base">安排新课程</h3>
         </div>
-        <button id="btnCloseScheduleModal" class="text-white/80 hover:text-white transition">
+        <button id="btnCloseScheduleModal" aria-label="关闭" class="text-white/80 hover:text-white transition">
           <i class="fa-solid fa-xmark text-lg"></i>
         </button>
       </div>
 
-      <form id="formSchedule" class="p-5 space-y-3.5 text-xs">
+      <form id="formSchedule" autocomplete="off" class="p-5 space-y-3.5 text-xs">
         <input type="hidden" id="inputScheduleId">
         <input type="hidden" id="inputStudentId">
 
@@ -434,11 +435,11 @@
           <div>
             <label class="block font-medium text-slate-700 mb-1">标识卡片颜色</label>
             <div class="flex items-center space-x-2 pt-1">
-              <label class="cursor-pointer"><input type="radio" name="colorTheme" value="amber" checked class="sr-only peer"><span class="w-5 h-5 rounded-full bg-amber-400 inline-block peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-amber-600 transition"></span></label>
-              <label class="cursor-pointer"><input type="radio" name="colorTheme" value="emerald" class="sr-only peer"><span class="w-5 h-5 rounded-full bg-emerald-400 inline-block peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-emerald-600 transition"></span></label>
-              <label class="cursor-pointer"><input type="radio" name="colorTheme" value="sky" class="sr-only peer"><span class="w-5 h-5 rounded-full bg-sky-400 inline-block peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-sky-600 transition"></span></label>
-              <label class="cursor-pointer"><input type="radio" name="colorTheme" value="purple" class="sr-only peer"><span class="w-5 h-5 rounded-full bg-purple-400 inline-block peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-purple-600 transition"></span></label>
-              <label class="cursor-pointer"><input type="radio" name="colorTheme" value="rose" class="sr-only peer"><span class="w-5 h-5 rounded-full bg-rose-400 inline-block peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-rose-600 transition"></span></label>
+              <label class="cursor-pointer"><input type="radio" name="colorTheme" value="amber" checked aria-label="卡片颜色：琥珀" class="sr-only peer"><span class="w-5 h-5 rounded-full bg-amber-400 inline-block peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-amber-600 transition"></span></label>
+              <label class="cursor-pointer"><input type="radio" name="colorTheme" value="emerald" aria-label="卡片颜色：薄荷绿" class="sr-only peer"><span class="w-5 h-5 rounded-full bg-emerald-400 inline-block peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-emerald-600 transition"></span></label>
+              <label class="cursor-pointer"><input type="radio" name="colorTheme" value="sky" aria-label="卡片颜色：天空蓝" class="sr-only peer"><span class="w-5 h-5 rounded-full bg-sky-400 inline-block peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-sky-600 transition"></span></label>
+              <label class="cursor-pointer"><input type="radio" name="colorTheme" value="purple" aria-label="卡片颜色：优雅紫" class="sr-only peer"><span class="w-5 h-5 rounded-full bg-purple-400 inline-block peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-purple-600 transition"></span></label>
+              <label class="cursor-pointer"><input type="radio" name="colorTheme" value="rose" aria-label="卡片颜色：珊瑚粉" class="sr-only peer"><span class="w-5 h-5 rounded-full bg-rose-400 inline-block peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-rose-600 transition"></span></label>
             </div>
           </div>
         </div>
@@ -464,7 +465,7 @@
 
         <div>
           <label class="block font-medium text-slate-700 mb-1">排课备注 (选填)</label>
-          <textarea id="inputNotes" rows="2" placeholder="填写备课笔记..." class="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-amber-400 outline-none resize-none"></textarea>
+          <textarea id="inputNotes" rows="2" placeholder="填写备课笔记…" class="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-amber-400 outline-none resize-none"></textarea>
         </div>
 
         <div class="flex items-center justify-between pt-2 border-t border-slate-100">
@@ -485,14 +486,14 @@
   </div>
 
   <!-- 学员详情 Modal 弹窗 -->
-  <div id="modalStudentDetail" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
+  <div id="modalStudentDetail" role="dialog" aria-modal="true" aria-labelledby="studentDetailTitle" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
     <div class="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full sm:w-[520px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
       <div class="bg-slate-800 px-5 py-3.5 text-white flex items-center justify-between sticky top-0 z-10">
         <div class="flex items-center gap-2">
           <i class="fa-solid fa-user text-base"></i>
           <h3 id="studentDetailTitle" class="font-bold text-sm sm:text-base">学员详情</h3>
         </div>
-        <button id="btnCloseStudentDetail" class="text-white/80 hover:text-white transition">
+        <button id="btnCloseStudentDetail" aria-label="关闭" class="text-white/80 hover:text-white transition">
           <i class="fa-solid fa-xmark text-lg"></i>
         </button>
       </div>
@@ -503,19 +504,19 @@
   </div>
 
   <!-- 新建/编辑学生 Modal 弹窗 -->
-  <div id="modalStudent" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
+  <div id="modalStudent" role="dialog" aria-modal="true" aria-labelledby="modalStudentTitle" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
     <div class="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full sm:w-[420px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
       <div class="bg-slate-800 px-5 py-3.5 text-white flex items-center justify-between">
         <div class="flex items-center gap-2">
           <i class="fa-solid fa-user-plus text-amber-400"></i>
           <h3 id="modalStudentTitle" class="font-bold text-sm sm:text-base">添加新学生</h3>
         </div>
-        <button id="btnCloseStudentModal" class="text-slate-400 hover:text-white transition">
+        <button id="btnCloseStudentModal" aria-label="关闭" class="text-slate-400 hover:text-white transition">
           <i class="fa-solid fa-xmark text-lg"></i>
         </button>
       </div>
 
-      <form id="formStudent" class="p-5 space-y-3.5 text-xs">
+      <form id="formStudent" autocomplete="off" class="p-5 space-y-3.5 text-xs">
         <input type="hidden" id="editStudentId">
 
         <div>
@@ -569,14 +570,14 @@
   </div>
 
   <!-- 教师管理 Modal 弹窗 -->
-  <div id="modalTeacher" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
+  <div id="modalTeacher" role="dialog" aria-modal="true" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
     <div class="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full sm:w-[450px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
       <div class="bg-gradient-to-r from-amber-600 to-amber-500 px-5 py-3.5 text-white flex items-center justify-between">
         <div class="flex items-center gap-2">
           <i class="fa-solid fa-chalkboard-user text-amber-200"></i>
           <h3 class="font-bold text-sm sm:text-base">机构教师管理</h3>
         </div>
-        <button id="btnCloseTeacherModal" class="text-white/80 hover:text-white transition">
+        <button id="btnCloseTeacherModal" aria-label="关闭" class="text-white/80 hover:text-white transition">
           <i class="fa-solid fa-xmark text-lg"></i>
         </button>
       </div>
@@ -588,7 +589,7 @@
           </div>
         </div>
 
-        <form id="formAddTeacher" class="border-t border-slate-100 pt-3 space-y-2.5">
+        <form id="formAddTeacher" autocomplete="off" class="border-t border-slate-100 pt-3 space-y-2.5">
           <label class="block font-bold text-slate-700">添加新任课老师</label>
           <div class="grid grid-cols-2 gap-2">
             <input type="text" id="teacherNameInput" required placeholder="老师姓名" class="px-2.5 py-1.5 border border-slate-200 rounded-lg outline-none">
@@ -605,14 +606,14 @@
   </div>
 
   <!-- 导入课表数据 Modal 弹窗 -->
-  <div id="modalImport" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
+  <div id="modalImport" role="dialog" aria-modal="true" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
     <div class="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full sm:w-[480px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
       <div class="bg-slate-800 px-5 py-3.5 text-white flex items-center justify-between">
         <div class="flex items-center gap-2">
           <i class="fa-solid fa-file-import text-amber-400 text-base"></i>
           <h3 class="font-bold text-sm sm:text-base">导入课表数据 (JSON / JS)</h3>
         </div>
-        <button id="btnCloseImportModal" class="text-slate-400 hover:text-white transition">
+        <button id="btnCloseImportModal" aria-label="关闭" class="text-slate-400 hover:text-white transition">
           <i class="fa-solid fa-xmark text-lg"></i>
         </button>
       </div>
@@ -661,14 +662,14 @@
   </div>
 
   <!-- 二维码扫码极速同步 Modal 弹窗 -->
-  <div id="modalQrSync" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
+  <div id="modalQrSync" role="dialog" aria-modal="true" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
     <div class="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full sm:w-[380px] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box text-center p-6 space-y-4">
       <div class="flex items-center justify-between pb-2 border-b border-slate-100">
         <div class="flex items-center gap-2 font-bold text-slate-800 text-sm">
           <i class="fa-solid fa-qrcode text-amber-500 text-lg"></i>
           <span>手机扫码 1 秒同步课表</span>
         </div>
-        <button id="btnCloseQrModal" class="text-slate-400 hover:text-slate-600 transition">
+        <button id="btnCloseQrModal" aria-label="关闭" class="text-slate-400 hover:text-slate-600 transition">
           <i class="fa-solid fa-xmark text-lg"></i>
         </button>
       </div>
@@ -688,14 +689,14 @@
   </div>
 
   <!-- 云端实时同步设置 Modal 弹窗 -->
-  <div id="modalSyncKey" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
+  <div id="modalSyncKey" role="dialog" aria-modal="true" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
     <div class="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full sm:w-[420px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
       <div class="bg-amber-500 px-5 py-3.5 text-white flex items-center justify-between">
         <div class="flex items-center gap-2">
           <i class="fa-solid fa-cloud-arrow-up text-amber-100 text-lg"></i>
           <h3 class="font-bold text-sm sm:text-base">云端跨设备实时同步设置</h3>
         </div>
-        <button id="btnCloseSyncModal" class="text-amber-100 hover:text-white transition">
+        <button id="btnCloseSyncModal" aria-label="关闭" class="text-amber-100 hover:text-white transition">
           <i class="fa-solid fa-xmark text-lg"></i>
         </button>
       </div>
@@ -748,7 +749,7 @@
   </div>
 
   <!-- 提示 Toast 通知 -->
-  <div id="toast" class="fixed bottom-14 sm:bottom-6 right-4 sm:right-6 bg-slate-800 text-white px-3.5 py-2 rounded-xl shadow-xl text-xs font-medium flex items-center space-x-2 z-50 transform transition-all translate-y-10 opacity-0 pointer-events-none">
+  <div id="toast" role="status" aria-live="polite" class="fixed bottom-14 sm:bottom-6 right-4 sm:right-6 bg-slate-800 text-white px-3.5 py-2 rounded-xl shadow-xl text-xs font-medium flex items-center space-x-2 z-50 transform transition-all translate-y-10 opacity-0 pointer-events-none">
     <i id="toastIcon" class="fa-solid fa-circle-check text-emerald-400"></i>
     <span id="toastMsg">操作成功</span>
   </div>

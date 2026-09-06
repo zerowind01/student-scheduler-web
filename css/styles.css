@@ -230,7 +230,10 @@ body {
 
 /* 7. Modal 弹窗显示动画 (自动覆盖所有弹窗) */
 .modal-box {
-  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease;
+  /* 显式列出过渡属性（Web 界面规范禁 transition: all）；!important 压过 Tailwind 的 transition-all */
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease !important;
+  /* 弹窗内滚到边界时不带动底层页面滚动 */
+  overscroll-behavior: contain;
 }
 
 div:not(.hidden) > .modal-box,
@@ -250,4 +253,18 @@ div:not(.hidden) .modal-box {
   border-radius: 9999px;
   padding: 1px 8px;
   box-shadow: 0 2px 6px -1px rgba(245, 158, 11, 0.4);
+}
+
+/* 9. 触控优化：消除移动端点击 300ms 双击缩放判定延迟 */
+button, a, select, input, textarea {
+  touch-action: manipulation;
+}
+
+/* 10. 等宽数字：时间刻度 / 周次范围 / 周统计数字列对齐不跳动 */
+.time-slot-label,
+#currentWeekRange,
+#mobileDateText,
+#statWeeklyCourses,
+#statWeeklyHours {
+  font-variant-numeric: tabular-nums;
 }
