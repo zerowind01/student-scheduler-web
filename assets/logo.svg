@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- LessonMate logo: 琥珀渐变圆角方块 + 白色日历/书本 L -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#fb923c"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#g)"/>
+  <!-- 日历 -->
+  <rect x="16" y="18" width="32" height="30" rx="5" fill="none" stroke="#fff" stroke-width="4"/>
+  <line x1="16" y1="28" x2="48" y2="28" stroke="#fff" stroke-width="4"/>
+  <line x1="24" y1="14" x2="24" y2="21" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+  <line x1="40" y1="14" x2="40" y2="21" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+  <!-- 课时点（3个：充足/紧张/欠） -->
+  <circle cx="24" cy="37" r="2.6" fill="#fff"/>
+  <circle cx="32" cy="37" r="2.6" fill="#fff"/>
+  <circle cx="40" cy="37" r="2.6" fill="#fff"/>
+  <circle cx="24" cy="43" r="2.6" fill="#fff"/>
+</svg>

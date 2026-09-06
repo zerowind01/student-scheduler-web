@@ -1063,6 +1063,34 @@
     return conflictsMap;
   }
 
+  // 按姓名稳定取色：同名学员永远同色，不同学员错开（6 色柔和板，配 tinted 背景）
+  const AVATAR_PALETTE = [
+    { bg: 'bg-rose-400',  ring: 'ring-rose-100',  solid: 'bg-rose-100',  text: 'text-rose-700' },
+    { bg: 'bg-sky-400',   ring: 'ring-sky-100',   solid: 'bg-sky-100',   text: 'text-sky-700' },
+    { bg: 'bg-emerald-400', ring: 'ring-emerald-100', solid: 'bg-emerald-100', text: 'text-emerald-700' },
+    { bg: 'bg-violet-400',  ring: 'ring-violet-100',  solid: 'bg-violet-100',  text: 'text-violet-700' },
+    { bg: 'bg-amber-400',   ring: 'ring-amber-100',   solid: 'bg-amber-100',   text: 'text-amber-700' },
+    { bg: 'bg-teal-400',    ring: 'ring-teal-100',    solid: 'bg-teal-100',    text: 'text-teal-700' },
+  ];
+  // 学员自选 colorTheme（桌面端编辑弹窗可设）→ 头像色
+  const THEME_TO_AVATAR = {
+    amber: AVATAR_PALETTE[4], emerald: AVATAR_PALETTE[2], sky: AVATAR_PALETTE[1],
+    purple: AVATAR_PALETTE[3], rose: AVATAR_PALETTE[0],
+  };
+  function avatarColorFor(st) {
+    if (st.colorTheme && THEME_TO_AVATAR[st.colorTheme]) return THEME_TO_AVATAR[st.colorTheme];
+    const name = st.name || '';
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+    return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
+  }
+  // 课时状态色：充足>3 绿 / 紧张1-3 琥珀 / 用尽0或负 玫红
+  function lessonsTone(total) {
+    if (total <= 0) return { text: 'text-rose-600', bg: 'bg-rose-50', label: total <= 0 ? `欠${Math.abs(total)}` : '剩0' };
+    if (total <= 3) return { text: 'text-amber-700', bg: 'bg-amber-100/80', label: `剩${total}` };
+    return { text: 'text-emerald-700', bg: 'bg-emerald-50', label: `剩${total}` };
+  }
+
   function renderMobileStudents() {
     const container = document.getElementById('mobileStudentContainer');
     if (!container) return;
@@ -1104,16 +1132,18 @@
 
       const total = st.courses.reduce((acc, c) => acc + c.remainingLessons, 0);
       const coursesStr = st.courses.map((c) => `${c.name}(剩${c.remainingLessons}课时${c.unitPrice > 0 ? ` ¥${c.unitPrice}/节` : ''})`).join(', ');
+      const av = avatarColorFor(st);
+      const tone = lessonsTone(total);
 
       card.innerHTML = `
         <div class="flex items-center space-x-2.5 flex-1 min-w-0">
-          <div class="w-9 h-9 rounded-full bg-amber-500 text-white font-bold flex items-center justify-center text-xs shrink-0">
+          <div class="w-9 h-9 rounded-full ${av.bg} ring-2 ${av.ring} text-white font-bold flex items-center justify-center text-xs shrink-0">
             ${st.name.substring(0, 1)}
           </div>
           <div class="flex-1 min-w-0">
             <div class="font-bold text-xs text-slate-800 flex items-center gap-1.5">
               <span>${st.name}</span>
-              <span class="text-[10px] text-amber-700 bg-amber-100/80 px-1.5 py-0.2 rounded-md">剩${total}课时</span>
+              <span class="text-[10px] ${tone.text} ${tone.bg} px-1.5 py-0.2 rounded-md font-semibold">${tone.label}课时</span>
             </div>
             <div class="text-[10.5px] text-slate-400 truncate mt-0.5">${coursesStr}</div>
           </div>
