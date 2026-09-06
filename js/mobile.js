@@ -1745,10 +1745,9 @@
       <button data-act="edit" class="w-full py-3.5 rounded-xl font-bold text-sm bg-slate-100 text-slate-700 active:bg-slate-200 flex items-center justify-center gap-2">
         <i class="fa-solid fa-pen-to-square"></i> 编辑课程信息
       </button>
-      ${status !== SCHEDULE_STATUS.SCHEDULED ? `
       <button data-act="delete" class="w-full py-3.5 rounded-xl font-bold text-sm bg-rose-50 text-rose-600 border border-rose-200 active:bg-rose-100 flex items-center justify-center gap-2">
         <i class="fa-solid fa-trash-can"></i> 删除该课程
-      </button>` : ''}
+      </button>
     `;
 
     const statusText = status === SCHEDULE_STATUS.COMPLETED ? '已消课 ✓' : status === SCHEDULE_STATUS.STUDENT_LEAVE ? '学员请假 🏖️' : '待上课';
