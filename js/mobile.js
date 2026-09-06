@@ -1546,40 +1546,71 @@
     renderMobile3DayView();
   }
 
+  // 删除课程统一入口：有后续重复排课时弹"仅本次/本次及之后"双选（无则普通确认）
+  function deleteMobileScheduleWithScope(sch, onDone) {
+    const later = schedules
+      .filter((s) => s.id !== sch.id && s.studentId === sch.studentId && s.courseId === sch.courseId && s.startTime === sch.startTime && (s.teacherId || '') === (sch.teacherId || '') && s.status === 'scheduled' && s.date > sch.date)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    const laterCount = later.length;
+
+    const doDelete = (ids, msg) => {
+      schedules = schedules.filter((s) => !ids.includes(s.id));
+      saveData();
+      showToast(msg);
+      if (onDone) onDone();
+    };
+
+    if (laterCount === 0) {
+      if (!confirm('确定删除该课程？待上课状态的课程会退还已扣课时。')) return;
+      doDelete([sch.id], '已删除该课程');
+      return;
+    }
+
+    // 系列存在 → 双选项弹窗（底部抽屉式）
+    const ov = document.createElement('div');
+    ov.className = 'fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-[70] flex items-end justify-center';
+    ov.innerHTML = `
+      <div class="bg-white w-full rounded-t-3xl p-5 pb-8 space-y-2.5" style="padding-bottom: calc(2rem + env(safe-area-inset-bottom))">
+        <div class="flex items-start gap-3 pb-3 border-b border-slate-100">
+          <div class="w-9 h-9 rounded-full bg-rose-100 text-rose-500 flex items-center justify-center shrink-0"><i class="fa-solid fa-trash-can"></i></div>
+          <div>
+            <div class="font-bold text-sm text-slate-800">删除重复排课系列</div>
+            <div class="text-[11px] text-slate-400 mt-0.5">${sch.studentName || ''} · ${sch.subject || ''} · ${sch.date} ${sch.startTime}<br>该时段之后还有 <b class="text-rose-500">${laterCount}</b> 节同样的排课</div>
+          </div>
+        </div>
+        <button data-scope="this" class="w-full py-3 rounded-xl text-sm font-bold bg-slate-100 text-slate-700 active:bg-slate-200">
+          <i class="fa-solid fa-scissors mr-1"></i> 仅删除本次（保留之后 ${laterCount} 节）
+        </button>
+        <button data-scope="all" class="w-full py-3 rounded-xl text-sm font-bold bg-rose-500 text-white active:bg-rose-600">
+          <i class="fa-solid fa-trash-can mr-1"></i> 删除本次及之后所有（共 ${laterCount + 1} 节）
+        </button>
+        <button data-scope="cancel" class="w-full py-2 text-xs text-slate-400">取消</button>
+      </div>`;
+    ov.addEventListener('click', (e) => {
+      if (e.target === ov) { ov.remove(); return; }
+      const btn = e.target.closest('[data-scope]');
+      if (!btn) return;
+      const scope = btn.getAttribute('data-scope');
+      ov.remove();
+      if (scope === 'this') doDelete([sch.id], '已删除本次课程，后续排课已保留');
+      else if (scope === 'all') {
+        const ids = [sch.id, ...later.map((s) => s.id)];
+        doDelete(ids, `已删除本次及之后共 ${ids.length} 节排课`);
+      }
+    });
+    document.body.appendChild(ov);
+  }
+
   function handleDeleteMobileSchedule() {
     const idEl = document.getElementById('inputMobileScheduleId');
     const schId = idEl ? idEl.value : '';
     if (!schId) return;
     const sch = schedules.find((s) => s.id === schId);
     if (!sch) return;
-
-    // 查找重复系列（同学员+课程+老师+时段）
-    const series = schedules
-      .filter((s) => s.id !== sch.id && s.studentId === sch.studentId && s.courseId === sch.courseId && s.startTime === sch.startTime && (s.teacherId || '') === (sch.teacherId || '') && s.status === 'scheduled')
-      .sort((a, b) => a.date.localeCompare(b.date));
-    const laterCount = series.filter((s) => s.date > sch.date).length;
-
-    if (laterCount > 0) {
-      const choice = prompt(`这节课属于重复排课系列（之后还有 ${laterCount} 节同样的课）。\n\n输入 1：仅删除本次\n输入 2：删除本次及之后所有的排课`, '1');
-      if (choice === null) return;
-      if (choice === '1') {
-        schedules = schedules.filter((s) => s.id !== schId);
-        showToast('已删除本次课程安排');
-      } else if (choice === '2') {
-        const ids = [schId, ...series.filter((s) => s.date >= sch.date).map((s) => s.id)];
-        schedules = schedules.filter((s) => !ids.includes(s.id));
-        showToast(`已删除本次及之后 ${ids.length - 1} 节排课`);
-      } else {
-        return;
-      }
-    } else {
-      if (!confirm('确定要删除此节课程安排吗？')) return;
-      schedules = schedules.filter((s) => s.id !== schId);
-      showToast('已删除课程');
-    }
-    saveData();
-    closeMobileScheduleModal();
-    renderMobile3DayView();
+    deleteMobileScheduleWithScope(sch, () => {
+      closeMobileScheduleModal();
+      renderMobile3DayView();
+    });
   }
 
   function showModal(id) {
@@ -1745,19 +1776,10 @@
       else if (act === 'revert') revertScheduleStatus(schedule.id);
       else if (act === 'edit') openMobileScheduleModalForEdit(schedule);
       else if (act === 'delete') {
-        if (confirm('确定删除该课程？待上课状态的课程会退还已扣课时。')) {
-          const student1 = students.find((st) => st.id === schedule.studentId);
-          checkInLogs = checkInLogs.filter((l) => l.scheduleId !== schedule.id);
-          schedules = schedules.filter((s) => s.id !== schedule.id);
-          if (schedule.status === SCHEDULE_STATUS.SCHEDULED && student1) {
-            const course = (student1.courses || []).find((c) => c.id === schedule.courseId || c.name === schedule.subject);
-            if (course) course.remainingLessons += getLessonCost(schedule);
-          }
-          saveData();
+        deleteMobileScheduleWithScope(schedule, () => {
           renderMobile3DayView();
           renderMobileStudents();
-          showToast('已删除该课程');
-        }
+        });
       }
     });
 
