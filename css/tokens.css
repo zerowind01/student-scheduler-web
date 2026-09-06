@@ -133,6 +133,21 @@
 }
 
 /* ==========================================================================
+   功能区配色（每区一色，图标常驻；激活态背景同色）
+   课表=琥珀(品牌) · 学员=绿(成长) · 财务=玫红(钱) · 设置=天蓝(系统)
+   ========================================================================== */
+.fn-schedule { color: var(--brand-600); }
+.fn-students { color: #059669; }
+.fn-finance  { color: var(--sem-danger); }
+.fn-settings { color: var(--sem-info); }
+
+/* 激活态：图标跟随所在区的功能色变亮一档 */
+.fn-schedule.is-active { color: var(--brand-500); }
+.fn-students.is-active { color: #10b981; }
+.fn-finance.is-active  { color: #f43f5e; }
+.fn-settings.is-active { color: #0ea5e9; }
+
+/* ==========================================================================
    动效终态（reduced-motion 用户的强制回退）
    ========================================================================== */
 @media (prefers-reduced-motion: reduce) {

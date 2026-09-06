@@ -977,17 +977,22 @@
     const activeEl = document.getElementById('page' + page.charAt(0).toUpperCase() + page.slice(1));
     if (window.uiAnim && activeEl) window.uiAnim.viewIn(activeEl);
 
-    // 桌面侧栏按钮高亮
+    // 桌面侧栏按钮高亮（文字白、激活底色跟随功能色）
+    const pageAccent = { schedule: 'bg-amber-500/90', students: 'bg-emerald-600/90', finance: 'bg-rose-500/90', settings: 'bg-sky-600/90' };
     document.querySelectorAll('.nav-page-btn[data-page]').forEach((btn) => {
       const active = btn.getAttribute('data-page') === page;
       btn.classList.toggle('active', active);
+      // 清掉所有功能色底再按需加
+      Object.values(pageAccent).forEach((c) => btn.classList.remove(c));
       if (active) {
         btn.classList.remove('text-slate-400');
-        btn.classList.add('bg-amber-500/90', 'text-white');
+        btn.classList.add(pageAccent[page] || 'bg-amber-500/90', 'text-white');
       } else {
         btn.classList.add('text-slate-400');
         btn.classList.remove('bg-amber-500/90', 'text-white');
       }
+      const icon = btn.querySelector('i.fa-solid');
+      if (icon) icon.classList.toggle('is-active', active);
     });
 
     // 手机底部导航高亮

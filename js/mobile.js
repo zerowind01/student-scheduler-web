@@ -708,10 +708,14 @@
       if (window.uiAnim && activeEl) window.uiAnim.viewIn(activeEl);
       document.querySelectorAll('.nav-tab').forEach((tab) => {
         const active = tab.getAttribute('data-view') === view;
-        tab.classList.toggle('text-amber-600', active);
+        // 文字颜色分区（图标由 .fn-* .is-active CSS 控制）
+        const fnColor = { schedule: 'text-amber-600', students: 'text-emerald-600', finance: 'text-rose-500', settings: 'text-sky-600' }[view] || 'text-amber-600';
+        tab.classList.toggle(fnColor, active);
         tab.classList.toggle('font-bold', active);
         tab.classList.toggle('text-slate-400', !active);
         tab.classList.toggle('font-medium', !active);
+        const icon = tab.querySelector('i.fa-solid');
+        if (icon) icon.classList.toggle('is-active', active);
       });
       // 日期导航栏只在课表视图显示
       const dateBar = document.getElementById('mobileDateBar');
