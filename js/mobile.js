@@ -145,6 +145,10 @@
         </div>
       </div>
 
+      <button type="button" id="mDetailRechargeBtn" class="w-full py-3 rounded-xl bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 active:bg-emerald-600 transition">
+        <i class="fa-solid fa-circle-plus"></i> 充值 / 新购课时包
+      </button>
+
       <div>
         <div class="font-bold text-[11px] text-slate-500 uppercase tracking-wider mb-1.5">课程与课时</div>
         <div class="space-y-1.5">
@@ -210,7 +214,129 @@
       </div>` : ''}
     `;
 
+    const rechargeBtn = body.querySelector('#mDetailRechargeBtn');
+    if (rechargeBtn) rechargeBtn.addEventListener('click', () => {
+      hideModal('modalMobileStudentDetail');
+      setTimeout(() => openMobileRechargeModal(student), 280);
+    });
+
     showModal('modalMobileStudentDetail');
+  }
+
+  // 手机端充值课时弹窗（与桌面 purchaseCoursePack 同一数据逻辑，自动抵扣欠课）
+  // 新购/充值课时包（自动抵扣同课程名欠课）——与桌面端逻辑一致的双端实现
+  function purchaseCoursePack(studentId, courseName, lessons, unitPrice) {
+    const student = students.find((st) => st.id === studentId);
+    if (!student) return;
+    normalizeStudent(student);
+    migrateStudentCourses(student);
+
+    let remaining = lessons;
+    let remark = '';
+    const repaid = repayDebt(studentId, courseName, lessons);
+    if (repaid > 0) {
+      remaining -= repaid;
+      remark = ` (自动抵扣欠课 ${repaid} 节)`;
+    }
+
+    const existing = (student.courses || []).find((c) => c.name === courseName);
+    if (existing) {
+      existing.remainingLessons += remaining;
+      if (unitPrice > 0) existing.unitPrice = unitPrice;
+    } else {
+      student.courses.push({
+        id: 'course_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+        name: courseName,
+        remainingLessons: remaining,
+        unitPrice,
+      });
+    }
+
+    saveData();
+  }
+
+  function openMobileRechargeModal(student) {
+    normalizeStudent(student);
+    migrateStudentCourses(student);
+
+    const old = document.getElementById('mobileRechargeModal');
+    if (old) old.remove();
+
+    const courseOptions = (student.courses || [])
+      .map((c) => `<option value="${c.name}">${c.name}（余 ${c.remainingLessons}）</option>`)
+      .join('');
+
+    const firstCourse = (student.courses || [])[0];
+
+    const modal = document.createElement('div');
+    modal.id = 'mobileRechargeModal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.className = 'fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-end justify-center';
+    modal.innerHTML = `
+      <div class="bg-white rounded-t-3xl shadow-2xl w-full p-5 space-y-3 text-xs transform modal-box">
+        <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+          <div class="font-bold text-sm text-slate-800"><i class="fa-solid fa-circle-plus text-emerald-500 mr-1"></i> 为 ${student.name} 充值课时</div>
+          <button type="button" aria-label="关闭" id="mRechargeClose" class="text-slate-400 hover:text-slate-700 transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+        </div>
+        <div>
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">课程</label>
+          <select id="mRechargeCourseSelect" class="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300 bg-white">
+            ${courseOptions}
+            <option value="__new__">➕ 新课程包...</option>
+          </select>
+        </div>
+        <div id="mRechargeNewNameWrap" class="hidden">
+          <label class="block text-[11px] font-semibold text-slate-500 mb-1">新课程名称</label>
+          <input type="text" id="mRechargeNewName" placeholder="如：美术一对一" class="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-300">
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-500 mb-1">充值节数</label>
+            <input type="number" min="1" inputmode="numeric" id="mRechargeLessons" value="10" class="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300">
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-500 mb-1">单价 (元/节)</label>
+            <input type="number" min="0" step="0.01" inputmode="decimal" id="mRechargePrice" value="${firstCourse && firstCourse.unitPrice > 0 ? firstCourse.unitPrice : ''}" placeholder="如 200" class="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300">
+          </div>
+        </div>
+        <div class="text-[10px] text-slate-400">💡 若该课程有欠课，充值会自动抵扣</div>
+        <div class="flex gap-2 pt-1">
+          <button id="mRechargeCancel" class="flex-1 py-3 rounded-xl text-slate-600 bg-slate-100 font-bold text-xs active:bg-slate-200">取消</button>
+          <button id="mRechargeConfirm" class="flex-1 py-3 rounded-xl bg-emerald-500 text-white font-bold text-xs active:bg-emerald-600">确认充值</button>
+        </div>
+      </div>
+    `;
+
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+    showModal('mobileRechargeModal');
+
+    const courseSelect = modal.querySelector('#mRechargeCourseSelect');
+    courseSelect.addEventListener('change', () => {
+      modal.querySelector('#mRechargeNewNameWrap').classList.toggle('hidden', courseSelect.value !== '__new__');
+      if (courseSelect.value !== '__new__') {
+        const c = student.courses.find((x) => x.name === courseSelect.value);
+        if (c && c.unitPrice > 0) modal.querySelector('#mRechargePrice').value = c.unitPrice;
+      }
+    });
+    modal.querySelector('#mRechargeClose').addEventListener('click', () => modal.remove());
+    modal.querySelector('#mRechargeCancel').addEventListener('click', () => modal.remove());
+    modal.querySelector('#mRechargeConfirm').addEventListener('click', () => {
+      const lessons = parseFloat(modal.querySelector('#mRechargeLessons').value) || 0;
+      const price = parseFloat(modal.querySelector('#mRechargePrice').value) || 0;
+      if (lessons <= 0) { showToast('请输入有效的充值节数'); return; }
+      let courseName = courseSelect.value;
+      if (courseName === '__new__') {
+        courseName = (modal.querySelector('#mRechargeNewName').value || '').trim();
+        if (!courseName) { showToast('请填写新课程名称'); return; }
+      }
+      modal.remove();
+      purchaseCoursePack(student.id, courseName, lessons, price);
+      showToast(`💳 ${student.name} 充值「${courseName}」${lessons} 节`);
+      renderMobileStudents();
+      renderMobile3DayView();
+    });
   }
 
   function addDebt(studentId, courseName, amount) {
@@ -1691,19 +1817,28 @@
     const container = document.getElementById('mobileStudentCoursesContainer');
     if (!container) return;
     const row = document.createElement('div');
-    row.className = 'mobile-course-row flex items-center gap-2';
+    row.className = 'mobile-course-row bg-white border border-slate-200 rounded-xl p-2 space-y-1.5';
     row.innerHTML = `
-      <input type="text" class="m-course-name flex-1 min-w-0 px-3 py-2.5 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-amber-400 bg-white"
-             placeholder="课程名称（如：钢琴一对一）" value="${course ? course.name || '' : ''}" required>
-      <div class="flex items-center gap-1 shrink-0 bg-white border border-slate-200 rounded-xl px-2 py-1">
-        <button type="button" class="m-course-debt-toggle w-6 h-6 rounded-lg text-[10px] font-bold transition ${course && course.remainingLessons < 0 ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-400'}" title="点一下切换欠课">${course && course.remainingLessons < 0 ? '欠' : '＋'}</button>
-        <input type="number" min="0" class="m-course-lessons w-12 text-center border-0 outline-none text-xs font-bold ${course && course.remainingLessons < 0 ? 'text-rose-600' : 'text-amber-800'}"
-               placeholder="0" value="${course ? Math.abs(course.remainingLessons ?? 10) : 10}" required>
-        <span class="m-course-unit text-slate-400 text-[10px]">${course && course.remainingLessons < 0 ? '欠课' : '课时'}</span>
+      <div class="flex items-center gap-2">
+        <input type="text" class="m-course-name flex-1 min-w-0 px-3 py-2.5 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+               placeholder="课程名称（如：钢琴一对一）" value="${course ? course.name || '' : ''}" required>
+        <button type="button" class="m-course-remove text-slate-300 hover:text-rose-500 px-1.5 py-2 transition shrink-0" title="删除该课程">
+          <i class="fa-solid fa-trash-can"></i>
+        </button>
       </div>
-      <button type="button" class="m-course-remove text-slate-300 hover:text-rose-500 px-1.5 py-2 transition" title="删除该课程">
-        <i class="fa-solid fa-trash-can"></i>
-      </button>
+      <div class="flex items-center gap-2">
+        <div class="flex items-center gap-1 shrink-0 bg-white border border-slate-200 rounded-xl px-2 py-1">
+          <button type="button" class="m-course-debt-toggle w-6 h-6 rounded-lg text-[10px] font-bold transition ${course && course.remainingLessons < 0 ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-400'}" title="点一下切换欠课">${course && course.remainingLessons < 0 ? '欠' : '＋'}</button>
+          <input type="number" min="0" class="m-course-lessons w-12 text-center border-0 outline-none text-xs font-bold ${course && course.remainingLessons < 0 ? 'text-rose-600' : 'text-amber-800'}"
+                 placeholder="0" value="${course ? Math.abs(course.remainingLessons ?? 10) : 10}" required>
+          <span class="m-course-unit text-slate-400 text-[10px]">${course && course.remainingLessons < 0 ? '欠课' : '课时'}</span>
+        </div>
+        <div class="flex items-center gap-1 shrink-0 bg-white border border-slate-200 rounded-xl px-2 py-1 ml-auto">
+          <span class="text-slate-400 text-[10px]">¥</span>
+          <input type="number" min="0" step="0.01" inputmode="decimal" class="m-course-price w-14 text-center border-0 outline-none text-xs font-bold text-emerald-700" placeholder="单价" value="${course && course.unitPrice > 0 ? course.unitPrice : ''}" aria-label="课程单价（元/节）">
+          <span class="text-slate-400 text-[10px]">/节</span>
+        </div>
+      </div>
     `;
 
     row.querySelector('.m-course-remove').addEventListener('click', () => {
@@ -1765,11 +1900,13 @@
       const rawLessons = lessonsInput ? parseInt(lessonsInput.value, 10) : 0;
       const isDebtMode = row.querySelector('.m-course-debt-toggle').textContent.trim() === '欠';
       const cLessons = isNaN(rawLessons) ? 0 : (isDebtMode && rawLessons > 0 ? -rawLessons : rawLessons);
+      const cPrice = parseFloat(row.querySelector('.m-course-price')?.value) || 0;
       if (!cName && idx > 0) return;
       courses.push({
         id: 'c_m_' + (editId || 'st') + '_' + idx + '_' + Date.now(),
         name: cName || '通用课程',
         remainingLessons: cLessons,
+        unitPrice: cPrice,
       });
     });
 
@@ -1781,7 +1918,7 @@
     if (editId) {
       const idx = students.findIndex((s) => s.id === editId);
       if (idx !== -1) {
-        // 编辑：沿用原课程 id，保证历史排课记录的引用不断
+        // 编辑：沿用原课程 id，保证历史排课记录的引用不断；单价留空时沿用原值不清零
         const oldCourses = students[idx].courses || [];
         students[idx] = {
           ...students[idx],
@@ -1791,6 +1928,7 @@
           courses: courses.map((c, i) => ({
             ...c,
             id: oldCourses[i] ? oldCourses[i].id : c.id,
+            unitPrice: !(c.unitPrice > 0) && oldCourses[i] && oldCourses[i].unitPrice > 0 ? oldCourses[i].unitPrice : c.unitPrice,
           })),
         };
         showToast('学员信息已更新');

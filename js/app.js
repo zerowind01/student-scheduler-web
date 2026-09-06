@@ -2340,11 +2340,16 @@
       const row = document.createElement('div');
       row.className = 'course-row flex items-center gap-2';
       row.innerHTML = `
-        <input type="text" class="course-name-input flex-1 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:ring-1 focus:ring-amber-400" placeholder="课程名称（如：钢琴一对一）" value="${c.name || ''}" required>
+        <input type="text" class="course-name-input flex-1 min-w-0 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:ring-1 focus:ring-amber-400" placeholder="课程名称（如：钢琴一对一）" value="${c.name || ''}" required>
         <div class="flex items-center gap-1 shrink-0">
           <span class="text-slate-400 text-[10px]">剩</span>
           <input type="number" class="course-lessons-input w-16 px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-amber-800 outline-none focus:ring-1 focus:ring-amber-400" value="${c.remainingLessons ?? 10}" required>
           <span class="text-slate-400 text-[10px]">课时</span>
+        </div>
+        <div class="flex items-center gap-1 shrink-0">
+          <span class="text-slate-400 text-[10px]">¥</span>
+          <input type="number" min="0" step="0.01" inputmode="decimal" class="course-price-input w-16 px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-emerald-700 outline-none focus:ring-1 focus:ring-emerald-400" placeholder="单价" value="${c.unitPrice > 0 ? c.unitPrice : ''}" aria-label="课程单价（元/节）">
+          <span class="text-slate-400 text-[10px]">/节</span>
         </div>
         ${
           courses.length > 1
@@ -2367,13 +2372,18 @@
     const container = document.getElementById('studentCoursesListContainer');
     if (!container) return;
     const row = document.createElement('div');
-    row.className = 'course-row flex items-center gap-2';
+    row.className = 'course-row flex items-center gap-2 flex-wrap';
     row.innerHTML = `
-      <input type="text" class="course-name-input flex-1 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:ring-1 focus:ring-amber-400" placeholder="课程名称（如：乐理基础）" required>
+      <input type="text" class="course-name-input flex-1 min-w-0 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:ring-1 focus:ring-amber-400" placeholder="课程名称（如：乐理基础）" required>
       <div class="flex items-center gap-1 shrink-0">
         <span class="text-slate-400 text-[10px]">剩</span>
         <input type="number" class="course-lessons-input w-16 px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-amber-800 outline-none focus:ring-1 focus:ring-amber-400" placeholder="可填负数=欠课" value="10" required>
         <span class="text-slate-400 text-[10px]">课时</span>
+      </div>
+      <div class="flex items-center gap-1 shrink-0">
+        <span class="text-slate-400 text-[10px]">¥</span>
+        <input type="number" min="0" step="0.01" inputmode="decimal" class="course-price-input w-16 px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-emerald-700 outline-none focus:ring-1 focus:ring-emerald-400" placeholder="单价" aria-label="课程单价（元/节）">
+        <span class="text-slate-400 text-[10px]">/节</span>
       </div>
       <button type="button" class="btn-remove-course-row text-slate-300 hover:text-rose-500 px-1 py-1 transition" title="删除该课程"><i class="fa-solid fa-trash-can"></i></button>
     `;
@@ -2406,10 +2416,12 @@
     courseRows.forEach((row, idx) => {
       const nameVal = row.querySelector('.course-name-input').value.trim() || '通用课程';
       const lessonsVal = parseInt(row.querySelector('.course-lessons-input').value, 10) || 0;
+      const priceVal = parseFloat(row.querySelector('.course-price-input')?.value) || 0;
       courses.push({
         id: 'c_' + (editId || 'st') + '_' + idx + '_' + Date.now(),
         name: nameVal,
         remainingLessons: lessonsVal,
+        unitPrice: priceVal,
       });
     });
 
@@ -2421,6 +2433,14 @@
     if (editId) {
       const idx = students.findIndex((s) => s.id === editId);
       if (idx !== -1) {
+        // 编辑：单价框留空（0）时沿用该课程原有单价，避免编辑资料清零已设好的价格
+        const oldCourses = students[idx].courses || [];
+        courses.forEach((c) => {
+          if (!(c.unitPrice > 0)) {
+            const old = oldCourses.find((o) => o.name === c.name);
+            if (old && old.unitPrice > 0) c.unitPrice = old.unitPrice;
+          }
+        });
         students[idx] = { ...students[idx], name, phone, colorTheme, courses };
         showToast('学员信息及多课程更新成功', 'check');
       }
@@ -2675,8 +2695,12 @@
       .map((c) => `<option value="${c.name}">${c.name}（余 ${c.remainingLessons}）</option>`)
       .join('');
 
+    const firstCourse = (student.courses || [])[0];
+
     const modal = document.createElement('div');
     modal.id = 'rechargeModal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
     modal.className = 'fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4';
     modal.innerHTML = `
       <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5 space-y-3" onclick="event.stopPropagation()">
@@ -2702,7 +2726,7 @@
           </div>
           <div>
             <label class="block text-[11px] font-semibold text-slate-500 mb-1">单价 (元/节)</label>
-            <input type="number" id="rechargePrice" min="0" value="200" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300">
+            <input type="number" id="rechargePrice" min="0" step="0.01" inputmode="decimal" value="${firstCourse && firstCourse.unitPrice > 0 ? firstCourse.unitPrice : ''}" placeholder="如 200" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300">
           </div>
         </div>
         <div class="text-[10px] text-slate-400">💡 若该课程有欠课，充值会自动抵扣</div>
