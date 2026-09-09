@@ -947,9 +947,27 @@
       showModal('modalSyncKey');
     });
     safeBind('msetManageTeachers', 'click', () => {
-      // 手机版复用云同步弹窗所在层级：直接跳电脑版教师管理不可行，
-      // 这里用 prompt 系列快速编辑不可靠，改为引导到电脑版
-      showToast('教师管理请在电脑版操作（顶栏 → 教师管理）');
+      renderMobileTeacherManager();
+      showModal('modalMobileTeachers');
+    });
+    safeBind('btnCloseMobileTeachers', 'click', () => hideModal('modalMobileTeachers'));
+    safeBind('formMobileAddTeacher', 'submit', (e) => {
+      e.preventDefault();
+      const nameEl = document.getElementById('mobileTeacherNameInput');
+      const subEl = document.getElementById('mobileTeacherSubjectInput');
+      const name = nameEl.value.trim();
+      if (!name) return;
+      teachers.push({
+        id: 't_' + Date.now(),
+        name,
+        subject: subEl.value.trim() || '通用科目',
+        colorTheme: getRandomColorTheme ? getRandomColorTheme() : 'amber',
+      });
+      saveData();
+      nameEl.value = ''; subEl.value = '';
+      renderMobileTeacherManager();
+      renderMobileTeacherSelect();
+      showToast(`已添加老师 [${name}]`);
     });
     safeBind('msetExport', 'click', () => {
       const payload = JSON.stringify({ students, schedules, teachers, checkInLogs, debts, updatedAt: Date.now() });
@@ -1073,6 +1091,46 @@
       if (!confirm('退出老师身份，回到管理员入口？')) return;
       teacherLogout();
       location.reload();
+    });
+  }
+
+  // 手机端教师管理：列表渲染（含访问码生成/换码/删除）
+  function renderMobileTeacherManager() {
+    const box = document.getElementById('mobileTeacherList');
+    if (!box) return;
+    box.innerHTML = teachers.length === 0
+      ? '<div class="text-center text-slate-400 py-5">暂无老师，先添加一位</div>'
+      : '';
+    teachers.forEach((t) => {
+      const item = document.createElement('div');
+      item.className = 'flex items-center justify-between bg-slate-50 border border-slate-200/80 rounded-2xl px-3 py-2.5';
+      item.innerHTML = `
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="w-8 h-8 rounded-full bg-emerald-500 text-white font-bold flex items-center justify-center text-[11px] shrink-0">${t.name.substring(0, 1)}</div>
+          <div class="min-w-0">
+            <div class="font-bold text-slate-800 truncate">${t.name}</div>
+            <div class="text-[10px] text-slate-500">${t.subject || '全科'}${t.accessPin ? ` · 访问码 <b class="text-emerald-700">${t.accessPin}</b>` : ' · 未开通访问'}</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button class="btn-mt-pin text-[10px] font-bold px-2.5 py-1.5 rounded-lg ${t.accessPin ? 'bg-slate-200 text-slate-600 active:bg-slate-300' : 'bg-sky-100 text-sky-700 active:bg-sky-200'}">${t.accessPin ? '换码' : '发访问码'}</button>
+          <button class="btn-mt-del text-slate-400 active:text-rose-600 px-1.5 py-1.5" title="删除"><i class="fa-solid fa-trash-can text-[11px]"></i></button>
+        </div>`;
+      item.querySelector('.btn-mt-pin').addEventListener('click', () => {
+        t.accessPin = String(Math.floor(1000 + Math.random() * 9000));
+        saveData();
+        renderMobileTeacherManager();
+        showToast(`${t.name} 老师访问码：${t.accessPin}（请微信私发给她）`);
+      });
+      item.querySelector('.btn-mt-del').addEventListener('click', () => {
+        if (!confirm(`确定删除 [${t.name}] 老师？`)) return;
+        teachers = teachers.filter((x) => x.id !== t.id);
+        saveData();
+        renderMobileTeacherManager();
+        renderMobileTeacherSelect();
+        showToast('已删除老师');
+      });
+      box.appendChild(item);
     });
   }
 
