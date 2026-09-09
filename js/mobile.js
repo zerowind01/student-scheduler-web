@@ -23,6 +23,51 @@
   let selectedTeacherFilter = 'all';
   let mobileStartDate = getToday(); // 默认从今天开始显示 3 日日历（周末也能直接看到今天）
 
+  // ============ 老师访问会话（PIN 登录，管理员不受限） ============
+  // teacherSession = null 表示管理员；否则 { teacherId, name }
+  // 会话持久化到 localStorage，换设备/清缓存需重输 PIN
+  let teacherSession = null;
+
+  function loadTeacherSession() {
+    try {
+      const raw = localStorage.getItem('edu_teacher_session_v1');
+      teacherSession = raw ? JSON.parse(raw) : null;
+      if (teacherSession && !teachers.some((t) => t.id === teacherSession.teacherId && t.accessPin === teacherSession.pin)) {
+        teacherSession = null; // 访问码已被管理员撤销/更换
+        localStorage.removeItem('edu_teacher_session_v1');
+      }
+    } catch (e) { teacherSession = null; }
+    return teacherSession;
+  }
+
+  function tryTeacherLogin(pin) {
+    const t = teachers.find((x) => x.accessPin && x.accessPin === String(pin).trim());
+    if (!t) return null;
+    teacherSession = { teacherId: t.id, name: t.name, pin: t.accessPin };
+    localStorage.setItem('edu_teacher_session_v1', JSON.stringify(teacherSession));
+    return t;
+  }
+
+  function teacherLogout() {
+    teacherSession = null;
+    localStorage.removeItem('edu_teacher_session_v1');
+  }
+
+  function isTeacherView() { return !!teacherSession; }
+
+  // 老师视角：判断学员是否与该老师有关（主讲或助教上过/将上该学员的课）
+  function studentRelatedToTeacher(st) {
+    if (!teacherSession) return true;
+    return schedules.some((s) => s.studentId === st.id && (s.teacherId === teacherSession.teacherId || s.assistantTeacherId === teacherSession.teacherId));
+  }
+
+  // 老师视角：检查记录是否属于该老师的课
+  function logRelatedToTeacher(log) {
+    if (!teacherSession) return true;
+    const sch = schedules.find((s) => s.id === log.scheduleId);
+    return !sch || sch.teacherId === teacherSession.teacherId || sch.assistantTeacherId === teacherSession.teacherId;
+  }
+
   function getToday() {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -729,11 +774,37 @@
   function initMobileApp() {
     checkUrlSyncData();
     loadData();
+    loadTeacherSession();
     setupMobileEvents();
+    setupTeacherLoginGate();
     renderMobileTeacherSelect();
     renderMobile3DayView();
     renderMobileStudents();
     pullFromCloudSync(true);
+  }
+
+  // 老师访问码登录门：有未过期会话则不拦；无会话则先遮住页面再等输入
+  function setupTeacherLoginGate() {
+    const gate = document.getElementById('teacherLoginGate');
+    if (!gate) return;
+    if (teacherSession) { gate.classList.add('hidden'); return; }
+    gate.classList.remove('hidden');
+    const input = document.getElementById('teacherPinInput');
+    const err = document.getElementById('teacherPinError');
+    const go = () => {
+      const t = tryTeacherLogin(input.value);
+      if (!t) { err.textContent = '访问码不对，请重试'; input.value = ''; return; }
+      err.textContent = '';
+      gate.classList.add('hidden');
+      showToast(`欢迎，${t.name}老师`);
+      renderMobile3DayView();
+      renderMobileStudents();
+      if (typeof renderMobileFinance === 'function') renderMobileFinance();
+    };
+    const btn = document.getElementById('btnTeacherPinGo');
+    if (btn) btn.addEventListener('click', go);
+    if (input) input.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+    setTimeout(() => input && input.focus(), 100);
   }
 
   function safeBind(id, eventName, handler) {
@@ -941,12 +1012,63 @@
     select.value = selectedTeacherFilter;
   }
 
+  // 个人主页条：管理员=全校概览；老师=我的今日课/待消课/预警待办
+  function renderMobileHomeCard() {
+    const el = document.getElementById('mobileHomeCard');
+    if (!el) return;
+    const todayStr = formatDate(new Date());
+
+    if (!isTeacherView()) {
+      // 管理员：紧凑概览
+      const todayCount = schedules.filter((s) => s.date === todayStr && s.status === SCHEDULE_STATUS.SCHEDULED).length;
+      const lowStudents = students.filter((st) => (st.courses || []).some((c) => c.remainingLessons <= 2)).length;
+      el.innerHTML = `
+        <div class="bg-gradient-to-r from-amber-500 to-orange-400 rounded-2xl px-4 py-3 text-white shadow-sm flex items-center justify-between">
+          <div>
+            <div class="text-[10px] opacity-80 font-semibold">LessonMate 管理台</div>
+            <div class="text-sm font-black">今日待上 ${todayCount} 节 · 预警 ${lowStudents} 人</div>
+          </div>
+          <i class="fa-solid fa-chart-simple opacity-60"></i>
+        </div>`;
+      return;
+    }
+
+    // 老师个人主页
+    const myToday = schedules.filter((s) => s.date === todayStr && (s.teacherId === teacherSession.teacherId || s.assistantTeacherId === teacherSession.teacherId));
+    const myUpcoming = myToday.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).sort((a, b) => a.startTime.localeCompare(b.startTime));
+    const myLow = students
+      .filter(studentRelatedToTeacher)
+      .flatMap((st) => (st.courses || []).filter((c) => c.remainingLessons <= 2).map((c) => ({ st, c })));
+    const nextClass = myUpcoming[0];
+    el.innerHTML = `
+      <div class="bg-gradient-to-r from-sky-500 to-indigo-500 rounded-2xl px-4 py-3 text-white shadow-sm">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-[10px] opacity-80 font-semibold">${teacherSession.name} 老师的工作台</div>
+            <div class="text-sm font-black mt-0.5">今日 ${myUpcoming.length} 节课${nextClass ? ` · 下一节 ${nextClass.startTime}` : ' · 今天没课 🎉'}</div>
+          </div>
+          <button id="btnTeacherExit" class="text-[10px] bg-white/20 rounded-lg px-2 py-1 font-bold active:bg-white/30">退出</button>
+        </div>
+        ${myLow.length ? `
+        <div class="mt-2 bg-white/15 rounded-xl px-3 py-2 text-[11px] font-semibold">
+          <i class="fa-solid fa-triangle-exclamation mr-1"></i>待办：${myLow.length} 个课时预警（${[...new Set(myLow.map((x) => x.st.name))].slice(0, 3).join('、')}${myLow.length > 3 ? '…' : ''}）
+        </div>` : ''}
+      </div>`;
+    const exitBtn = document.getElementById('btnTeacherExit');
+    if (exitBtn) exitBtn.addEventListener('click', () => {
+      if (!confirm('退出老师身份，回到管理员入口？')) return;
+      teacherLogout();
+      location.reload();
+    });
+  }
+
   function renderMobile3DayView() {
     const headerContainer = document.getElementById('mobileHeaderDays');
     const gridContainer = document.getElementById('mobileGridColumns');
     if (!headerContainer || !gridContainer) return;
     headerContainer.innerHTML = '';
     gridContainer.innerHTML = '';
+    renderMobileHomeCard();
 
     const endDate = addDays(mobileStartDate, 2);
     const dateTextEl = document.getElementById('mobileDateText');
@@ -1681,12 +1803,20 @@
 
     const now = new Date();
     const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const monthLogs = checkInLogs.filter((l) => (l.checkInTime || '').startsWith(monthPrefix)).slice().sort((a, b) => (b.checkInTime || '').localeCompare(a.checkInTime || ''));
+
+    // 老师视角：只统计自己课程的消课记录（管理员看全部）
+    let scopedLogs = checkInLogs.filter((l) => (l.checkInTime || '').startsWith(monthPrefix));
+    if (isTeacherView()) scopedLogs = scopedLogs.filter(logRelatedToTeacher);
+    const monthLogs = scopedLogs.slice().sort((a, b) => (b.checkInTime || '').localeCompare(a.checkInTime || ''));
 
     const monthLessons = monthLogs.reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
     const monthValue = monthLogs.reduce((acc, l) => acc + (l.paymentAmount || 0), 0);
-    const totalRemaining = students.reduce((acc, st) => acc + (st.courses || []).reduce((a, c) => a + Math.max(0, c.remainingLessons), 0), 0);
-    const debtors = debts.filter((d) => d.amount > 0);
+
+    // 老师视角：待消存量/欠课学员只看与自己相关的学员；管理员看全部
+    const relStudents = isTeacherView() ? students.filter(studentRelatedToTeacher) : students;
+    const totalRemaining = relStudents.reduce((acc, st) => acc + (st.courses || []).reduce((a, c) => a + Math.max(0, c.remainingLessons), 0), 0);
+    const relIds = new Set(relStudents.map((s) => s.id));
+    const debtors = debts.filter((d) => d.amount > 0 && relIds.has(d.studentId));
 
     container.innerHTML = `
       <div class="grid grid-cols-2 gap-2.5">
@@ -1709,7 +1839,7 @@
       </div>
 
       <div class="bg-white border border-slate-200 rounded-2xl p-3.5">
-        <div class="font-bold text-xs text-slate-800 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-receipt text-amber-500"></i> 本月收入明细</div>
+        <div class="font-bold text-xs text-slate-800 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-receipt text-amber-500"></i> 本月${isTeacherView() ? '我的' : ''}消课明细</div>
         ${monthLogs.length === 0 ? '<div class="text-[11px] text-slate-400 py-4 text-center">本月暂无消课记录</div>' : `
         <div class="space-y-1.5">
           ${monthLogs.map((l) => `

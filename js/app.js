@@ -2286,13 +2286,24 @@
           </div>
           <div>
             <div class="font-bold text-slate-800">${t.name}</div>
-            <div class="text-[10px] text-slate-500">主讲: ${t.subject || '全科'}</div>
+            <div class="text-[10px] text-slate-500">主讲: ${t.subject || '全科'}${t.accessPin ? ` · 访问码 <b class="text-amber-700">${t.accessPin}</b>` : ' · 未开通访问'}</div>
           </div>
         </div>
-        <button class="btn-del-teacher text-slate-400 hover:text-rose-600 transition px-2 py-1" title="删除教师" data-id="${t.id}">
-          <i class="fa-solid fa-trash-can"></i>
-        </button>
+        <div class="flex items-center gap-1">
+          <button class="btn-pin-teacher text-[10px] font-bold px-2 py-1 rounded-lg ${t.accessPin ? 'bg-slate-200 text-slate-600 hover:bg-slate-300' : 'bg-sky-100 text-sky-700 hover:bg-sky-200'} transition" data-id="${t.id}">${t.accessPin ? '换码' : '生成访问码'}</button>
+          <button class="btn-del-teacher text-slate-400 hover:text-rose-600 transition px-2 py-1" title="删除教师" data-id="${t.id}">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
+        </div>
       `;
+
+      item.querySelector('.btn-pin-teacher').addEventListener('click', () => {
+        const pin = String(Math.floor(1000 + Math.random() * 9000));
+        t.accessPin = pin;
+        saveData();
+        renderTeacherListInModal();
+        showToast(`[${t.name}] 老师访问码：${pin}（请微信私发给她）`, 'key');
+      });
 
       item.querySelector('.btn-del-teacher').addEventListener('click', () => {
         if (confirm(`确定要删除 [${t.name}] 老师记录吗？`)) {
