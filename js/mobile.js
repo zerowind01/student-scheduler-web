@@ -825,16 +825,22 @@
     setTimeout(() => input && input.focus(), 100);
   }
 
-  // 顶部右侧身份显示：管理员=老师筛选框；老师=本人名字
-  function updateHeaderIdentity() {
+  // 顶部右侧身份显示：管理员=老师筛选框；老师=名字徽章
+  // showBadge=true 时老师显示徽章；false 时（课表视图）管理员显示筛选框
+  function updateHeaderIdentity(showBadge) {
     const adminWrap = document.getElementById('adminTeacherFilterWrap');
     const badge = document.getElementById('teacherNameBadge');
     const nameEl = document.getElementById('teacherNameText');
     if (!adminWrap || !badge) return;
+    if (typeof showBadge !== 'boolean') showBadge = true;
     if (isTeacherView()) {
+      // 老师视角：课表页也只看自己（渲染时已强制），全程显示名字徽章
       adminWrap.classList.add('hidden');
       badge.classList.remove('hidden');
       if (nameEl) nameEl.textContent = teacherSession.name;
+    } else if (showBadge) {
+      adminWrap.classList.add('hidden');
+      badge.classList.add('hidden');
     } else {
       adminWrap.classList.remove('hidden');
       badge.classList.add('hidden');
@@ -952,6 +958,8 @@
       // 日期导航栏只在课表视图显示
       const dateBar = document.getElementById('mobileDateBar');
       if (dateBar) dateBar.classList.toggle('hidden', view !== 'schedule');
+      // 顶部右侧：课表视图=老师筛选框（管理员），其余视图=老师名字徽章
+      if (typeof updateHeaderIdentity === 'function') updateHeaderIdentity(view !== 'schedule');
       if (view === 'students') renderMobileStudents();
       if (view === 'finance') renderMobileFinance();
       if (view === 'home' && typeof renderMobileHome === 'function') renderMobileHome();
@@ -1265,9 +1273,9 @@
     const todayDone = todayAll.filter((s) => s.status === SCHEDULE_STATUS.COMPLETED).length;
 
     // 欠费学员（欠课账 > 0）
-    const debtStudents = isTeacherView() ? [] : (debts || []).filter((x) => (x.remainingSessions || 0) > 0);
+    const debtStudents = isTeacherView() ? [] : (debts || []).filter((x) => (x.amount || 0) > 0);
     const debtCount = debtStudents.length;
-    const debtTotal = debtStudents.reduce((n, x) => n + (x.remainingSessions || 0), 0);
+    const debtTotal = debtStudents.reduce((n, x) => n + (x.amount || 0), 0);
 
     // 待续费：剩余课时 ≤2 的学员-课程（老师视角只看自己课上的学员）
     const myStudentIds = new Set(schedules.filter((s) => inScope(s)).map((s) => s.studentId));
@@ -1278,9 +1286,9 @@
     }));
     const lowCount = lowList.length;
     // 老师视角的欠费统计（我的学员）
-    const tDebtList = isTeacherView() ? (debts || []).filter((x) => (x.remainingSessions || 0) > 0 && myStudentIds.has(x.studentId)) : [];
+    const tDebtList = isTeacherView() ? (debts || []).filter((x) => (x.amount || 0) > 0 && myStudentIds.has(x.studentId)) : [];
     const tDebtCount = tDebtList.length;
-    const tDebtTotal = tDebtList.reduce((n, x) => n + (x.remainingSessions || 0), 0);
+    const tDebtTotal = tDebtList.reduce((n, x) => n + (x.amount || 0), 0);
     const tLowCount = isTeacherView() ? lowCount : 0;
 
     cards.innerHTML = `
@@ -1690,6 +1698,11 @@
 
     let list = students.filter((st) => {
       normalizeStudent(st);
+      // 老师视角：只显示与自己相关的学员（排课里有她的课，或欠课账涉及）
+      if (isTeacherView()) {
+        const related = schedules.some((s) => s.studentId === st.id && (s.teacherId === teacherSession.teacherId || s.assistantTeacherId === teacherSession.teacherId));
+        if (!related) return false;
+      }
       const matchName = st.name.toLowerCase().includes(query) || (st.phone && st.phone.includes(query));
       const matchCourse = st.courses.some((c) => c.name.toLowerCase().includes(query));
       if (!matchName && !matchCourse) return false;
