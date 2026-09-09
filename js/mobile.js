@@ -786,7 +786,6 @@
     renderMobileTeacherSelect();
     renderMobile3DayView();
     renderMobileStudents();
-    switchMobileView('home'); // 默认进首页
     pullFromCloudSync(true);
   }
 
@@ -937,6 +936,8 @@
       if (view === 'finance') renderMobileFinance();
       if (view === 'home' && typeof renderMobileHome === 'function') renderMobileHome();
     }
+
+    switchMobileView('home'); // 默认进首页（此处与函数同作用域）
 
     safeBind('navTabHome', 'click', () => switchMobileView('home'));
     safeBind('navTabSchedule', 'click', () => switchMobileView('schedule'));
