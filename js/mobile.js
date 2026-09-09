@@ -810,6 +810,14 @@
     const btn = document.getElementById('btnTeacherPinGo');
     if (btn) btn.addEventListener('click', go);
     if (input) input.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+    // 管理员直通：机主本人不需要 PIN
+    const adminBtn = document.getElementById('btnAdminBypass');
+    if (adminBtn) adminBtn.addEventListener('click', () => {
+      gate.classList.add('hidden');
+      renderMobile3DayView();
+      renderMobileStudents();
+      if (typeof renderMobileFinance === 'function') renderMobileFinance();
+    });
     setTimeout(() => input && input.focus(), 100);
   }
 
