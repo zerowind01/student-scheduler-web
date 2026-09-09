@@ -938,6 +938,8 @@
     }
 
     switchMobileView('home'); // 默认进首页（此处与函数同作用域）
+    // 桥接给外层函数（renderMobileHome 等）使用
+    window.__switchMobileView = switchMobileView;
 
     safeBind('navTabHome', 'click', () => switchMobileView('home'));
     safeBind('navTabSchedule', 'click', () => switchMobileView('schedule'));
@@ -1286,10 +1288,10 @@
       const card = e.target.closest('button');
       if (!card) return;
       const id = card.id;
-      if (id === 'homeQuickSchedule') { switchMobileView('schedule'); setTimeout(() => openMobileScheduleModalForNew(), 250); }
-      else if (id === 'homeQuickStudents') switchMobileView('students');
-      else if (id === 'homeQuickFinance') switchMobileView('finance');
-      else if (id === 'homeQuickCalendar') switchMobileView('schedule');
+      if (id === 'homeQuickSchedule') { window.__switchMobileView('schedule'); setTimeout(() => openMobileScheduleModalForNew(), 250); }
+      else if (id === 'homeQuickStudents') window.__switchMobileView('students');
+      else if (id === 'homeQuickFinance') window.__switchMobileView('finance');
+      else if (id === 'homeQuickCalendar') window.__switchMobileView('schedule');
     };
     const exitBtn = document.getElementById('btnTeacherExitHome');
     if (exitBtn) exitBtn.onclick = () => {
