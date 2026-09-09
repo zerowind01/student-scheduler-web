@@ -1281,17 +1281,22 @@
         </div>`;
       }).join('')}`;
 
-    // ---- 事件绑定 ----
-    const bind = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', fn); };
-    bind('homeQuickSchedule', () => { switchMobileView('schedule'); setTimeout(() => openMobileScheduleModalForNew(), 200); });
-    bind('homeQuickStudents', () => switchMobileView('students'));
-    bind('homeQuickFinance', () => switchMobileView('finance'));
-    bind('homeQuickCalendar', () => switchMobileView('schedule'));
-    bind('btnTeacherExitHome', () => {
+    // ---- 事件绑定（事件委托，重绘不丢监听）----
+    quick.onclick = (e) => {
+      const card = e.target.closest('button');
+      if (!card) return;
+      const id = card.id;
+      if (id === 'homeQuickSchedule') { switchMobileView('schedule'); setTimeout(() => openMobileScheduleModalForNew(), 250); }
+      else if (id === 'homeQuickStudents') switchMobileView('students');
+      else if (id === 'homeQuickFinance') switchMobileView('finance');
+      else if (id === 'homeQuickCalendar') switchMobileView('schedule');
+    };
+    const exitBtn = document.getElementById('btnTeacherExitHome');
+    if (exitBtn) exitBtn.onclick = () => {
       if (!confirm('退出老师身份，回到管理员入口？')) return;
       teacherLogout();
       location.reload();
-    });
+    };
   }
 
   function renderMobile3DayView() {
