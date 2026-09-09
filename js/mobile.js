@@ -40,6 +40,12 @@
     return teacherSession;
   }
 
+  // 同步合并：远端 teachers 覆盖本地时保留本地 accessPin（PIN 只由管理员端设置，不同步下发）
+  function mergeTeachersKeepPin(remoteTeachers, localTeachers) {
+    const pinById = new Map((localTeachers || []).filter((t) => t.accessPin).map((t) => [t.id, t.accessPin]));
+    return (remoteTeachers || []).map((t) => (pinById.has(t.id) ? { ...t, accessPin: pinById.get(t.id) } : t));
+  }
+
   function tryTeacherLogin(pin) {
     const t = teachers.find((x) => x.accessPin && x.accessPin === String(pin).trim());
     if (!t) return null;
@@ -686,7 +692,7 @@
           if (force || remoteData.updatedAt > localTime) {
             students = remoteData.students || [];
             schedules = remoteData.schedules || [];
-            teachers = remoteData.teachers || teachers;
+            teachers = mergeTeachersKeepPin(remoteData.teachers, teachers);
             courseTypes = remoteData.courseTypes || courseTypes;
             checkInLogs = remoteData.checkInLogs || [];
             debts = (remoteData.debts || []).map(normalizeDebt);
@@ -720,7 +726,7 @@
         if (event.data && event.data.updatedAt) {
           students = event.data.students || students;
           schedules = event.data.schedules || schedules;
-          teachers = event.data.teachers || teachers;
+          teachers = mergeTeachersKeepPin(event.data.teachers, teachers);
           courseTypes = event.data.courseTypes || courseTypes;
           checkInLogs = event.data.checkInLogs || [];
           debts = (event.data.debts || []).map(normalizeDebt);
@@ -760,7 +766,7 @@
         if (data && (data.students || data.schedules)) {
           students = data.students || [];
           schedules = data.schedules || [];
-          teachers = data.teachers || teachers;
+          teachers = mergeTeachersKeepPin(data.teachers, teachers);
           saveDataLocalOnly();
           showToast('⚡ 扫码同步成功！已载入电脑端最新课表！');
           history.replaceState(null, '', location.pathname);
@@ -856,7 +862,7 @@
         if (data && (data.students || data.schedules)) {
           students = data.students || [];
           schedules = data.schedules || [];
-          teachers = data.teachers || teachers;
+          teachers = mergeTeachersKeepPin(data.teachers, teachers);
           saveData();
           renderMobileTeacherSelect();
           renderMobile3DayView();

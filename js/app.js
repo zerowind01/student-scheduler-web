@@ -36,6 +36,12 @@
   let currentFilter = 'unscheduled'; // 默认仅显示未排课学生（待排课）
   let searchQuery = ''; // 学生搜索关键字
 
+  // 同步合并：远端 teachers 覆盖本地时保留本地 accessPin（PIN 不同步下发）
+  function mergeTeachersKeepPin(remoteTeachers, localTeachers) {
+    const pinById = new Map((localTeachers || []).filter((t) => t.accessPin).map((t) => [t.id, t.accessPin]));
+    return (remoteTeachers || []).map((t) => (pinById.has(t.id) ? { ...t, accessPin: pinById.get(t.id) } : t));
+  }
+
   function selectStudentForTap(student, cardElement) {
     document.querySelectorAll('.student-card').forEach((c) => c.classList.remove('ring-2', 'ring-amber-500', 'border-amber-400'));
 
@@ -104,7 +110,7 @@
         if (data && (data.students || data.schedules)) {
           students = data.students || [];
           schedules = data.schedules || [];
-          teachers = data.teachers || teachers;
+          teachers = mergeTeachersKeepPin(data.teachers, teachers);
           // 欠课账校准：负课时（欠课）同步进欠课账
           syncAllDebts();
           saveDataLocalOnly();
@@ -534,7 +540,7 @@
           if (force || remoteData.updatedAt > localTime) {
             students = remoteData.students || [];
             schedules = remoteData.schedules || [];
-            teachers = remoteData.teachers || teachers;
+            teachers = mergeTeachersKeepPin(remoteData.teachers, teachers);
             courseTypes = remoteData.courseTypes || courseTypes;
             checkInLogs = remoteData.checkInLogs || [];
             debts = (remoteData.debts || []).map(normalizeDebt);
@@ -567,7 +573,7 @@
         if (event.data && event.data.updatedAt) {
           students = event.data.students || students;
           schedules = event.data.schedules || schedules;
-          teachers = event.data.teachers || teachers;
+          teachers = mergeTeachersKeepPin(event.data.teachers, teachers);
           courseTypes = event.data.courseTypes || courseTypes;
           checkInLogs = event.data.checkInLogs || [];
           debts = (event.data.debts || []).map(normalizeDebt);
@@ -830,7 +836,7 @@
         if (data && (data.students || data.schedules)) {
           students = data.students || [];
           schedules = data.schedules || [];
-          teachers = data.teachers || teachers;
+          teachers = mergeTeachersKeepPin(data.teachers, teachers);
           saveData();
           renderTeacherOptions();
           refreshView();
