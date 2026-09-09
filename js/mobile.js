@@ -1324,12 +1324,12 @@
         </div>`;
       }).join('')}`;
 
-    // ---- 事件（委托到 cards 容器）----
+    // ---- 事件（委托到 cards 容器；走 window 桥避免作用域错误）----
     cards.onclick = (e) => {
       const t = e.target.closest('#homeCardDebt, #homeCardRenew');
       if (!t) return;
-      if (t.id === 'homeCardDebt') switchMobileView('finance');
-      if (t.id === 'homeCardRenew') { switchMobileView('students'); setTimeout(() => {
+      if (t.id === 'homeCardDebt') window.__switchMobileView('finance');
+      if (t.id === 'homeCardRenew') { window.__switchMobileView('students'); setTimeout(() => {
         const f = document.getElementById('mobileStudentStatusFilter') || document.getElementById('filter-low');
         if (f) { f.value = 'low'; f.dispatchEvent(new Event('change')); }
       }, 250); }
