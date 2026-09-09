@@ -917,6 +917,7 @@
       // GSAP：切换后的新视图轻量进场
       const activeEl = document.getElementById('view' + view.charAt(0).toUpperCase() + view.slice(1));
       if (window.uiAnim && activeEl) window.uiAnim.viewIn(activeEl);
+      if (view === 'settings' && typeof updateIdentityDesc === 'function') updateIdentityDesc();
       document.querySelectorAll('.nav-tab').forEach((tab) => {
         const active = tab.getAttribute('data-view') === view;
         // 文字颜色分区（图标由 .fn-* .is-active CSS 控制）
@@ -949,6 +950,54 @@
     safeBind('msetManageTeachers', 'click', () => {
       renderMobileTeacherManager();
       showModal('modalMobileTeachers');
+    });
+    // 账号身份切换：管理员 ↔ 老师视角（弹选择抽屉）
+    safeBind('msetIdentity', 'click', () => {
+      const ov = document.createElement('div');
+      ov.className = 'fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-[70] flex items-end justify-center';
+      ov.innerHTML = `
+        <div class="bg-white w-full rounded-t-3xl p-5 space-y-2.5" style="padding-bottom: calc(2rem + env(safe-area-inset-bottom))">
+          <div class="font-bold text-sm text-slate-800 pb-2 border-b border-slate-100">切换账号身份</div>
+          <button data-role="admin" class="w-full py-3 rounded-xl text-sm font-bold ${isTeacherView() ? 'bg-slate-100 text-slate-700' : 'bg-indigo-500 text-white'} active:opacity-80">
+            <i class="fa-solid fa-user-shield mr-1.5"></i>管理员（全校数据 + 财务总览）
+          </button>
+          <div class="text-[10px] text-slate-400 pt-1">老师身份（输入访问码进入）：</div>
+          <div class="flex gap-2">
+            <input id="identityPinInput" type="tel" inputmode="numeric" maxlength="4" placeholder="4位访问码" class="flex-1 px-3 py-2.5 border border-slate-200 rounded-xl text-center font-bold tracking-widest outline-none focus:ring-1 focus:ring-amber-400">
+            <button data-role="teacher" class="shrink-0 px-4 py-2.5 bg-amber-500 text-white rounded-xl font-bold text-sm active:bg-amber-600">进入</button>
+          </div>
+          <button data-role="cancel" class="w-full py-2 text-xs text-slate-400">取消</button>
+        </div>`;
+      ov.addEventListener('click', (e) => {
+        if (e.target === ov) { ov.remove(); return; }
+        const btn = e.target.closest('[data-role]');
+        if (!btn) return;
+        const role = btn.getAttribute('data-role');
+        if (role === 'cancel') { ov.remove(); return; }
+        if (role === 'admin') {
+          if (!isTeacherView()) { ov.remove(); return; }
+          teacherLogout();
+          ov.remove();
+          renderMobileHomeCard();
+          renderMobileStudents();
+          if (typeof renderMobileFinance === 'function') renderMobileFinance();
+          updateIdentityDesc();
+          showToast('已切换到管理员身份');
+          return;
+        }
+        // teacher：验证 PIN
+        const pinEl = document.getElementById('identityPinInput');
+        const t = tryTeacherLogin(pinEl ? pinEl.value : '');
+        if (!t) { showToast('访问码不对，请重试'); return; }
+        ov.remove();
+        renderMobileHomeCard();
+        renderMobileStudents();
+        if (typeof renderMobileFinance === 'function') renderMobileFinance();
+        updateIdentityDesc();
+        showToast(`已切换到 ${t.name} 老师视角`);
+      });
+      document.body.appendChild(ov);
+      setTimeout(() => document.getElementById('identityPinInput')?.focus(), 100);
     });
     safeBind('btnCloseMobileTeachers', 'click', () => hideModal('modalMobileTeachers'));
     safeBind('formMobileAddTeacher', 'submit', (e) => {
@@ -1092,6 +1141,15 @@
       teacherLogout();
       location.reload();
     });
+  }
+
+  // 设置页身份描述跟随当前视角
+  function updateIdentityDesc() {
+    const el = document.getElementById('msetIdentityDesc');
+    if (!el) return;
+    el.textContent = isTeacherView()
+      ? `当前：${teacherSession.name} 老师（财务只显示本人课程）`
+      : '当前：管理员（全校数据）';
   }
 
   // 手机端教师管理：列表渲染（含访问码生成/换码/删除）
