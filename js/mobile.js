@@ -787,7 +787,9 @@
     renderMobileTeacherSelect();
     renderMobile3DayView();
     renderMobileStudents();
-    pullFromCloudSync(true);
+    pullFromCloudSync(true).then(() => {
+      if (typeof renderMobileHome === 'function') renderMobileHome();
+    });
   }
 
   // 老师访问码登录门：有未过期会话则不拦；无会话则先遮住页面再等输入
