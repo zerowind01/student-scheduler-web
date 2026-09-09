@@ -136,6 +136,8 @@
    功能区配色（每区一色，图标常驻；激活态背景同色）
    课表=琥珀(品牌) · 学员=绿(成长) · 财务=玫红(钱) · 设置=天蓝(系统)
    ========================================================================== */
+.fn-home { color: #6366f1; }
+.fn-home.is-active { color: #4f46e5; }
 .fn-schedule { color: var(--brand-600); }
 .fn-students { color: #059669; }
 .fn-finance  { color: var(--sem-danger); }

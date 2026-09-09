@@ -786,6 +786,7 @@
     renderMobileTeacherSelect();
     renderMobile3DayView();
     renderMobileStudents();
+    switchMobileView('home'); // 默认进首页
     pullFromCloudSync(true);
   }
 
@@ -907,7 +908,7 @@
     });
 
     // ============ 四视图切换（课表/学员/财务/设置） ============
-    const MOBILE_VIEWS = ['schedule', 'students', 'finance', 'settings'];
+    const MOBILE_VIEWS = ['home', 'schedule', 'students', 'finance', 'settings'];
 
     function switchMobileView(view) {
       MOBILE_VIEWS.forEach((v) => {
@@ -921,7 +922,7 @@
       document.querySelectorAll('.nav-tab').forEach((tab) => {
         const active = tab.getAttribute('data-view') === view;
         // 文字颜色分区（图标由 .fn-* .is-active CSS 控制）
-        const fnColor = { schedule: 'text-amber-600', students: 'text-emerald-600', finance: 'text-rose-500', settings: 'text-sky-600' }[view] || 'text-amber-600';
+        const fnColor = { home: 'text-indigo-600', schedule: 'text-amber-600', students: 'text-emerald-600', finance: 'text-rose-500', settings: 'text-sky-600' }[view] || 'text-amber-600';
         tab.classList.toggle(fnColor, active);
         tab.classList.toggle('font-bold', active);
         tab.classList.toggle('text-slate-400', !active);
@@ -934,8 +935,10 @@
       if (dateBar) dateBar.classList.toggle('hidden', view !== 'schedule');
       if (view === 'students') renderMobileStudents();
       if (view === 'finance') renderMobileFinance();
+      if (view === 'home' && typeof renderMobileHome === 'function') renderMobileHome();
     }
 
+    safeBind('navTabHome', 'click', () => switchMobileView('home'));
     safeBind('navTabSchedule', 'click', () => switchMobileView('schedule'));
     safeBind('navTabStudents', 'click', () => switchMobileView('students'));
     safeBind('navTabFinance', 'click', () => switchMobileView('finance'));
@@ -1032,6 +1035,10 @@
     });
 
     safeBind('navTabQuickAdd', 'click', () => {
+      openMobileScheduleModalForNew();
+    });
+    // 课表日期栏的新增排课按钮（原导航加号入口的功能延伸）
+    safeBind('btnMobileAddSchedule', 'click', () => {
       openMobileScheduleModalForNew();
     });
 
@@ -1189,6 +1196,100 @@
         showToast('已删除老师');
       });
       box.appendChild(item);
+    });
+  }
+
+  // 首页：hero 工作台卡 + 快捷入口 + 今日课程列表
+  // （原课表顶部工作台条已迁移至此）
+  function renderMobileHome() {
+    const hero = document.getElementById('mobileHomeHero');
+    const quick = document.getElementById('mobileHomeQuick');
+    const todayBox = document.getElementById('mobileHomeToday');
+    if (!hero || !quick || !todayBox) return;
+    const todayStr = formatDate(new Date());
+
+    // ---- Hero：管理员=全校概览；老师=个人待办 ----
+    if (!isTeacherView()) {
+      const todayCount = schedules.filter((s) => s.date === todayStr && s.status === SCHEDULE_STATUS.SCHEDULED).length;
+      const lowStudents = students.filter((st) => (st.courses || []).some((c) => c.remainingLessons <= 2)).length;
+      hero.innerHTML = `
+        <div class="bg-gradient-to-br from-amber-500 to-orange-400 rounded-3xl px-5 py-5 text-white shadow-md">
+          <div class="text-[11px] opacity-85 font-semibold">LessonMate 管理台</div>
+          <div class="text-xl font-black mt-1">今日待上 ${todayCount} 节</div>
+          <div class="text-[11px] opacity-90 mt-1">课时预警学员 ${lowStudents} 人 · 记得提醒续费</div>
+        </div>`;
+    } else {
+      const myToday = schedules.filter((s) => s.date === todayStr && (s.teacherId === teacherSession.teacherId || s.assistantTeacherId === teacherSession.teacherId));
+      const myUpcoming = myToday.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).sort((a, b) => a.startTime.localeCompare(b.startTime));
+      const nextClass = myUpcoming[0];
+      hero.innerHTML = `
+        <div class="bg-gradient-to-br from-sky-500 to-indigo-500 rounded-3xl px-5 py-5 text-white shadow-md">
+          <div class="flex items-center justify-between">
+            <div class="text-[11px] opacity-85 font-semibold">${teacherSession.name} 老师的工作台</div>
+            <button id="btnTeacherExitHome" class="text-[10px] bg-white/20 rounded-lg px-2 py-1 font-bold active:bg-white/30">退出</button>
+          </div>
+          <div class="text-xl font-black mt-1">今日 ${myUpcoming.length} 节课</div>
+          <div class="text-[11px] opacity-90 mt-1">${nextClass ? `下一节 ${nextClass.startTime} · ${nextClass.studentName || ''}` : '今天没课 🎉'}</div>
+        </div>`;
+    }
+
+    // ---- 快捷入口 ----
+    quick.innerHTML = `
+      <button id="homeQuickSchedule" class="p-4 bg-white border border-amber-100 rounded-2xl text-left active:bg-amber-50">
+        <div class="font-bold text-xs text-slate-800 flex items-center gap-1.5"><i class="fa-solid fa-calendar-plus text-amber-600"></i> 排课</div>
+        <div class="text-[10px] text-slate-400 mt-1">新增课程安排</div>
+      </button>
+      <button id="homeQuickStudents" class="p-4 bg-white border border-emerald-100 rounded-2xl text-left active:bg-emerald-50">
+        <div class="font-bold text-xs text-slate-800 flex items-center gap-1.5"><i class="fa-solid fa-user-plus text-emerald-600"></i> 学员</div>
+        <div class="text-[10px] text-slate-400 mt-1">学员名单管理</div>
+      </button>
+      <button id="homeQuickFinance" class="p-4 bg-white border border-rose-100 rounded-2xl text-left active:bg-rose-50">
+        <div class="font-bold text-xs text-slate-800 flex items-center gap-1.5"><i class="fa-solid fa-coins text-rose-500"></i> 财务</div>
+        <div class="text-[10px] text-slate-400 mt-1">课消与欠课</div>
+      </button>
+      <button id="homeQuickCalendar" class="p-4 bg-white border border-sky-100 rounded-2xl text-left active:bg-sky-50">
+        <div class="font-bold text-xs text-slate-800 flex items-center gap-1.5"><i class="fa-solid fa-calendar-week text-sky-600"></i> 课表</div>
+        <div class="text-[10px] text-slate-400 mt-1">查看周课表</div>
+      </button>`;
+
+    // ---- 今日课程列表 ----
+    const base = isTeacherView()
+      ? schedules.filter((s) => s.date === todayStr && (s.teacherId === teacherSession.teacherId || s.assistantTeacherId === teacherSession.teacherId))
+      : schedules.filter((s) => s.date === todayStr);
+    const todays = base.slice().sort((a, b) => a.startTime.localeCompare(b.startTime));
+    todayBox.innerHTML = `
+      <div class="font-bold text-xs text-slate-600 px-1 pt-1">今日课程（${todays.length}）</div>
+      ${todays.length === 0 ? '<div class="text-center text-[11px] text-slate-400 py-6 bg-white rounded-2xl border border-slate-100">今天没有课程安排</div>' : ''}
+      ${todays.map((s) => {
+        const done = s.status === SCHEDULE_STATUS.COMPLETED;
+        const leave = s.status === SCHEDULE_STATUS.STUDENT_LEAVE;
+        const badge = done ? '<span class="text-[9px] font-black text-white bg-emerald-500 px-1.5 py-0.5 rounded-md">已消课</span>'
+          : leave ? '<span class="text-[9px] font-black text-white bg-rose-400 px-1.5 py-0.5 rounded-md">请假</span>'
+          : '<span class="text-[9px] font-black text-white bg-amber-500 px-1.5 py-0.5 rounded-md">待上课</span>';
+        return `
+        <div class="bg-white border border-slate-100 rounded-2xl px-3.5 py-2.5 flex items-center gap-3">
+          <div class="text-center shrink-0">
+            <div class="font-black text-sm text-slate-800">${s.startTime}</div>
+            <div class="text-[9px] text-slate-400">${s.durationMinutes || 45}分钟</div>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="font-bold text-xs text-slate-800 truncate">${s.studentName || ''} <span class="text-slate-400 font-medium">· ${s.subject || ''}</span></div>
+            <div class="text-[10px] text-slate-400 truncate">${s.teacherName ? '👩‍🏫' + s.teacherName : ''}${s.room ? ' · 📍' + s.room : ''}</div>
+          </div>
+          ${badge}
+        </div>`;
+      }).join('')}`;
+
+    // ---- 事件绑定 ----
+    const bind = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', fn); };
+    bind('homeQuickSchedule', () => { switchMobileView('schedule'); setTimeout(() => openMobileScheduleModalForNew(), 200); });
+    bind('homeQuickStudents', () => switchMobileView('students'));
+    bind('homeQuickFinance', () => switchMobileView('finance'));
+    bind('homeQuickCalendar', () => switchMobileView('schedule'));
+    bind('btnTeacherExitHome', () => {
+      if (!confirm('退出老师身份，回到管理员入口？')) return;
+      teacherLogout();
+      location.reload();
     });
   }
 

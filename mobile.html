@@ -61,15 +61,25 @@
     <span id="mobileDateText" class="font-bold text-slate-800 text-xs text-right truncate">
       9月1日 - 9月3日
     </span>
+    <button id="btnMobileAddSchedule" aria-label="新增排课" class="ml-2 shrink-0 w-7 h-7 rounded-full bg-amber-500 text-white flex items-center justify-center shadow-2xs active:bg-amber-600 transition">
+      <i class="fa-solid fa-plus text-[11px]"></i>
+    </button>
   </div>
 
   <!-- 手机端 主视图 (课表视图 vs 学员列表) -->
   <main class="flex-1 overflow-hidden relative bg-slate-50">
 
+    <!-- 0. 手机端 首页视图 -->
+    <div id="viewHome" class="h-full flex flex-col overflow-hidden hidden bg-slate-50">
+      <div class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3">
+        <div id="mobileHomeHero" class="shrink-0"></div>
+        <div id="mobileHomeQuick" class="grid grid-cols-2 gap-3"></div>
+        <div id="mobileHomeToday" class="space-y-2"></div>
+      </div>
+    </div>
+
     <!-- 1. 手机端 3日课表日历视图 -->
     <div id="viewSchedule" class="h-full flex flex-col overflow-hidden">
-      <!-- 个人主页条：管理员=全校概览 / 老师=个人待办 -->
-      <div id="mobileHomeCard" class="px-3 pt-2.5 shrink-0"></div>
       <!-- 3日 header -->
       <div class="bg-white border-b border-slate-200 flex items-center shadow-2xs z-10 shrink-0 mt-2">
         <div class="w-12 shrink-0 py-2 text-center text-[11px] text-slate-400 font-semibold border-r border-slate-100">
@@ -189,8 +199,12 @@
 
   <!-- 手机端 App 底部导航栏 -->
   <nav class="mobile-bottom-nav bg-white border-t border-slate-200 px-3 flex items-center justify-between shrink-0 shadow-lg z-30">
-    <button id="navTabSchedule" class="nav-tab flex flex-col items-center gap-0.5 font-bold text-[10px] px-2 text-amber-600" data-view="schedule">
-      <i class="fa-solid fa-calendar-week text-base fn-schedule is-active"></i>
+    <button id="navTabHome" class="nav-tab flex flex-col items-center gap-0.5 font-bold text-[10px] px-2 text-indigo-600" data-view="home">
+      <i class="fa-solid fa-house text-base fn-home is-active"></i>
+      <span>首页</span>
+    </button>
+    <button id="navTabSchedule" class="nav-tab flex flex-col items-center gap-0.5 text-slate-400 font-medium text-[10px] px-2" data-view="schedule">
+      <i class="fa-solid fa-calendar-week text-base fn-schedule"></i>
       <span>课表</span>
     </button>
     <button id="navTabStudents" class="nav-tab flex flex-col items-center gap-0.5 text-slate-400 font-medium text-[10px] px-2" data-view="students">
