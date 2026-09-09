@@ -781,6 +781,7 @@
     checkUrlSyncData();
     loadData();
     loadTeacherSession();
+    if (typeof updateHeaderIdentity === 'function') updateHeaderIdentity();
     setupMobileEvents();
     setupTeacherLoginGate();
     renderMobileTeacherSelect();
@@ -807,6 +808,7 @@
       renderMobileStudents();
       if (typeof renderMobileHome === 'function') renderMobileHome();
       if (typeof renderMobileFinance === 'function') renderMobileFinance();
+      if (typeof updateHeaderIdentity === 'function') updateHeaderIdentity();
     };
     const btn = document.getElementById('btnTeacherPinGo');
     if (btn) btn.addEventListener('click', go);
@@ -818,8 +820,25 @@
       renderMobile3DayView();
       renderMobileStudents();
       if (typeof renderMobileFinance === 'function') renderMobileFinance();
+      if (typeof updateHeaderIdentity === 'function') updateHeaderIdentity();
     });
     setTimeout(() => input && input.focus(), 100);
+  }
+
+  // 顶部右侧身份显示：管理员=老师筛选框；老师=本人名字
+  function updateHeaderIdentity() {
+    const adminWrap = document.getElementById('adminTeacherFilterWrap');
+    const badge = document.getElementById('teacherNameBadge');
+    const nameEl = document.getElementById('teacherNameText');
+    if (!adminWrap || !badge) return;
+    if (isTeacherView()) {
+      adminWrap.classList.add('hidden');
+      badge.classList.remove('hidden');
+      if (nameEl) nameEl.textContent = teacherSession.name;
+    } else {
+      adminWrap.classList.remove('hidden');
+      badge.classList.add('hidden');
+    }
   }
 
   function safeBind(id, eventName, handler) {
@@ -989,6 +1008,7 @@
           renderMobileStudents();
           if (typeof renderMobileFinance === 'function') renderMobileFinance();
           updateIdentityDesc();
+      if (typeof updateHeaderIdentity === 'function') updateHeaderIdentity();
           showToast('已切换到管理员身份');
           return;
         }
@@ -1001,6 +1021,7 @@
         renderMobileStudents();
         if (typeof renderMobileFinance === 'function') renderMobileFinance();
         updateIdentityDesc();
+      if (typeof updateHeaderIdentity === 'function') updateHeaderIdentity();
         showToast(`已切换到 ${t.name} 老师视角`);
       });
       document.body.appendChild(ov);
@@ -1248,12 +1269,19 @@
     const debtCount = debtStudents.length;
     const debtTotal = debtStudents.reduce((n, x) => n + (x.remainingSessions || 0), 0);
 
-    // 待续费：剩余课时 ≤2 的学员-课程
+    // 待续费：剩余课时 ≤2 的学员-课程（老师视角只看自己课上的学员）
+    const myStudentIds = new Set(schedules.filter((s) => inScope(s)).map((s) => s.studentId));
     const lowList = [];
     students.forEach((st) => (st.courses || []).forEach((c) => {
+      if (isTeacherView() && !myStudentIds.has(st.id)) return;
       if (c.remainingLessons <= 2) lowList.push({ student: st.name, course: c.courseName || c.name || '', remaining: c.remainingLessons });
     }));
     const lowCount = lowList.length;
+    // 老师视角的欠费统计（我的学员）
+    const tDebtList = isTeacherView() ? (debts || []).filter((x) => (x.remainingSessions || 0) > 0 && myStudentIds.has(x.studentId)) : [];
+    const tDebtCount = tDebtList.length;
+    const tDebtTotal = tDebtList.reduce((n, x) => n + (x.remainingSessions || 0), 0);
+    const tLowCount = isTeacherView() ? lowCount : 0;
 
     cards.innerHTML = `
       <div class="grid grid-cols-2 gap-3">
@@ -1278,18 +1306,18 @@
           <div class="text-2xl font-black mt-0.5">${lowCount}<span class="text-xs font-bold opacity-80"> 项</span></div>
           <div class="text-[10px] opacity-80 mt-0.5">课时≤2 需跟进</div>
         </button>` : `
-        <div class="bg-gradient-to-br from-slate-400 to-slate-500 rounded-3xl px-4 py-4 text-white shadow-sm">
-          <div class="text-[10px] opacity-85 font-semibold flex items-center gap-1"><i class="fa-solid fa-clock"></i> 本周剩余</div>
-          <div class="text-2xl font-black mt-0.5">${schedules.filter((s) => { const t = new Date(s.date + 'T00:00:00'); const n = new Date(); n.setHours(0,0,0,0); const e = new Date(n); e.setDate(e.getDate() + (7 - n.getDay())); return inScope(s) && t > n && t < e && s.status === SCHEDULE_STATUS.SCHEDULED; }).length}<span class="text-xs font-bold opacity-80"> 节</span></div>
-          <div class="text-[10px] opacity-80 mt-0.5">本周还剩这些课</div>
-        </div>
-        <div class="bg-gradient-to-br from-slate-400 to-slate-500 rounded-3xl px-4 py-4 text-white shadow-sm">
-          <div class="text-[10px] opacity-85 font-semibold flex items-center gap-1"><i class="fa-solid fa-users"></i> 我的学员</div>
-          <div class="text-2xl font-black mt-0.5">${new Set(schedules.filter((s) => inScope(s)).map((s) => s.studentId)).size}<span class="text-xs font-bold opacity-80"> 人</span></div>
-          <div class="text-[10px] opacity-80 mt-0.5">跟我上课的学员</div>
-        </div>`}
+        <button id="homeCardDebt" class="bg-gradient-to-br from-rose-500 to-pink-500 rounded-3xl px-4 py-4 text-white shadow-sm text-left active:opacity-90">
+          <div class="text-[10px] opacity-85 font-semibold flex items-center gap-1"><i class="fa-solid fa-hand-holding-dollar"></i> 欠费学员</div>
+          <div class="text-2xl font-black mt-0.5">${tDebtCount}<span class="text-xs font-bold opacity-80"> 人</span></div>
+          <div class="text-[10px] opacity-80 mt-0.5">共欠 ${tDebtTotal} 节</div>
+        </button>
+        <button id="homeCardRenew" class="bg-gradient-to-br from-emerald-500 to-teal-500 rounded-3xl px-4 py-4 text-white shadow-sm text-left active:opacity-90">
+          <div class="text-[10px] opacity-85 font-semibold flex items-center gap-1"><i class="fa-solid fa-bell"></i> 待续费</div>
+          <div class="text-2xl font-black mt-0.5">${tLowCount}<span class="text-xs font-bold opacity-80"> 项</span></div>
+          <div class="text-[10px] opacity-80 mt-0.5">我的学员 课时≤2</div>
+        </button>`}
       </div>
-      ${!isTeacherView() && lowCount > 0 ? `
+      ${lowCount > 0 ? `
       <div class="bg-white border border-emerald-100 rounded-2xl p-3.5 mt-3">
         <div class="font-bold text-[11px] text-slate-700 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-bullhorn text-emerald-500"></i> 续费跟进清单</div>
         ${lowList.slice(0, 5).map((x) => `
@@ -1344,6 +1372,10 @@
   }
 
   function renderMobile3DayView() {
+    // 老师视角：课表默认只看自己的课（顶部显示的是名字徽章，无筛选框）
+    if (isTeacherView() && selectedTeacherFilter === 'all') {
+      selectedTeacherFilter = teacherSession.teacherId;
+    }
     const headerContainer = document.getElementById('mobileHeaderDays');
     const gridContainer = document.getElementById('mobileGridColumns');
     if (!headerContainer || !gridContainer) return;
