@@ -1037,10 +1037,7 @@
       }
     });
 
-    safeBind('navTabQuickAdd', 'click', () => {
-      openMobileScheduleModalForNew();
-    });
-    // 课表日期栏的新增排课按钮（原导航加号入口的功能延伸）
+    // 课表日期栏的新增排课按钮（导航加号已移除，此为唯一快捷新增入口）
     safeBind('btnMobileAddSchedule', 'click', () => {
       openMobileScheduleModalForNew();
     });
@@ -1202,64 +1199,108 @@
     });
   }
 
-  // 首页：hero 工作台卡 + 快捷入口 + 今日课程列表
-  // （原课表顶部工作台条已迁移至此）
+  // 首页：hero 工作台卡 + 数据看板卡（今天/明天课数、欠费、待续费）+ 今日课程列表
   function renderMobileHome() {
     const hero = document.getElementById('mobileHomeHero');
-    const quick = document.getElementById('mobileHomeQuick');
+    const cards = document.getElementById('mobileHomeCards');
     const todayBox = document.getElementById('mobileHomeToday');
-    if (!hero || !quick || !todayBox) return;
+    if (!hero || !cards || !todayBox) return;
     const todayStr = formatDate(new Date());
+    const d = new Date(); d.setDate(d.getDate() + 1);
+    const tomorrowStr = formatDate(d);
 
-    // ---- Hero：管理员=全校概览；老师=个人待办 ----
+    // 视角内的排课集合
+    const inScope = (s) => !isTeacherView() || s.teacherId === teacherSession.teacherId || s.assistantTeacherId === teacherSession.teacherId;
+
+    // ---- Hero ----
     if (!isTeacherView()) {
-      const todayCount = schedules.filter((s) => s.date === todayStr && s.status === SCHEDULE_STATUS.SCHEDULED).length;
-      const lowStudents = students.filter((st) => (st.courses || []).some((c) => c.remainingLessons <= 2)).length;
+      const todayCount = schedules.filter((s) => s.date === todayStr && s.status === SCHEDULE_STATUS.SCHEDULED && inScope(s)).length;
       hero.innerHTML = `
-        <div class="bg-gradient-to-br from-amber-500 to-orange-400 rounded-3xl px-5 py-5 text-white shadow-md">
-          <div class="text-[11px] opacity-85 font-semibold">LessonMate 管理台</div>
-          <div class="text-xl font-black mt-1">今日待上 ${todayCount} 节</div>
-          <div class="text-[11px] opacity-90 mt-1">课时预警学员 ${lowStudents} 人 · 记得提醒续费</div>
+        <div class="bg-gradient-to-br from-indigo-500 to-violet-500 rounded-3xl px-5 py-5 text-white shadow-md">
+          <div class="text-[11px] opacity-85 font-semibold">LessonMate 工作台</div>
+          <div class="text-xl font-black mt-1">${new Date().getMonth() + 1}月${new Date().getDate()}日 · 周${'日一二三四五六'[new Date().getDay()]}</div>
+          <div class="text-[11px] opacity-90 mt-1">今天共 ${todayCount} 节课，加油！</div>
         </div>`;
     } else {
-      const myToday = schedules.filter((s) => s.date === todayStr && (s.teacherId === teacherSession.teacherId || s.assistantTeacherId === teacherSession.teacherId));
-      const myUpcoming = myToday.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).sort((a, b) => a.startTime.localeCompare(b.startTime));
-      const nextClass = myUpcoming[0];
+      const myToday = schedules.filter((s) => s.date === todayStr && s.status === SCHEDULE_STATUS.SCHEDULED && inScope(s)).sort((a, b) => a.startTime.localeCompare(b.startTime));
+      const nextClass = myToday[0];
       hero.innerHTML = `
         <div class="bg-gradient-to-br from-sky-500 to-indigo-500 rounded-3xl px-5 py-5 text-white shadow-md">
           <div class="flex items-center justify-between">
             <div class="text-[11px] opacity-85 font-semibold">${teacherSession.name} 老师的工作台</div>
             <button id="btnTeacherExitHome" class="text-[10px] bg-white/20 rounded-lg px-2 py-1 font-bold active:bg-white/30">退出</button>
           </div>
-          <div class="text-xl font-black mt-1">今日 ${myUpcoming.length} 节课</div>
+          <div class="text-xl font-black mt-1">今日 ${myToday.length} 节课</div>
           <div class="text-[11px] opacity-90 mt-1">${nextClass ? `下一节 ${nextClass.startTime} · ${nextClass.studentName || ''}` : '今天没课 🎉'}</div>
         </div>`;
     }
 
-    // ---- 快捷入口 ----
-    quick.innerHTML = `
-      <button id="homeQuickSchedule" class="p-4 bg-white border border-amber-100 rounded-2xl text-left active:bg-amber-50">
-        <div class="font-bold text-xs text-slate-800 flex items-center gap-1.5"><i class="fa-solid fa-calendar-plus text-amber-600"></i> 排课</div>
-        <div class="text-[10px] text-slate-400 mt-1">新增课程安排</div>
-      </button>
-      <button id="homeQuickStudents" class="p-4 bg-white border border-emerald-100 rounded-2xl text-left active:bg-emerald-50">
-        <div class="font-bold text-xs text-slate-800 flex items-center gap-1.5"><i class="fa-solid fa-user-plus text-emerald-600"></i> 学员</div>
-        <div class="text-[10px] text-slate-400 mt-1">学员名单管理</div>
-      </button>
-      <button id="homeQuickFinance" class="p-4 bg-white border border-rose-100 rounded-2xl text-left active:bg-rose-50">
-        <div class="font-bold text-xs text-slate-800 flex items-center gap-1.5"><i class="fa-solid fa-coins text-rose-500"></i> 财务</div>
-        <div class="text-[10px] text-slate-400 mt-1">课消与欠课</div>
-      </button>
-      <button id="homeQuickCalendar" class="p-4 bg-white border border-sky-100 rounded-2xl text-left active:bg-sky-50">
-        <div class="font-bold text-xs text-slate-800 flex items-center gap-1.5"><i class="fa-solid fa-calendar-week text-sky-600"></i> 课表</div>
-        <div class="text-[10px] text-slate-400 mt-1">查看周课表</div>
-      </button>`;
+    // ---- 看板卡 ----
+    const todayAll = schedules.filter((s) => s.date === todayStr && inScope(s));
+    const tomorrowAll = schedules.filter((s) => s.date === tomorrowStr && inScope(s));
+    const todayPending = todayAll.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).length;
+    const tomorrowPending = tomorrowAll.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).length;
+    const todayDone = todayAll.filter((s) => s.status === SCHEDULE_STATUS.COMPLETED).length;
+
+    // 欠费学员（欠课账 > 0）
+    const debtStudents = isTeacherView() ? [] : (debts || []).filter((x) => (x.remainingSessions || 0) > 0);
+    const debtCount = debtStudents.length;
+    const debtTotal = debtStudents.reduce((n, x) => n + (x.remainingSessions || 0), 0);
+
+    // 待续费：剩余课时 ≤2 的学员-课程
+    const lowList = [];
+    students.forEach((st) => (st.courses || []).forEach((c) => {
+      if (c.remainingLessons <= 2) lowList.push({ student: st.name, course: c.courseName || c.name || '', remaining: c.remainingLessons });
+    }));
+    const lowCount = lowList.length;
+
+    cards.innerHTML = `
+      <div class="grid grid-cols-2 gap-3">
+        <div class="bg-gradient-to-br from-amber-500 to-orange-400 rounded-3xl px-4 py-4 text-white shadow-sm">
+          <div class="text-[10px] opacity-85 font-semibold flex items-center gap-1"><i class="fa-solid fa-calendar-day"></i> 今天</div>
+          <div class="text-2xl font-black mt-0.5">${todayPending}<span class="text-xs font-bold opacity-80"> 节</span></div>
+          <div class="text-[10px] opacity-80 mt-0.5">已消 ${todayDone} 节</div>
+        </div>
+        <div class="bg-gradient-to-br from-sky-500 to-cyan-500 rounded-3xl px-4 py-4 text-white shadow-sm">
+          <div class="text-[10px] opacity-85 font-semibold flex items-center gap-1"><i class="fa-solid fa-calendar-days"></i> 明天</div>
+          <div class="text-2xl font-black mt-0.5">${tomorrowPending}<span class="text-xs font-bold opacity-80"> 节</span></div>
+          <div class="text-[10px] opacity-80 mt-0.5">${tomorrowAll.length ? '最早 ' + tomorrowAll.map((s) => s.startTime).sort()[0] : '暂无安排'}</div>
+        </div>
+        ${!isTeacherView() ? `
+        <button id="homeCardDebt" class="bg-gradient-to-br from-rose-500 to-pink-500 rounded-3xl px-4 py-4 text-white shadow-sm text-left active:opacity-90">
+          <div class="text-[10px] opacity-85 font-semibold flex items-center gap-1"><i class="fa-solid fa-hand-holding-dollar"></i> 欠费学员</div>
+          <div class="text-2xl font-black mt-0.5">${debtCount}<span class="text-xs font-bold opacity-80"> 人</span></div>
+          <div class="text-[10px] opacity-80 mt-0.5">共欠 ${debtTotal} 节</div>
+        </button>
+        <button id="homeCardRenew" class="bg-gradient-to-br from-emerald-500 to-teal-500 rounded-3xl px-4 py-4 text-white shadow-sm text-left active:opacity-90">
+          <div class="text-[10px] opacity-85 font-semibold flex items-center gap-1"><i class="fa-solid fa-bell"></i> 待续费</div>
+          <div class="text-2xl font-black mt-0.5">${lowCount}<span class="text-xs font-bold opacity-80"> 项</span></div>
+          <div class="text-[10px] opacity-80 mt-0.5">课时≤2 需跟进</div>
+        </button>` : `
+        <div class="bg-gradient-to-br from-slate-400 to-slate-500 rounded-3xl px-4 py-4 text-white shadow-sm">
+          <div class="text-[10px] opacity-85 font-semibold flex items-center gap-1"><i class="fa-solid fa-clock"></i> 本周剩余</div>
+          <div class="text-2xl font-black mt-0.5">${schedules.filter((s) => { const t = new Date(s.date + 'T00:00:00'); const n = new Date(); n.setHours(0,0,0,0); const e = new Date(n); e.setDate(e.getDate() + (7 - n.getDay())); return inScope(s) && t > n && t < e && s.status === SCHEDULE_STATUS.SCHEDULED; }).length}<span class="text-xs font-bold opacity-80"> 节</span></div>
+          <div class="text-[10px] opacity-80 mt-0.5">本周还剩这些课</div>
+        </div>
+        <div class="bg-gradient-to-br from-slate-400 to-slate-500 rounded-3xl px-4 py-4 text-white shadow-sm">
+          <div class="text-[10px] opacity-85 font-semibold flex items-center gap-1"><i class="fa-solid fa-users"></i> 我的学员</div>
+          <div class="text-2xl font-black mt-0.5">${new Set(schedules.filter((s) => inScope(s)).map((s) => s.studentId)).size}<span class="text-xs font-bold opacity-80"> 人</span></div>
+          <div class="text-[10px] opacity-80 mt-0.5">跟我上课的学员</div>
+        </div>`}
+      </div>
+      ${!isTeacherView() && lowCount > 0 ? `
+      <div class="bg-white border border-emerald-100 rounded-2xl p-3.5 mt-3">
+        <div class="font-bold text-[11px] text-slate-700 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-bullhorn text-emerald-500"></i> 续费跟进清单</div>
+        ${lowList.slice(0, 5).map((x) => `
+          <div class="flex items-center justify-between py-1.5 border-b border-slate-50 last:border-0">
+            <div class="text-[11px] font-bold text-slate-700">${x.student} <span class="text-slate-400 font-medium">· ${x.course}</span></div>
+            <div class="text-[10px] font-black ${x.remaining <= 0 ? 'text-rose-500' : 'text-amber-600'}">${x.remaining <= 0 ? '已用完' : '剩 ' + x.remaining + ' 节'}</div>
+          </div>`).join('')}
+        ${lowCount > 5 ? `<div class="text-[10px] text-slate-400 pt-1.5">还有 ${lowCount - 5} 项，去学员页查看</div>` : ''}
+      </div>` : ''}`;
 
     // ---- 今日课程列表 ----
-    const base = isTeacherView()
-      ? schedules.filter((s) => s.date === todayStr && (s.teacherId === teacherSession.teacherId || s.assistantTeacherId === teacherSession.teacherId))
-      : schedules.filter((s) => s.date === todayStr);
-    const todays = base.slice().sort((a, b) => a.startTime.localeCompare(b.startTime));
+    const todays = todayAll.slice().sort((a, b) => a.startTime.localeCompare(b.startTime));
     todayBox.innerHTML = `
       <div class="font-bold text-xs text-slate-600 px-1 pt-1">今日课程（${todays.length}）</div>
       ${todays.length === 0 ? '<div class="text-center text-[11px] text-slate-400 py-6 bg-white rounded-2xl border border-slate-100">今天没有课程安排</div>' : ''}
@@ -1283,15 +1324,15 @@
         </div>`;
       }).join('')}`;
 
-    // ---- 事件绑定（事件委托，重绘不丢监听）----
-    quick.onclick = (e) => {
-      const card = e.target.closest('button');
-      if (!card) return;
-      const id = card.id;
-      if (id === 'homeQuickSchedule') { window.__switchMobileView('schedule'); setTimeout(() => openMobileScheduleModalForNew(), 250); }
-      else if (id === 'homeQuickStudents') window.__switchMobileView('students');
-      else if (id === 'homeQuickFinance') window.__switchMobileView('finance');
-      else if (id === 'homeQuickCalendar') window.__switchMobileView('schedule');
+    // ---- 事件（委托到 cards 容器）----
+    cards.onclick = (e) => {
+      const t = e.target.closest('#homeCardDebt, #homeCardRenew');
+      if (!t) return;
+      if (t.id === 'homeCardDebt') switchMobileView('finance');
+      if (t.id === 'homeCardRenew') { switchMobileView('students'); setTimeout(() => {
+        const f = document.getElementById('mobileStudentStatusFilter') || document.getElementById('filter-low');
+        if (f) { f.value = 'low'; f.dispatchEvent(new Event('change')); }
+      }, 250); }
     };
     const exitBtn = document.getElementById('btnTeacherExitHome');
     if (exitBtn) exitBtn.onclick = () => {

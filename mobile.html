@@ -69,11 +69,11 @@
   <!-- 手机端 主视图 (课表视图 vs 学员列表) -->
   <main class="flex-1 overflow-hidden relative bg-slate-50">
 
-    <!-- 0. 手机端 首页视图 -->
+    <!-- 0. 手机端 首页视图（个人看板） -->
     <div id="viewHome" class="h-full flex flex-col overflow-hidden hidden bg-slate-50">
       <div class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3">
         <div id="mobileHomeHero" class="shrink-0"></div>
-        <div id="mobileHomeQuick" class="grid grid-cols-2 gap-3"></div>
+        <div id="mobileHomeCards" class="space-y-3"></div>
         <div id="mobileHomeToday" class="space-y-2"></div>
       </div>
     </div>
@@ -210,9 +210,6 @@
     <button id="navTabStudents" class="nav-tab flex flex-col items-center gap-0.5 text-slate-400 font-medium text-[10px] px-2" data-view="students">
       <i class="fa-solid fa-users text-base fn-students"></i>
       <span>学员</span>
-    </button>
-    <button id="navTabQuickAdd" aria-label="新增" class="flex flex-col items-center justify-center -mt-5 w-12 h-12 rounded-full bg-gradient-to-tr from-amber-500 to-orange-400 text-white shadow-lg shadow-orange-200 border-4 border-white transition active:scale-95">
-      <i class="fa-solid fa-plus text-lg"></i>
     </button>
     <button id="navTabFinance" class="nav-tab flex flex-col items-center gap-0.5 text-slate-400 font-medium text-[10px] px-2 relative" data-view="finance">
       <i class="fa-solid fa-coins text-base fn-finance"></i>
