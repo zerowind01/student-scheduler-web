@@ -915,6 +915,8 @@
     });
 
     safeBind('mobileSearchStudent', 'input', renderMobileStudents);
+    safeBind('mobileStudentTeacherFilter', 'change', renderMobileStudents);
+    safeBind('mobileStudentCourseFilter', 'change', renderMobileStudents);
 
     document.querySelectorAll('.mobile-student-filter').forEach((btn) => {
       btn.addEventListener('click', (e) => {
@@ -1217,15 +1219,39 @@
     return { text: 'text-emerald-700', bg: 'bg-emerald-50', label: `剩${total}` };
   }
 
+  // 填充学员筛选下拉：老师选项来自 teachers，课程选项来自所有学员的课程名并集
+  function populateMobileStudentFilters() {
+    const tSel = document.getElementById('mobileStudentTeacherFilter');
+    const cSel = document.getElementById('mobileStudentCourseFilter');
+    if (tSel) {
+      const prev = tSel.value;
+      tSel.innerHTML = '<option value="all">全部老师</option>' +
+        teachers.map((t) => `<option value="${t.id}">${t.name}</option>`).join('');
+      if ([...tSel.options].some((o) => o.value === prev)) tSel.value = prev;
+    }
+    if (cSel) {
+      const prev = cSel.value;
+      const names = [...new Set(students.flatMap((st) => (st.courses || []).map((c) => c.name)))].filter(Boolean);
+      cSel.innerHTML = '<option value="all">全部课程</option>' +
+        names.map((n) => `<option value="${n}">${n}</option>`).join('');
+      if ([...cSel.options].some((o) => o.value === prev)) cSel.value = prev;
+    }
+  }
+
   function renderMobileStudents() {
     const container = document.getElementById('mobileStudentContainer');
     if (!container) return;
     container.innerHTML = '';
+    populateMobileStudentFilters();
 
     const filterBtn = document.querySelector('.mobile-student-filter.active');
     const filter = filterBtn ? filterBtn.getAttribute('data-filter') : 'all';
     const searchEl = document.getElementById('mobileSearchStudent');
     const query = ((searchEl ? searchEl.value : '') || '').trim().toLowerCase();
+    const tSel = document.getElementById('mobileStudentTeacherFilter');
+    const cSel = document.getElementById('mobileStudentCourseFilter');
+    const teacherFilter = tSel ? tSel.value : 'all';
+    const courseFilter = cSel ? cSel.value : 'all';
 
     let list = students.filter((st) => {
       normalizeStudent(st);
@@ -1236,6 +1262,15 @@
       if (filter === 'low') {
         const total = st.courses.reduce((acc, c) => acc + c.remainingLessons, 0);
         return total <= 2 || st.courses.some((c) => c.remainingLessons <= 2);
+      }
+      // 按老师筛选：排课记录里该老师（主讲或助教）上过/将上该学员的课
+      if (teacherFilter !== 'all') {
+        const matchT = schedules.some((s) => s.studentId === st.id && (s.teacherId === teacherFilter || s.assistantTeacherId === teacherFilter));
+        if (!matchT) return false;
+      }
+      // 按课程筛选：学员有该名字的课程
+      if (courseFilter !== 'all') {
+        if (!st.courses.some((c) => c.name === courseFilter)) return false;
       }
       return true;
     });

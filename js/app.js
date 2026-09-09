@@ -853,6 +853,9 @@
       renderStudentList();
     });
 
+    safeBind('studentTeacherFilter', 'change', renderStudentList);
+    safeBind('studentCourseFilter', 'change', renderStudentList);
+
     document.querySelectorAll('.filter-student-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         document.querySelectorAll('.filter-student-btn').forEach((b) => b.classList.remove('active', 'bg-amber-500', 'text-white'));
@@ -1258,6 +1261,23 @@
     if (!container) return;
     container.innerHTML = '';
 
+    // 填充筛选下拉（保留当前选中值）
+    const tSel = document.getElementById('studentTeacherFilter');
+    const cSel = document.getElementById('studentCourseFilter');
+    if (tSel) {
+      const prev = tSel.value;
+      tSel.innerHTML = '<option value="all">全部老师</option>' +
+        teachers.map((t) => `<option value="${t.id}">${t.name}</option>`).join('');
+      if ([...tSel.options].some((o) => o.value === prev)) tSel.value = prev;
+    }
+    if (cSel) {
+      const prev = cSel.value;
+      const names = [...new Set(students.flatMap((st) => (st.courses || []).map((c) => c.name)))].filter(Boolean);
+      cSel.innerHTML = '<option value="all">全部课程</option>' +
+        names.map((n) => `<option value="${n}">${n}</option>`).join('');
+      if ([...cSel.options].some((o) => o.value === prev)) cSel.value = prev;
+    }
+
     const weekStartStr = formatDate(currentWeekStart);
     const weekEndStr = formatDate(addDays(currentWeekStart, 6));
 
@@ -1273,6 +1293,18 @@
       const matchNameOrPhone = st.name.toLowerCase().includes(searchQuery) || (st.phone && st.phone.includes(searchQuery));
       const matchCourseName = st.courses.some((c) => c.name.toLowerCase().includes(searchQuery));
       if (!matchNameOrPhone && !matchCourseName) return false;
+
+      // 按老师筛选：排课记录里该老师（主讲或助教）上过/将上该学员的课
+      const tSel = document.getElementById('studentTeacherFilter');
+      const cSel = document.getElementById('studentCourseFilter');
+      if (tSel && tSel.value !== 'all') {
+        const matchT = schedules.some((s) => s.studentId === st.id && (s.teacherId === tSel.value || s.assistantTeacherId === tSel.value));
+        if (!matchT) return false;
+      }
+      // 按课程筛选：学员有该名字的课程
+      if (cSel && cSel.value !== 'all') {
+        if (!st.courses.some((c) => c.name === cSel.value)) return false;
+      }
 
       const totalLessons = st.courses.reduce((acc, c) => acc + c.remainingLessons, 0);
 
