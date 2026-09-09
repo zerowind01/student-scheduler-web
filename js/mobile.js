@@ -805,6 +805,7 @@
       showToast(`欢迎，${t.name}老师`);
       renderMobile3DayView();
       renderMobileStudents();
+      if (typeof renderMobileHome === 'function') renderMobileHome();
       if (typeof renderMobileFinance === 'function') renderMobileFinance();
     };
     const btn = document.getElementById('btnTeacherPinGo');
