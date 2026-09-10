@@ -1340,17 +1340,7 @@
           <div class="lm-stat-v mt-1 text-[#fe4c02]">${tLowCount}<span class="text-xs font-medium text-[#626260]"> 项</span></div>
           <div class="text-[11px] text-[#9c9fa5] mt-0.5">我的学员 课时≤2</div>
         </button>`}
-      </div>
-      ${lowCount > 0 ? `
-      <div class="lm-card p-4 mt-3">
-        <div class="font-bold text-[12px] text-[#111111] mb-2 flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full" style="background:#fe4c02"></span> 续费跟进清单</div>
-        ${lowList.slice(0, 5).map((x) => `
-          <div class="flex items-center justify-between py-1.5" style="border-bottom:1px solid #f0ebe2">
-            <div class="text-[11.5px] font-bold text-[#111111]">${x.student} <span class="text-[#9c9fa5] font-medium">· ${x.course}</span></div>
-            <div class="text-[11px] font-bold ${x.remaining <= 0 ? 'text-[#d5304f]' : 'text-[#fe4c02]'}">${x.remaining <= 0 ? '已用完' : '剩 ' + x.remaining + ' 节'}</div>
-          </div>`).join('')}
-        ${lowCount > 5 ? `<div class="text-[11px] text-[#9c9fa5] pt-1.5">还有 ${lowCount - 5} 项，去学员页查看</div>` : ''}
-      </div>` : ''}`;
+      </div>`;
 
     // ---- 今日课程列表 ----
     const todays = todayAll.slice().sort((a, b) => a.startTime.localeCompare(b.startTime));
@@ -1376,6 +1366,21 @@
           ${badge}
         </div>`;
       }).join('')}`;
+
+    // ---- 续费跟进清单（今日课程下方）----
+    const renewBox = document.getElementById('mobileHomeRenew');
+    if (renewBox) {
+      renewBox.innerHTML = lowCount > 0 ? `
+      <div class="lm-card p-4">
+        <div class="font-bold text-[12px] text-[#111111] mb-2 flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full" style="background:#fe4c02"></span> 续费跟进清单</div>
+        ${lowList.slice(0, 5).map((x) => `
+          <div class="flex items-center justify-between py-1.5" style="border-bottom:1px solid #f0ebe2">
+            <div class="text-[11.5px] font-bold text-[#111111]">${x.student} <span class="text-[#9c9fa5] font-medium">· ${x.course}</span></div>
+            <div class="text-[11px] font-bold ${x.remaining <= 0 ? 'text-[#d5304f]' : 'text-[#fe4c02]'}">${x.remaining <= 0 ? '已用完' : '剩 ' + x.remaining + ' 节'}</div>
+          </div>`).join('')}
+        ${lowCount > 5 ? `<div class="text-[11px] text-[#9c9fa5] pt-1.5">还有 ${lowCount - 5} 项，去学员页查看</div>` : ''}
+      </div>` : '';
+    }
 
     // ---- 事件（委托到 cards 容器；走 window 桥避免作用域错误）----
     cards.onclick = (e) => {
