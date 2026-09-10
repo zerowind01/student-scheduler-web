@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>手机端首页效果 - Hero 改版</title>
+<link rel="stylesheet" href="https://cdn.tailwindcss.com">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif;
+    background: linear-gradient(180deg, #FDFBF8 0%, #F1EADE 100%);
+    margin: 0;
+    min-height: 100dvh;
+    display: flex; justify-content: center;
+  }
+  .phone {
+    width: 100%; max-width: 390px;
+    min-height: 100dvh;
+    position: relative;
+    padding: 62px 18px 110px;   /* 状态栏62 + 底部岛台空间 */
+    overflow-x: hidden;
+  }
+  /* 顶栏 */
+  .lm-header {
+    position: fixed; top: 0; left: 50%; transform: translateX(-50%);
+    width: 100%; max-width: 390px;
+    padding: 14px 18px 10px;
+    display: flex; align-items: center; gap: 8px;
+    background: linear-gradient(180deg, rgba(253,251,248,.92), rgba(253,251,248,.75));
+    backdrop-filter: blur(12px);
+    z-index: 30;
+  }
+  .logo-sq { width: 30px; height: 30px; border-radius: 9px; background: #111; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:13px; }
+  .brand { font-weight: 800; font-size: 16px; color: #111; letter-spacing: -.2px; }
+  .brand small { font-weight:500; color:#9c9fa5; font-size:10px; margin-left:5px; }
+
+  .card {
+    background: #fff;
+    border-radius: 22px 22px 0 0;      /* 大卡去掉下方圆角 */
+    box-shadow: 0 1px 2px rgba(17,17,17,.04), 0 8px 24px rgba(17,17,17,.06), 0 20px 48px rgba(17,17,17,.05);
+    position: relative;
+    z-index: 2;                         /* 大卡在上层 */
+  }
+  .drawer-wrap {
+    /* 抽屉：位于大卡下层，向下探出一截，用渐变+大投影做柔和过渡 */
+    position: relative;
+    z-index: 1;
+    margin-top: -22px;
+    padding-top: 22px;
+    /* 柔化：探出段向下渐隐进入背景，而不是硬切 */
+  }
+  .drawer {
+    background: linear-gradient(180deg, #F3ECDF 0%, rgba(243,236,223,0) 100%);
+    border-radius: 0 0 20px 20px;
+    padding: 12px 20px 7px;             /* 再缩短1/3，文字紧贴底缘 */
+    box-shadow: 0 12px 20px -6px rgba(17,17,17,.08);
+    display: flex; align-items: flex-end; justify-content: space-between;  /* 文字贴底 */
+    position: relative;
+    min-height: 0;
+  }
+  /* 大卡底部投下的柔和阴影带，压在抽屉上 */
+  .drawer::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 18px;
+    background: linear-gradient(180deg, rgba(17,17,17,.07), rgba(17,17,17,0));
+    border-radius: 0 0 8px 8px;
+    pointer-events: none;
+  }
+  .bignum { font-size: 46px; font-weight: 600; letter-spacing: -1.4px; line-height: 1.05; color: #111; font-variant-numeric: tabular-nums; }
+  .bignum small { font-size: 14px; font-weight: 400; letter-spacing: 0; color: #626260; margin-left: 6px; }
+  .eyebrow { font-size: 12px; font-weight: 500; color: #9c9fa5; margin-bottom: 8px; }
+  .stat-v { font-size: 24px; font-weight: 600; letter-spacing: -.4px; font-variant-numeric: tabular-nums; color:#111; }
+  .stat-label { font-size: 11px; color: #9c9fa5; margin-top: 2px; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:99px; }
+  .minicard {
+    background:#fff; border-radius:20px; padding:14px 16px;
+    box-shadow: 0 1px 2px rgba(17,17,17,.04), 0 6px 18px rgba(17,17,17,.05);
+  }
+  .rowcard {
+    background:#fff; border-radius:18px; padding: 12px 16px;
+    display:flex; align-items:center; gap:12px;
+    box-shadow: 0 1px 2px rgba(17,17,17,.04), 0 5px 14px rgba(17,17,17,.04);
+  }
+  .tag { font-size:10px; font-weight:600; padding:3px 8px; border-radius:99px; }
+  .tag-todo { background:#111; color:#fff; }
+  /* 岛台 */
+  .lm-island {
+    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+    width: calc(100% - 36px); max-width: 354px; height: 62px;
+    background: rgba(255,255,255,.42);
+    backdrop-filter: blur(26px) saturate(1.4);
+    -webkit-backdrop-filter: blur(26px) saturate(1.4);
+    border: 1px solid rgba(255,255,255,.65);
+    border-radius: 999px;
+    box-shadow: 0 12px 32px rgba(17,17,17,.14);
+    display: flex; align-items: center; justify-content: space-around;
+    z-index: 40;
+  }
+  .nav-item { display:flex; flex-direction:column; align-items:center; gap:2px; color:#9c9fa5; font-size:10px; font-weight:500; }
+  .nav-item i { font-size: 17px; }
+  .nav-item.active { color:#111; font-weight:700; }
+  .nav-item.active i { color:#111; }
+</style>
+</head>
+<body>
+<div class="phone">
+
+  <div class="lm-header">
+    <div class="logo-sq">L</div>
+    <div class="brand">LessonMate<small>手机版</small></div>
+  </div>
+
+  <!-- 1+2. 大卡：今日课时 + 下层抽屉：明天（等宽、大卡压在抽屉上方） -->
+  <div class="card" style="padding:20px">
+    <div class="eyebrow">今日课时</div>
+    <div class="bignum">3<small>节课 · 已消 1</small></div>
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid #f0ebe2;display:flex;align-items:center;gap:8px">
+      <span style="font-size:11px;color:#9c9fa5;font-weight:500;flex-shrink:0">下一节</span>
+      <span style="font-size:12.5px;color:#111;font-weight:700">14:00 李小红 · 钢琴</span>
+    </div>
+  </div>
+  <div class="drawer-wrap">
+    <div class="drawer">
+      <div style="font-size:11px;color:#626260;font-weight:600;display:flex;align-items:center;gap:6px">
+        <span class="dot" style="background:#9c9fa5;width:6px;height:6px"></span> 明天 <span style="font-size:12.5px;color:#111;font-weight:600">2 节课</span>
+      </div>
+      <div style="font-size:11px;color:#9c9fa5;font-weight:500">最早 10:00</div>
+    </div>
+  </div>
+
+  <!-- 3. 小卡×2 -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+    <div class="minicard">
+      <div style="font-size:11px;color:#9c9fa5;font-weight:500;display:flex;align-items:center;gap:5px">
+        <span class="dot" style="background:#111"></span> 今天待消课
+      </div>
+      <div class="stat-v" style="margin-top:4px">2<span style="font-size:12px;font-weight:500;color:#626260"> 节</span></div>
+      <div class="stat-label">下一节 14:00</div>
+    </div>
+    <div class="minicard">
+      <div style="font-size:11px;color:#9c9fa5;font-weight:500;display:flex;align-items:center;gap:5px">
+        <span class="dot" style="background:#fe4c02"></span> 本周剩余
+      </div>
+      <div class="stat-v" style="margin-top:4px">9<span style="font-size:12px;font-weight:500;color:#626260"> 节</span></div>
+      <div class="stat-label">至周日 · 已消 3 节</div>
+    </div>
+  </div>
+
+  <!-- 4. 今日课程列表（保持原样） -->
+  <div style="font-size:13px;font-weight:700;color:#111;margin:16px 2px 8px">今日课程（3）</div>
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <div class="rowcard">
+      <div style="text-align:center;flex-shrink:0">
+        <div style="font-weight:700;font-size:15px;color:#111">09:00</div>
+        <div style="font-size:10px;color:#9c9fa5">45分钟</div>
+      </div>
+      <div style="flex:1;min-width:0;border-left:1px solid #f0ebe2;padding-left:12px">
+        <div style="font-weight:700;font-size:12.5px;color:#111">王小明 <span style="color:#9c9fa5;font-weight:500">· 钢琴</span></div>
+      </div>
+      <span class="tag tag-todo">已消课</span>
+    </div>
+    <div class="rowcard">
+      <div style="text-align:center;flex-shrink:0">
+        <div style="font-weight:700;font-size:15px;color:#111">14:00</div>
+        <div style="font-size:10px;color:#9c9fa5">45分钟</div>
+      </div>
+      <div style="flex:1;min-width:0;border-left:1px solid #f0ebe2;padding-left:12px">
+        <div style="font-weight:700;font-size:12.5px;color:#111">李小红 <span style="color:#9c9fa5;font-weight:500">· 钢琴</span></div>
+      </div>
+      <span class="tag" style="background:#f1ece3;color:#626260">待上课</span>
+    </div>
+    <div class="rowcard">
+      <div style="text-align:center;flex-shrink:0">
+        <div style="font-weight:700;font-size:15px;color:#111">18:30</div>
+        <div style="font-size:10px;color:#9c9fa5">45分钟</div>
+      </div>
+      <div style="flex:1;min-width:0;border-left:1px solid #f0ebe2;padding-left:12px">
+        <div style="font-weight:700;font-size:12.5px;color:#111">赵小刚 <span style="color:#9c9fa5;font-weight:500">· 吉他</span></div>
+      </div>
+      <span class="tag" style="background:#f1ece3;color:#626260">待上课</span>
+    </div>
+  </div>
+
+  <!-- 岛台 -->
+  <div class="lm-island">
+    <div class="nav-item active"><i class="fa-solid fa-house"></i>首页</div>
+    <div class="nav-item"><i class="fa-solid fa-calendar-days" style="color:#fe4c02"></i>课表</div>
+    <div class="nav-item"><i class="fa-solid fa-user-group" style="color:#10b981"></i>学员</div>
+    <div class="nav-item"><i class="fa-solid fa-wallet" style="color:#ff2067"></i>财务</div>
+    <div class="nav-item"><i class="fa-solid fa-gear" style="color:#0ea5e9"></i>设置</div>
+  </div>
+
+</div>
+</body>
+</html>

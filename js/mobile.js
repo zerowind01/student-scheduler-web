@@ -1291,14 +1291,29 @@
     if (!isTeacherView()) {
       const weekAll = schedules.filter((s) => inScope(s) && s.date >= wkStart && s.date <= wkEnd);
       const weekDone = weekAll.filter((s) => s.status === SCHEDULE_STATUS.COMPLETED).length;
+      const todayAllH = schedules.filter((s) => s.date === todayStr && inScope(s));
+      const tomorrowAllH = schedules.filter((s) => s.date === tomorrowStr && inScope(s));
+      const todayDoneH = todayAllH.filter((s) => s.status === SCHEDULE_STATUS.COMPLETED).length;
+      const todayPendH = todayAllH.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).length;
+      const nextUpH = todayPendH ? todayAllH.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).sort((a, b) => a.startTime.localeCompare(b.startTime))[0] : null;
       hero.innerHTML = `
-        <div class="lm-card lm-hero">
-          <div class="lm-eyebrow">本周课时</div>
-          <div class="lm-bignum">${weekAll.length}<small>节 · 已消 ${weekDone}</small></div>
-          <div class="grid grid-cols-3 gap-2 mt-4 pt-3.5" style="border-top:1px solid #f0ebe2">
-            <div><div class="lm-stat-v">${weekAll.filter((s) => s.date === todayStr && s.status === SCHEDULE_STATUS.SCHEDULED).length}</div><div class="text-[11px] text-[#9c9fa5] mt-0.5">今天</div></div>
-            <div><div class="lm-stat-v">${weekAll.filter((s) => s.date === tomorrowStr).length}</div><div class="text-[11px] text-[#9c9fa5] mt-0.5">明天</div></div>
-            <div><div class="lm-stat-v">${weekAll.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).length}</div><div class="text-[11px] text-[#9c9fa5] mt-0.5">本周待上</div></div>
+        <div class="lm-card lm-hero" style="border-radius:22px 22px 0 0;position:relative;z-index:2">
+          <div class="lm-eyebrow">今日课时</div>
+          <div class="lm-bignum">${todayAllH.length}<small>节课 · 已消 ${todayDoneH}</small></div>
+          ${nextUpH ? `
+          <div class="mt-3.5 pt-3" style="border-top:1px solid #f0ebe2;display:flex;align-items:center;gap:8px">
+            <span class="text-[11px] font-medium text-[#9c9fa5]" style="flex-shrink:0">下一节</span>
+            <span class="text-[12.5px] font-bold text-[#111111]">${nextUpH.startTime} ${nextUpH.studentName || ''} · ${nextUpH.subject || nextUpH.courseName || ''}</span>
+          </div>` : ''}
+        </div>
+        <div style="position:relative;z-index:1;margin-top:-22px;padding-top:22px">
+          <div style="background:linear-gradient(180deg,#F3ECDF 0%,rgba(243,236,223,0) 100%);border-radius:0 0 20px 20px;padding:12px 20px 7px;box-shadow:0 12px 20px -6px rgba(17,17,17,.08);display:flex;align-items:flex-end;justify-content:space-between;position:relative">
+            <div style="position:absolute;top:0;left:0;right:0;height:18px;background:linear-gradient(180deg,rgba(17,17,17,.07),rgba(17,17,17,0));border-radius:0 0 8px 8px;pointer-events:none"></div>
+            <div class="text-[11px] font-semibold text-[#626260] flex items-center gap-1.5">
+              <span class="inline-block rounded-full" style="width:6px;height:6px;background:#9c9fa5"></span> 明天
+              <span class="text-[12.5px] font-bold text-[#111111]">${tomorrowAllH.length} 节课</span>
+            </div>
+            <div class="text-[11px] font-medium text-[#9c9fa5]">${tomorrowAllH.length ? '最早 ' + tomorrowAllH.map((s) => s.startTime).sort()[0] : '暂无安排'}</div>
           </div>
         </div>`;
     } else {
@@ -1321,6 +1336,9 @@
     const todayPending = todayAll.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).length;
     const tomorrowPending = tomorrowAll.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).length;
     const todayDone = todayAll.filter((s) => s.status === SCHEDULE_STATUS.COMPLETED).length;
+    // 本周剩余待上课数（周一~周日，老师视角含范围过滤）
+    const weekLeft = schedules.filter((s) => inScope(s) && s.date >= wkStart && s.date <= wkEnd && s.status === SCHEDULE_STATUS.SCHEDULED).length;
+    const weekDoneCnt = schedules.filter((s) => inScope(s) && s.date >= wkStart && s.date <= wkEnd && s.status === SCHEDULE_STATUS.COMPLETED).length;
 
     // 欠费学员（欠课账 > 0）
     const debtStudents = isTeacherView() ? [] : (debts || []).filter((x) => (x.amount || 0) > 0);
@@ -1344,14 +1362,14 @@
     cards.innerHTML = `
       <div class="grid grid-cols-2 gap-3">
         <div class="lm-card px-4 py-4">
-          <div class="text-[11px] font-medium text-[#9c9fa5] flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full" style="background:#111"></span> 今天</div>
+          <div class="text-[11px] font-medium text-[#9c9fa5] flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full" style="background:#111"></span> 今天待消课</div>
           <div class="lm-stat-v mt-1">${todayPending}<span class="text-xs font-medium text-[#626260]"> 节</span></div>
-          <div class="text-[11px] text-[#9c9fa5] mt-0.5">已消 ${todayDone} 节</div>
+          <div class="text-[11px] text-[#9c9fa5] mt-0.5">${todayPending ? '下一节 ' + (todayAll.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).sort((a, b) => a.startTime.localeCompare(b.startTime))[0]?.startTime || '') : '全部完成 🎉'}</div>
         </div>
         <div class="lm-card px-4 py-4">
-          <div class="text-[11px] font-medium text-[#9c9fa5] flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full" style="background:#9c9fa5"></span> 明天</div>
-          <div class="lm-stat-v mt-1">${tomorrowPending}<span class="text-xs font-medium text-[#626260]"> 节</span></div>
-          <div class="text-[11px] text-[#9c9fa5] mt-0.5">${tomorrowAll.length ? '最早 ' + tomorrowAll.map((s) => s.startTime).sort()[0] : '暂无安排'}</div>
+          <div class="text-[11px] font-medium text-[#9c9fa5] flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full" style="background:#fe4c02"></span> 本周剩余</div>
+          <div class="lm-stat-v mt-1 text-[#fe4c02]">${weekLeft}<span class="text-xs font-medium text-[#626260]"> 节</span></div>
+          <div class="text-[11px] text-[#9c9fa5] mt-0.5">至周日 · 已消 ${weekDoneCnt} 节</div>
         </div>
         ${!isTeacherView() ? `
         <button id="homeCardDebt" class="lm-card px-4 py-4 text-left active:opacity-80">

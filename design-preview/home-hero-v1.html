@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>首页 Hero 改版 - 效果稿 v1</title>
+<link rel="stylesheet" href="https://cdn.tailwindcss.com">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', sans-serif;
+    background: linear-gradient(180deg, #FDFBF8 0%, #F1EADE 100%);
+    min-height: 100vh;
+    margin: 0;
+    padding: 20px 18px 120px;
+  }
+  .demo-label { font-size: 12px; color: #9c9fa5; margin: 24px 0 10px; font-weight: 600; letter-spacing: .5px; }
+  .card {
+    background: #fff;
+    border-radius: 22px;
+    box-shadow: 0 1px 2px rgba(17,17,17,.04), 0 8px 24px rgba(17,17,17,.06), 0 20px 48px rgba(17,17,17,.05);
+  }
+  .drawer {
+    /* 抽屉：比大卡窄一点、贴在下方、上缘衔接 */
+    margin: -10px 14px 0;             /* 负上边距让"抽屉"从大卡下方拉出来一点 */
+    background: #FBF7F0;              /* 极浅暖底，与主卡白区分，强化"下一层"感 */
+    border-radius: 0 0 18px 18px;
+    padding: 12px 16px 14px;
+    box-shadow: 0 12px 26px rgba(17,17,17,.10), 0 4px 10px rgba(17,17,17,.05);
+    display: flex; align-items: center; justify-content: space-between;
+    position: relative;
+  }
+  .drawer::before { /* 大卡与抽屉之间的暗缝，强调"拉出来" */
+    content: ''; position: absolute; top: -6px; left: 0; right: 0; height: 6px;
+    background: linear-gradient(180deg, rgba(17,17,17,.05), transparent);
+  }
+  .bignum { font-size: 44px; font-weight: 600; letter-spacing: -1.4px; line-height: 1.05; color: #111; font-variant-numeric: tabular-nums; }
+  .bignum small { font-size: 14px; font-weight: 400; letter-spacing: 0; color: #626260; margin-left: 6px; }
+  .eyebrow { font-size: 12px; font-weight: 500; color: #9c9fa5; margin-bottom: 8px; }
+  .stat-v { font-size: 26px; font-weight: 600; letter-spacing: -.4px; font-variant-numeric: tabular-nums; }
+  .stat-label { font-size: 11px; color: #9c9fa5; margin-top: 2px; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:99px; }
+  .minicard {
+    background:#fff; border-radius:18px; padding:14px 16px;
+    box-shadow: 0 1px 2px rgba(17,17,17,.04), 0 6px 18px rgba(17,17,17,.05);
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ 效果稿：管理员视角 ============ -->
+<div class="demo-label">管理员首页 · 顶部区改版效果</div>
+
+<!-- 1. 主卡：今日课时 -->
+<div class="card" style="padding:20px">
+  <div class="eyebrow">今日课时</div>
+  <div class="bignum">3<small>节课 · 已消 1</small></div>
+</div>
+
+<!-- 2. 抽屉：明天预告（视觉上像从主卡下缘拉出） -->
+<div class="drawer">
+  <div style="font-size:11px;color:#626260;font-weight:500;display:flex;align-items:center;gap:6px">
+    <i class="fa-solid fa-arrow-right-rotate-left" style="font-size:10px;color:#9c9fa5"></i> 明天
+  </div>
+  <div style="font-size:12.5px;color:#111;font-weight:600">2 节课 <span style="color:#9c9fa5;font-weight:500">· 最早 10:00</span></div>
+</div>
+
+<!-- 3. 两个小卡：今天待消 / 本周剩余 -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+  <div class="minicard">
+    <div style="font-size:11px;color:#9c9fa5;font-weight:500;display:flex;align-items:center;gap:5px">
+      <span class="dot" style="background:#111"></span> 今天待消课
+    </div>
+    <div class="stat-v" style="margin-top:4px">2<span style="font-size:12px;font-weight:500;color:#626260"> 节</span></div>
+    <div class="stat-label">含下一节 14:00</div>
+  </div>
+  <div class="minicard">
+    <div style="font-size:11px;color:#9c9da5;color:#9c9fa5;font-weight:500;display:flex;align-items:center;gap:5px">
+      <span class="dot" style="background:#9c9fa5"></span> 本周剩余
+    </div>
+    <div class="stat-v" name="week-left" style="margin-top:4px">9<span style="font-size:12px;font-weight:500;color:#626260"> 节</span></div>
+    <div class="stat-label">至周日 · 已消 3 节</div>
+</div>
+</div>
+
+</body>
+</html>
