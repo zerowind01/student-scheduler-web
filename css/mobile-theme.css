@@ -115,11 +115,18 @@ body:has(.lm-island) main {
 
 /* 岛台浮在内容上：各视图滚动容器留少量底部内边距，最后一行可滚到岛台背后 */
 body:has(.lm-island) #viewHome > div,
-body:has(.lm-island) #viewSchedule,
-body:has(.lm-island) #viewStudents,
+body:has(.lm-island) #viewSchedule #mobileCalendarScroll,
+body:has(.lm-island) #viewStudents #mobileStudentContainer,
 body:has(.lm-island) #viewFinance > div,
 body:has(.lm-island) #viewSettings > div {
   padding-bottom: 80px;
+}
+/* 课表视图：不做奶油渐变，保持白色底 */
+body:has(.lm-island) #viewSchedule {
+  background: #fff !important;
+}
+body:has(#viewSchedule:not(.hidden)) #mobileDateBar {
+  background: #fff;
 }
 
 /* Toast 抬高到岛台上方 */
