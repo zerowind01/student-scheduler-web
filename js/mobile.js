@@ -691,7 +691,7 @@
           const localTime = parseInt(localStorage.getItem('edu_scheduler_last_sync_time') || '0', 10);
           if (force || remoteData.updatedAt > localTime) {
             students = remoteData.students || [];
-            schedules = remoteData.schedules || [];
+            schedules = (remoteData.schedules || []).map(normalizeSchedule);
             teachers = mergeTeachersKeepPin(remoteData.teachers, teachers);
             courseTypes = remoteData.courseTypes || courseTypes;
             checkInLogs = remoteData.checkInLogs || [];
@@ -725,7 +725,7 @@
       bc.onmessage = (event) => {
         if (event.data && event.data.updatedAt) {
           students = event.data.students || students;
-          schedules = event.data.schedules || schedules;
+          schedules = (event.data.schedules || schedules).map(normalizeSchedule);
           teachers = mergeTeachersKeepPin(event.data.teachers, teachers);
           courseTypes = event.data.courseTypes || courseTypes;
           checkInLogs = event.data.checkInLogs || [];
@@ -765,7 +765,7 @@
         const data = JSON.parse(decoded);
         if (data && (data.students || data.schedules)) {
           students = data.students || [];
-          schedules = data.schedules || [];
+          schedules = (data.schedules || []).map(normalizeSchedule);
           teachers = mergeTeachersKeepPin(data.teachers, teachers);
           saveDataLocalOnly();
           showToast('⚡ 扫码同步成功！已载入电脑端最新课表！');
@@ -897,7 +897,7 @@
         const data = JSON.parse(text.trim());
         if (data && (data.students || data.schedules)) {
           students = data.students || [];
-          schedules = data.schedules || [];
+          schedules = (data.schedules || []).map(normalizeSchedule);
           teachers = mergeTeachersKeepPin(data.teachers, teachers);
           saveData();
           renderMobileTeacherSelect();
@@ -2034,7 +2034,7 @@
   // 删除课程统一入口：有后续重复排课时弹"仅本次/本次及之后"双选（无则普通确认）
   function deleteMobileScheduleWithScope(sch, onDone) {
     const later = schedules
-      .filter((s) => s.id !== sch.id && s.studentId === sch.studentId && s.courseId === sch.courseId && s.startTime === sch.startTime && (s.teacherId || '') === (sch.teacherId || '') && s.status === 'scheduled' && s.date > sch.date)
+      .filter((s) => s.id !== sch.id && s.studentId === sch.studentId && s.courseId === sch.courseId && s.startTime === sch.startTime && (s.teacherId || '') === (sch.teacherId || '') && (!s.status || s.status === 'scheduled') && s.date > sch.date)
       .sort((a, b) => a.date.localeCompare(b.date));
     const laterCount = later.length;
 
