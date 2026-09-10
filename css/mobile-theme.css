@@ -1,0 +1,219 @@
+/* ==========================================================================
+   LessonMate 手机端 · Intercom 编辑风主题 v2.0
+   奶油渐变底 · 软陶白卡 · 炭黑主色 · Fin橙唯一主按钮 · 毛玻璃岛台导航
+   规范：状态栏62 · 标题30/600 · 卡片圆角20/内边距20 · 标签28 · 主按钮48
+   ========================================================================== */
+
+:root {
+  --lm-canvas-top: #fdfbf8;
+  --lm-canvas-mid: #f7f2ea;
+  --lm-canvas-bot: #eadfc8;
+  --lm-ink: #111111;
+  --lm-ink-2: #626260;
+  --lm-ink-3: #9c9fa5;
+  --lm-fin: #ff5600;
+  --lm-card-shadow: 0 8px 22px rgba(120, 100, 70, 0.11), 0 2px 5px rgba(120, 100, 70, 0.06);
+  --lm-card-shadow-lg: 0 10px 28px rgba(120, 100, 70, 0.13), 0 2px 6px rgba(120, 100, 70, 0.07);
+}
+
+/* ---- 页面底：奶油亮渐变（mobile.html 专属，index 不受影响） ----
+   通过 body[datapage] 或专用 id 前缀选择器限定：mobile.html 的根视图都以 view* 开头，
+   这里直接用 body:has(#viewHome) 的兜底 + mobile-bottom-nav 判定 */
+body:has(#viewHome) {
+  background: linear-gradient(180deg, var(--lm-canvas-top), var(--lm-canvas-mid) 45%, var(--lm-canvas-bot) 100%) !important;
+}
+
+/* ---- 软陶白卡（替代 bg-white + border 组合） ---- */
+.lm-card {
+  background: var(--surface-card, #fff);
+  border: none;
+  border-radius: 20px;
+  box-shadow: var(--lm-card-shadow);
+}
+
+/* ---- 顶栏：融入画布，无重底色 ---- */
+.lm-header {
+  background: rgba(253, 251, 248, 0.85);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(17, 17, 17, 0.06);
+}
+.lm-pill {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(17, 17, 17, 0.06);
+  border-radius: 999px;
+  box-shadow: 0 4px 12px rgba(120, 100, 70, 0.10), 0 1px 3px rgba(120, 100, 70, 0.06);
+}
+
+/* ---- 日期导航条（课表视图顶部） ---- */
+.lm-datebar {
+  background: transparent;
+  border-bottom: none;
+  box-shadow: none;
+}
+.lm-btn-ghost {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(17, 17, 17, 0.06);
+  border-radius: 999px;
+  color: var(--lm-ink-2);
+  box-shadow: 0 3px 10px rgba(120, 100, 70, 0.10);
+}
+.lm-btn-dark {
+  background: var(--lm-ink);
+  color: #fff;
+  border-radius: 999px;
+  box-shadow: 0 6px 16px rgba(17, 17, 17, 0.25);
+}
+
+/* ---- 岛台导航：悬浮胶囊 + 毛玻璃 ---- */
+.lm-island {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  height: 62px;
+  background: rgba(255, 253, 249, 0.42);
+  backdrop-filter: blur(26px) saturate(180%);
+  -webkit-backdrop-filter: blur(26px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 999px;
+  box-shadow: 0 14px 34px -10px rgba(120, 100, 70, 0.28), 0 2px 8px rgba(120, 100, 70, 0.10);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 0 12px;
+}
+.lm-island .nav-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  padding: 7px 0;
+  width: 58px;
+  border-radius: 999px;
+  color: var(--lm-ink-3);
+  transition: background 0.18s var(--ease-out, ease), box-shadow 0.18s ease;
+}
+/* 选中高亮胶囊：JS 已给激活 tab 切换 font-bold，直接借力 */
+.lm-island .nav-tab.font-bold {
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 5px 16px rgba(120, 100, 70, 0.18), 0 1px 4px rgba(120, 100, 70, 0.10);
+}
+/* 内容避让：主区底部给岛台留空间 */
+body:has(.lm-island) main {
+  padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+}
+/* Toast 抬高到岛台上方 */
+body:has(.lm-island) .toast-safe-bottom {
+  bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+}
+
+/* ---- 首页标题栏（规范 105 区） ---- */
+.lm-hi {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.6px;
+  color: var(--lm-ink);
+  line-height: 1.2;
+}
+.lm-sub {
+  font-size: 12.5px;
+  color: var(--lm-ink-2);
+  margin-top: 3px;
+}
+.lm-titlebar {
+  padding: 6px 2px 2px;
+}
+.lm-hero {
+  padding: 20px;
+  box-shadow: var(--lm-card-shadow-lg);
+}
+.lm-eyebrow {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--lm-ink-3);
+  margin-bottom: 8px;
+}
+.lm-bignum {
+  font-size: 46px;
+  font-weight: 600;
+  letter-spacing: -1.4px;
+  line-height: 1.05;
+  color: var(--lm-ink);
+  font-variant-numeric: tabular-nums;
+}
+.lm-bignum small {
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--lm-ink-2);
+  margin-left: 6px;
+}
+.lm-stat-v {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- 状态标签（高28 胶囊） ---- */
+.lm-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  flex: none;
+}
+.lm-tag-done { background: #f1ece3; color: #4a4a48; }
+.lm-tag-todo { background: var(--lm-ink); color: #fff; }
+.lm-tag-leave { background: #ffe9ec; color: #d5304f; }
+
+/* ---- 主按钮：Fin 橙 高48（唯一橙色） ---- */
+.lm-btn-fin {
+  background: var(--lm-fin);
+  color: #fff;
+  border-radius: 999px;
+  font-weight: 500;
+  box-shadow: 0 12px 28px -8px rgba(255, 86, 0, 0.5), 0 2px 6px rgba(255, 86, 0, 0.25);
+}
+.lm-btn-fin:active { filter: brightness(0.94); }
+/* 次级主按钮：炭黑 */
+.lm-btn-ink {
+  background: var(--lm-ink);
+  color: #fff;
+  border-radius: 14px;
+  font-weight: 600;
+}
+.lm-btn-ink:active { filter: brightness(1.35); }
+
+/* ---- 日历列：今天高亮改炭黑胶囊 ---- */
+.lm-today-col {
+  background: var(--lm-ink) !important;
+  color: #fff !important;
+  border-radius: 16px !important;
+}
+
+/* ---- 弹窗：统一发丝线顶边，去彩色描边 ---- */
+.lm-sheet {
+  border-top: none !important;
+  border-radius: 24px 24px 0 0;
+  box-shadow: 0 -20px 60px rgba(17, 17, 17, 0.18);
+}
+
+/* ---- 设置页卡 ---- */
+.lm-set-card {
+  background: var(--surface-card, #fff);
+  border: none;
+  border-radius: 20px;
+  box-shadow: var(--lm-card-shadow);
+}
+
+/* ---- 老师登录门 ---- */
+.lm-gate {
+  background: linear-gradient(180deg, var(--lm-canvas-top), var(--lm-canvas-mid)) !important;
+}

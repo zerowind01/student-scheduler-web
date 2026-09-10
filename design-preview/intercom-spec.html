@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>LessonMate 设计规范版</title>
+<style>
+  /* ===== 设计规范 tokens（对齐参考图标注体系） =====
+     状态栏 62px · 导航栏 62px(+指示条) · 标签 28px · 按钮高 48px
+     间距 4/8/12/16/24/32 · 页边距 20 · 圆角 卡20/钮999/小件12
+     字号 30/22/17/15/13/11 · 主色 炭黑 #111 · 强调 Fin橙 #FF5600 */
+  :root{
+    --canvas-top:#fdfbf8; --canvas-mid:#f7f2ea; --canvas-bot:#f1eade;
+    --surface:#ffffff; --ink:#111111; --ink-2:#626260; --ink-3:#9c9fa5;
+    --fin:#ff5600; --pink:#ff2067; --orange:#fe4c02;
+    --sb:62px; --nav:62px; --tag:28px; --btn:48px;
+    --r-card:20px; --r-s:12px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  body{font-family:-apple-system,"PingFang SC","Noto Sans SC",sans-serif;background:#181512;display:flex;gap:44px;justify-content:center;align-items:flex-start;padding:40px 20px;}
+  .label{color:#a39a8e;font-size:14px;text-align:center;margin-bottom:12px;letter-spacing:1px;}
+  .phone{width:390px;height:780px;background:linear-gradient(180deg,var(--canvas-top),var(--canvas-mid) 45%,#eadfc8 88%,#e3d5b8);border-radius:44px;border:1px solid rgba(255,255,255,.14);overflow:hidden;position:relative;box-shadow:0 40px 90px -30px rgba(0,0,0,.85);flex:none;display:flex;flex-direction:column;}
+
+  /* 状态栏 62px */
+  .status{height:var(--sb);flex:none;display:flex;justify-content:space-between;align-items:flex-end;padding:0 26px 8px;font-size:14px;font-weight:600;color:var(--ink);}
+
+  .app{flex:1;overflow-y:auto;padding:0 20px calc(var(--nav) + 66px);}
+  .app::-webkit-scrollbar{width:0;}
+
+  /* 标题栏（105pt 规范区） */
+  .titlebar{padding:8px 0 4px;}
+  .hi{font-size:30px;font-weight:600;letter-spacing:-.8px;color:var(--ink);line-height:1.2;}
+  .sub{font-size:13px;color:var(--ink-2);margin-top:4px;}
+
+  .card{background:var(--surface);border-radius:var(--r-card);padding:20px;box-shadow:0 8px 22px rgba(120,100,70,.11),0 2px 5px rgba(120,100,70,.06);}
+  .hero{margin-top:16px;}
+  .hero .eyebrow{font-size:12px;font-weight:500;color:var(--ink-3);margin-bottom:8px;}
+  .hero .num{font-size:52px;font-weight:600;letter-spacing:-1.6px;line-height:1.05;color:var(--ink);}
+  .hero .num small{font-size:15px;font-weight:400;letter-spacing:0;color:var(--ink-2);margin-left:6px;}
+  .hero .row{display:flex;margin-top:16px;border-top:1px solid #f0ebe2;padding-top:14px;}
+  .hero .cell{flex:1;}
+  .hero .cell .v{font-size:22px;font-weight:600;letter-spacing:-.3px;color:var(--ink);}
+  .hero .cell .l{font-size:11px;color:var(--ink-3);margin-top:2px;}
+
+  .mk{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:8px;vertical-align:1px;}
+
+  /* 区块头：标题17 + 间距24 */
+  .sect{display:flex;justify-content:space-between;align-items:baseline;margin:24px 2px 12px;}
+  .sect .t{font-size:17px;font-weight:600;letter-spacing:-.3px;color:var(--ink);}
+  .sect .more{font-size:13px;color:var(--ink-2);}
+
+  .cards2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .stat .v{font-size:26px;font-weight:600;letter-spacing:-.5px;color:var(--ink);}
+  .stat .l{font-size:12.5px;color:var(--ink-2);margin-top:3px;}
+  .stat.rose .v{color:var(--pink);}
+  .stat.warn .v{color:var(--orange);}
+
+  /* 课程行：信息栏 60px + 标签 28px */
+  .lesson{display:flex;gap:14px;align-items:center;padding:14px 16px;margin-bottom:12px;}
+  .t-time{width:52px;flex:none;}
+  .t-time .tm{font-size:16px;font-weight:600;letter-spacing:-.2px;color:var(--ink);}
+  .t-time .ap{font-size:11px;color:var(--ink-3);}
+  .t-main{flex:1;min-width:0;border-left:1px solid #f0ebe2;padding-left:14px;}
+  .t-main .st{font-size:15px;font-weight:500;color:var(--ink);}
+  .t-main .meta{font-size:12.5px;color:var(--ink-2);margin-top:2px;}
+  .t-tag{flex:none;height:var(--tag);display:inline-flex;align-items:center;font-size:12px;font-weight:500;border-radius:999px;padding:0 12px;}
+  .t-tag.done{background:#f1ece3;color:#4a4a48;}
+  .t-tag.todo{background:var(--ink);color:#fff;}
+
+  /* 主按钮 48px 高，胶囊 */
+  .fin-btn{position:absolute;right:20px;bottom:calc(var(--nav) + 26px);height:var(--btn);background:var(--fin);color:#fff;border:none;border-radius:999px;padding:0 22px;display:flex;align-items:center;gap:8px;font-size:15px;font-weight:500;box-shadow:0 12px 28px -8px rgba(255,86,0,.5),0 2px 6px rgba(255,86,0,.25);}
+  .fin-btn .plus{font-size:20px;font-weight:400;}
+
+  /* 导航栏 62px + 选中高亮胶囊 */
+  .tabbar{position:absolute;left:18px;right:18px;bottom:calc(10px + 0px);height:var(--nav);background:rgba(255,253,249,.42);backdrop-filter:blur(26px) saturate(180%);-webkit-backdrop-filter:blur(26px) saturate(180%);border:1px solid rgba(255,255,255,.8);border-radius:999px;display:flex;align-items:center;justify-content:space-around;padding:0 14px;box-shadow:0 14px 34px -10px rgba(120,100,70,.28),0 2px 8px rgba(120,100,70,.10);}
+  .tab{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;color:var(--ink-3);width:60px;padding:7px 0;border-radius:999px;}
+  .tab .ti{font-size:19px;line-height:1;}
+  .tab.on{color:var(--ink);font-weight:600;background:rgba(255,255,255,.92);box-shadow:0 5px 16px rgba(120,100,70,.18),0 1px 4px rgba(120,100,70,.10);}
+  .homeind{position:absolute;bottom:calc(10px + var(--nav) - 2px);bottom:2px;left:50%;transform:translateX(-50%);width:120px;height:4px;border-radius:99px;background:rgba(17,17,17,.30);z-index:60;}
+
+  /* 课表页 */
+  .sch-head{display:flex;justify-content:space-between;align-items:center;margin-top:10px;}
+  .m{font-size:24px;font-weight:600;letter-spacing:-.5px;color:var(--ink);}
+  .filter{background:var(--surface);border-radius:999px;height:36px;padding:0 16px;font-size:13px;color:var(--ink);display:flex;gap:6px;align-items:center;box-shadow:0 4px 12px rgba(120,100,70,.10),0 1px 3px rgba(120,100,70,.06);}
+  .week{display:flex;gap:7px;margin:16px 0 6px;}
+  .wd{flex:1;text-align:center;padding:11px 0 9px;border-radius:16px;}
+  .wd .dn{font-size:11px;color:var(--ink-3);}
+  .wd .dt{font-size:16px;font-weight:600;color:var(--ink);margin-top:3px;letter-spacing:-.2px;}
+  .wd.sel{background:var(--ink);}
+  .wd.sel .dn{color:rgba(255,255,255,.65);}
+  .wd.sel .dt{color:#fff;}
+  .wd .dot{width:4px;height:4px;border-radius:99px;background:var(--fin);margin:5px auto 0;}
+  .day-total{font-size:13px;color:var(--ink-2);margin:14px 2px 12px;}
+
+  /* 规范标注层 */
+  .anno{position:absolute;font-size:10px;color:#e05555;white-space:nowrap;display:flex;align-items:center;gap:3px;}
+  .anno .ln{display:inline-block;height:1px;background:#e05555;width:34px;}
+</style>
+</head>
+<body>
+
+<div>
+  <div class="label">首页 · 看板</div>
+  <div class="phone">
+    <div class="status"><span>9:41</span><span>•••</span></div>
+    <div class="app">
+      <div class="titlebar">
+        <div class="hi">早上好，Zerowind</div>
+        <div class="sub">10月10日 周五</div>
+      </div>
+
+      <div class="card hero">
+        <div class="eyebrow">本周课时</div>
+        <div class="num">28<small>节 · 已消 21</small></div>
+        <div class="row">
+          <div class="cell"><div class="v">5</div><div class="l">今天</div></div>
+          <div class="cell"><div class="v">4</div><div class="l">明天</div></div>
+          <div class="cell"><div class="v">7</div><div class="l">本周剩余</div></div>
+        </div>
+      </div>
+
+      <div class="cards2" style="margin-top:12px">
+        <div class="card stat"><div class="v">2<span style="font-size:14px">人</span></div><div class="l"><span class="mk" style="background:var(--pink)"></span>欠费学员</div></div>
+        <div class="card stat warn"><div class="v">5<span style="font-size:14px">个</span></div><div class="l"><span class="mk" style="background:var(--orange)"></span>待续费提醒</div></div>
+      </div>
+
+      <div class="sect"><span class="t">今日课程</span><span class="more">全部 ›</span></div>
+      <div class="card lesson">
+        <div class="t-time"><div class="tm">09:00</div><div class="ap">60分钟</div></div>
+        <div class="t-main"><div class="st">王小明 · 数学</div><div class="meta">主讲 任老师 · 教室 A</div></div>
+        <div class="t-tag done">已消课</div>
+      </div>
+      <div class="card lesson">
+        <div class="t-time"><div class="tm">14:00</div><div class="ap">90分钟</div></div>
+        <div class="t-main"><div class="st">李小红 · 英语</div><div class="meta">主讲 温老师 · 教室 B</div></div>
+        <div class="t-tag todo">待上课</div>
+      </div>
+      <div style="text-align:center;font-size:12.5px;color:#9c9fa5;margin:12px 96px 0 0">还有 3 节 · 下拉查看</div>
+    </div>
+    <div class="tabbar">
+      <div class="tab on"><div class="ti">◉</div>首页</div>
+      <div class="tab"><div class="ti">▦</div>课表</div>
+      <div class="tab"><div class="ti">☺</div>学员</div>
+      <div class="tab"><div class="ti">¥</div>财务</div>
+      <div class="tab"><div class="ti">⚙</div>设置</div>
+    </div>
+    <div class="homeind"></div>
+  </div>
+</div>
+
+<div>
+  <div class="label">课表 · 周视图</div>
+  <div class="phone">
+    <div class="status"><span>9:41</span><span>•••</span></div>
+    <div class="app">
+      <div class="sch-head">
+        <div class="m">10月 · 第2周</div>
+        <div class="filter">任老师 ▾</div>
+      </div>
+      <div class="week">
+        <div class="wd"><div class="dn">一</div><div class="dt">6</div><div class="dot"></div></div>
+        <div class="wd"><div class="dn">二</div><div class="dt">7</div><div class="dot"></div></div>
+        <div class="wd"><div class="dn">三</div><div class="dt">8</div><div class="dot"></div></div>
+        <div class="wd"><div class="dn">四</div><div class="dt">9</div><div class="dot"></div></div>
+        <div class="wd sel"><div class="dn">今天</div><div class="dt">10</div></div>
+        <div class="wd"><div class="dn">六</div><div class="dt">11</div><div class="dot"></div></div>
+        <div class="wd"><div class="dn">日</div><div class="dt">12</div></div>
+      </div>
+      <div class="day-total">周五 · 4 节课 &nbsp;‹ ›</div>
+      <div class="card lesson">
+        <div class="t-time"><div class="tm">09:00</div><div class="ap">–10:00</div></div>
+        <div class="t-main"><div class="st">王小明 · 数学</div><div class="meta">教室 A · 任老师</div></div>
+        <div class="t-tag done">已消课</div>
+      </div>
+      <div class="card lesson">
+        <div class="t-time"><div class="tm">14:00</div><div class="ap">–15:30</div></div>
+        <div class="t-main"><div class="st">李小红 · 英语</div><div class="meta">教室 B · 温老师</div></div>
+        <div class="t-tag todo">待上课</div>
+      </div>
+      <div class="card lesson">
+        <div class="t-time"><div class="tm">16:30</div><div class="ap">–17:30</div></div>
+        <div class="t-main"><div class="st">陈小刚 · 物理</div><div class="meta">线上 · 任老师</div></div>
+        <div class="t-tag todo">待上课</div>
+      </div>
+      <div class="card lesson">
+        <div class="t-time"><div class="tm">18:00</div><div class="ap">–19:00</div></div>
+        <div class="t-main"><div class="st">赵小婷 · 数学</div><div class="meta">教室 A · 任老师</div></div>
+        <div class="t-tag todo">待上课</div>
+      </div>
+    </div>
+    <button class="fin-btn"><span class="plus">+</span> 新增排课</button>
+    <div class="tabbar">
+      <div class="tab"><div class="ti">◉</div>首页</div>
+      <div class="tab on"><div class="ti">▦</div>课表</div>
+      <div class="tab"><div class="ti">☺</div>学员</div>
+      <div class="tab"><div class="ti">¥</div>财务</div>
+      <div class="tab"><div class="ti">⚙</div>设置</div>
+    </div>
+    <div class="homeind"></div>
+  </div>
+</div>
+
+<div>
+  <div class="label">规范标注</div>
+  <div class="phone" style="background:linear-gradient(180deg,#fdfbf8,#f7f2ea 55%,#f1eade)">
+    <div class="status" style="border-bottom:1px dashed rgba(224,85,85,.5)"><span>9:41</span><span style="color:#e05555;font-size:11px;font-weight:500">状态栏 62</span></div>
+    <div class="app">
+      <div class="titlebar" style="border-bottom:1px dashed rgba(224,85,85,.5);padding-bottom:14px">
+        <div class="hi">早上好，Zerowind</div>
+        <div style="font-size:11px;color:#e05555;margin-top:6px">标题栏区 105 · 字号30/字重600 · 页边距 20</div>
+      </div>
+      <div class="card hero" style="margin-top:16px;border:1px dashed rgba(224,85,85,.5)">
+        <div style="font-size:11px;color:#e05555;margin-bottom:6px">卡片 · 圆角20 · 内边距20 · 投影 soft</div>
+        <div class="num">28<small>节 · 已消 21</small></div>
+        <div style="font-size:11px;color:#e05555;margin-top:6px">大数字 52/600 · 注释 15/400</div>
+      </div>
+      <div class="cards2" style="margin-top:16px">
+        <div class="card stat" style="border:1px dashed rgba(224,85,85,.5)"><div style="font-size:11px;color:#e05555;margin-bottom:6px">双列卡 · 间距12</div><div class="v">2<span style="font-size:14px">人</span></div><div class="l"><span class="mk" style="background:var(--pink)"></span>欠费学员</div></div>
+        <div class="card stat"><div style="font-size:11px;color:#e05555;margin-bottom:6px">数字26</div><div class="v">5<span style="font-size:14px">个</span></div><div class="l"><span class="mk" style="background:var(--orange)"></span>待续费</div></div>
+      </div>
+      <div class="card lesson" style="margin-top:24px;border:1px dashed rgba(224,85,85,.5)">
+        <div class="t-time"><div class="tm">09:00</div><div class="ap">60分钟</div></div>
+        <div class="t-main"><div class="st">课程行 60</div><div class="meta">标题15 · 注释12.5 · 分隔线 #f0ebe2</div></div>
+        <div class="t-tag todo" style="border:1px dashed rgba(224,85,85,.7)">标签 28</div>
+      </div>
+      <div style="font-size:11px;color:#e05555;margin:16px 2px;line-height:1.9">
+        区块间距 24 · 卡片间距 12<br>
+        主按钮 高48 · 胶囊 999 · Fin橙 仅主操作<br>导航岛台 高62 · 毛玻璃 blur24 · 距边18<br>
+        色板 炭黑#111 / 灰阶 #626260·#9c9fa5 / 粉#ff2067 / 橙#fe4c02
+      </div>
+    </div>
+    <div class="tabbar" style="border-top:1px dashed rgba(224,85,85,.5)">
+      <div class="tab on"><div class="ti">◉</div>岛台 62</div>
+      <div class="tab"><div class="ti">▦</div>·</div>
+      <div class="tab"><div class="ti">☺</div>·</div>
+      <div class="tab"><div class="ti">¥</div>·</div>
+      <div class="tab"><div class="ti">⚙</div>·</div>
+    </div>
+    <div class="homeind"></div>
+  </div>
+</div>
+
+</body>
+</html>
