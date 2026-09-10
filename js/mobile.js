@@ -1212,9 +1212,43 @@
           </div>
         </div>
         <div class="flex items-center gap-1.5 shrink-0">
+          <button class="btn-mt-edit text-[10px] font-bold px-2.5 py-1.5 rounded-lg bg-slate-200 text-slate-600 active:bg-slate-300">编辑</button>
           <button class="btn-mt-pin text-[10px] font-bold px-2.5 py-1.5 rounded-lg ${t.accessPin ? 'bg-slate-200 text-slate-600 active:bg-slate-300' : 'bg-sky-100 text-sky-700 active:bg-sky-200'}">${t.accessPin ? '换码' : '发访问码'}</button>
           <button class="btn-mt-del text-slate-400 active:text-rose-600 px-1.5 py-1.5" title="删除"><i class="fa-solid fa-trash-can text-[11px]"></i></button>
         </div>`;
+      item.querySelector('.btn-mt-edit').addEventListener('click', () => {
+        const ov = document.createElement('div');
+        ov.className = 'fixed inset-0 z-[60] flex items-end justify-center';
+        ov.innerHTML = `
+          <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-xs" data-mtedit-close></div>
+          <div class="relative bg-white lm-sheet w-full p-5 space-y-3 text-xs rounded-t-3xl" style="padding-bottom: calc(1.5rem + env(safe-area-inset-bottom))">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+              <h3 class="font-bold text-base text-slate-800">编辑老师</h3>
+              <button aria-label="关闭" data-mtedit-close class="text-slate-400 active:text-slate-700"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <input id="mtEditName" type="text" value="${(t.name || '').replace(/"/g, '&quot;')}" placeholder="老师姓名" class="w-full px-3 py-2.5 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-400">
+            <input id="mtEditSubject" type="text" value="${(t.subject || '').replace(/"/g, '&quot;')}" placeholder="主讲科目" class="w-full px-3 py-2.5 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-400">
+            <button id="mtEditSave" class="w-full py-3 bg-emerald-500 text-white rounded-xl font-bold text-sm active:bg-emerald-600">保存</button>
+          </div>`;
+        document.body.appendChild(ov);
+        ov.querySelectorAll('[data-mtedit-close]').forEach((el) => el.addEventListener('click', () => ov.remove()));
+        const nameI = ov.querySelector('#mtEditName'), subI = ov.querySelector('#mtEditSubject');
+        setTimeout(() => { nameI.focus(); nameI.select(); }, 100);
+        const save = () => {
+          const newName = nameI.value.trim();
+          if (!newName) { showToast('姓名不能为空'); return; }
+          t.name = newName;
+          t.subject = subI.value.trim() || '通用科目';
+          saveData();
+          ov.remove();
+          renderMobileTeacherManager();
+          renderMobileTeacherSelect();
+          if (typeof updateHeaderIdentity === 'function') updateHeaderIdentity();
+          showToast(`已更新老师信息`);
+        };
+        ov.querySelector('#mtEditSave').addEventListener('click', save);
+        [nameI, subI].forEach((el) => el.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); }));
+      });
       item.querySelector('.btn-mt-pin').addEventListener('click', () => {
         t.accessPin = String(Math.floor(1000 + Math.random() * 9000));
         saveData();
