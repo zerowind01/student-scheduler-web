@@ -1383,10 +1383,14 @@
   }
 
   function renderMobile3DayView() {
-    // 老师视角：课表默认先看自己的课，但保留筛选框可切换（首次进入自动选中自己）
-    if (isTeacherView() && !window.__teacherFilterInit) {
-      window.__teacherFilterInit = true;
-      if (selectedTeacherFilter === 'all') selectedTeacherFilter = teacherSession.teacherId;
+    // 老师视角：课表默认先看自己的课，但保留筛选框可切换（登录成为老师后的首次渲染时选中自己）
+    if (isTeacherView()) {
+      if (!window.__teacherFilterInit) {
+        window.__teacherFilterInit = true;
+        if (selectedTeacherFilter === 'all') selectedTeacherFilter = teacherSession.teacherId;
+      }
+    } else {
+      window.__teacherFilterInit = false; // 退出老师身份后重置，下次登录再默认选中
     }
     const headerContainer = document.getElementById('mobileHeaderDays');
     const gridContainer = document.getElementById('mobileGridColumns');
