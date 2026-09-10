@@ -835,11 +835,12 @@
     const nameEl = document.getElementById('teacherNameText');
     if (!adminWrap || !badge) return;
     if (typeof showBadge !== 'boolean') showBadge = true;
+    // 老师视角：课表页显示筛选框（默认自己可切换），其余页面显示名字徽章
     if (isTeacherView()) {
-      // 老师视角：课表页也只看自己（渲染时已强制），全程显示名字徽章
-      adminWrap.classList.add('hidden');
-      badge.classList.remove('hidden');
-      if (nameEl) nameEl.textContent = teacherSession.name;
+      const onSchedule = !showBadge; // 课表视图传入 false
+      adminWrap.classList.toggle('hidden', !onSchedule);
+      badge.classList.toggle('hidden', onSchedule);
+      if (!onSchedule && nameEl) nameEl.textContent = teacherSession.name;
     } else if (showBadge) {
       adminWrap.classList.add('hidden');
       badge.classList.add('hidden');
@@ -1382,9 +1383,10 @@
   }
 
   function renderMobile3DayView() {
-    // 老师视角：课表默认只看自己的课（顶部显示的是名字徽章，无筛选框）
-    if (isTeacherView() && selectedTeacherFilter === 'all') {
-      selectedTeacherFilter = teacherSession.teacherId;
+    // 老师视角：课表默认先看自己的课，但保留筛选框可切换（首次进入自动选中自己）
+    if (isTeacherView() && !window.__teacherFilterInit) {
+      window.__teacherFilterInit = true;
+      if (selectedTeacherFilter === 'all') selectedTeacherFilter = teacherSession.teacherId;
     }
     const headerContainer = document.getElementById('mobileHeaderDays');
     const gridContainer = document.getElementById('mobileGridColumns');
