@@ -1301,7 +1301,7 @@
           <div class="lm-eyebrow">今日课时</div>
           <div class="lm-bignum">${todayAllH.length}<small>节课 · 已消 ${todayDoneH}</small></div>
           ${nextUpH ? `
-          <div class="mt-3 pt-2.5" style="border-top:1px solid #f0ebe2;display:flex;align-items:center;gap:8px">
+          <div class="mt-2 pt-1.5" style="border-top:1px solid #f0ebe2;display:flex;align-items:center;gap:8px">
             <span class="text-[11px] font-medium text-[#9c9fa5]" style="flex-shrink:0">下一节</span>
             <span class="text-[12.5px] font-bold text-[#111111]">${nextUpH.startTime} ${nextUpH.studentName || ''} · ${nextUpH.subject || nextUpH.courseName || ''}</span>
           </div>` : ''}
@@ -1317,16 +1317,32 @@
           </div>
         </div>`;
     } else {
-      const myToday = schedules.filter((s) => s.date === todayStr && s.status === SCHEDULE_STATUS.SCHEDULED && inScope(s)).sort((a, b) => a.startTime.localeCompare(b.startTime));
-      const nextClass = myToday[0];
+      const myToday = schedules.filter((s) => s.date === todayStr && inScope(s)).sort((a, b) => a.startTime.localeCompare(b.startTime));
+      const myTodayDone = myToday.filter((s) => s.status === SCHEDULE_STATUS.COMPLETED).length;
+      const myNext = myToday.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED)[0] || null;
+      const myTomorrow = schedules.filter((s) => s.date === tomorrowStr && inScope(s)).sort((a, b) => a.startTime.localeCompare(b.startTime));
       hero.innerHTML = `
-        <div class="lm-card lm-hero">
+        <div class="lm-card lm-hero" style="border-radius:22px 22px 0 0;position:relative;z-index:2;padding:20px 20px 12px">
           <div class="flex items-center justify-between">
-            <div class="lm-eyebrow" style="margin-bottom:0">${teacherSession.name} 老师的工作台</div>
+            <div class="lm-eyebrow" style="margin-bottom:0">${teacherSession.name.endsWith('老师') ? teacherSession.name : teacherSession.name + '老师'} · 今日课时</div>
             <button id="btnTeacherExitHome" class="text-[11px] bg-white rounded-full px-2.5 py-1 font-bold text-[#626260] shadow-xs active:bg-[#f1ece3]">退出</button>
           </div>
-          <div class="lm-bignum mt-1.5">今日 ${myToday.length}<small>节课</small></div>
-          <div class="lm-sub">${nextClass ? `下一节 ${nextClass.startTime} · ${nextClass.studentName || ''}` : '今天没课 🎉'}</div>
+          <div class="lm-bignum mt-1.5">${myToday.length}<small>节课 · 已消 ${myTodayDone}</small></div>
+          ${myNext ? `
+          <div class="mt-2 pt-1.5" style="border-top:1px solid #f0ebe2;display:flex;align-items:center;gap:8px">
+            <span class="text-[11px] font-medium text-[#9c9fa5]" style="flex-shrink:0">下一节</span>
+            <span class="text-[12.5px] font-bold text-[#111111]">${myNext.startTime} ${myNext.studentName || ''} · ${myNext.subject || myNext.courseName || ''}</span>
+          </div>` : ''}
+        </div>
+        <div style="position:relative;z-index:1;margin-top:-22px;padding-top:22px">
+          <div style="background:linear-gradient(180deg,#F3ECDF 0%,rgba(243,236,223,0) 100%);border-radius:0 0 20px 20px;padding:12px 20px 7px;box-shadow:0 12px 20px -6px rgba(17,17,17,.08);display:flex;align-items:flex-end;justify-content:space-between;position:relative">
+            <div style="position:absolute;top:0;left:0;right:0;height:18px;background:linear-gradient(180deg,rgba(17,17,17,.07),rgba(17,17,17,0));border-radius:0 0 8px 8px;pointer-events:none"></div>
+            <div class="text-[11px] font-semibold text-[#626260] flex items-center gap-1.5">
+              <span class="inline-block rounded-full" style="width:6px;height:6px;background:#9c9fa5"></span> 明天
+              <span class="text-[12.5px] font-bold text-[#111111]">${myTomorrow.length} 节课</span>
+            </div>
+            <div class="text-[11px] font-medium text-[#9c9fa5]">${myTomorrow.length ? '最早 ' + myTomorrow[0].startTime : '暂无安排'}</div>
+          </div>
         </div>`;
     }
 

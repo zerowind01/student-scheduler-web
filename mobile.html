@@ -73,7 +73,7 @@
   </div>
 
   <!-- 手机端 主视图 (课表视图 vs 学员列表) -->
-  <main class="flex-1 overflow-hidden relative bg-slate-50">
+  <main class="flex-1 overflow-hidden relative" style="background: transparent;">
 
     <!-- 0. 手机端 首页视图（个人看板） -->
     <div id="viewHome" class="h-full flex flex-col overflow-hidden hidden">
@@ -164,7 +164,7 @@
     </div>
 
     <!-- 3. 手机端 财务视图 -->
-    <div id="viewFinance" class="h-full flex flex-col overflow-hidden hidden bg-slate-50">
+    <div id="viewFinance" class="h-full flex flex-col overflow-hidden hidden">
       <div class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3">
         <div id="mobileFinanceContent" class="space-y-3">
           <!-- 动态渲染财务面板 -->
@@ -173,7 +173,7 @@
     </div>
 
     <!-- 4. 手机端 设置视图 -->
-    <div id="viewSettings" class="h-full flex flex-col overflow-hidden hidden bg-slate-50">
+    <div id="viewSettings" class="h-full flex flex-col overflow-hidden hidden">
       <div class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3">
         <div class="grid grid-cols-2 gap-3">
           <!-- 账号身份切换：管理员 / 老师 -->
