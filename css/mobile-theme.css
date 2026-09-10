@@ -77,7 +77,7 @@ body:has(#viewHome) {
   position: fixed;
   left: 16px;
   right: 16px;
-  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  bottom: env(safe-area-inset-bottom, 0px);
   height: 62px;
   background: rgba(255, 253, 249, 0.42);
   backdrop-filter: blur(26px) saturate(180%);
@@ -110,8 +110,18 @@ body:has(#viewHome) {
 }
 /* 内容避让：主区底部给岛台留空间 */
 body:has(.lm-island) main {
-  padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: 0;
 }
+
+/* 岛台浮在内容上：各视图滚动容器留少量底部内边距，最后一行可滚到岛台背后 */
+body:has(.lm-island) #viewHome > div,
+body:has(.lm-island) #viewSchedule,
+body:has(.lm-island) #viewStudents,
+body:has(.lm-island) #viewFinance > div,
+body:has(.lm-island) #viewSettings > div {
+  padding-bottom: 80px;
+}
+
 /* Toast 抬高到岛台上方 */
 body:has(.lm-island) .toast-safe-bottom {
   bottom: calc(88px + env(safe-area-inset-bottom, 0px));
