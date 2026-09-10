@@ -66,6 +66,13 @@ body:has(#viewHome) {
 }
 
 /* ---- 岛台导航：悬浮胶囊 + 毛玻璃 ---- */
+/* 无 backdrop-filter 支持时（部分安卓/微信内核）提高不透明度保证可读与岛台感 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .lm-island {
+    background: rgba(255, 253, 249, 0.94);
+    box-shadow: 0 14px 34px -10px rgba(120, 100, 70, 0.30), 0 2px 8px rgba(120, 100, 70, 0.12), inset 0 1px 0 rgba(255,255,255,.9);
+  }
+}
 .lm-island {
   position: fixed;
   left: 16px;

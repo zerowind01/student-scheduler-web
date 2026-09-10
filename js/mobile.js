@@ -1297,11 +1297,11 @@
       const todayPendH = todayAllH.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).length;
       const nextUpH = todayPendH ? todayAllH.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).sort((a, b) => a.startTime.localeCompare(b.startTime))[0] : null;
       hero.innerHTML = `
-        <div class="lm-card lm-hero" style="border-radius:22px 22px 0 0;position:relative;z-index:2">
+        <div class="lm-card lm-hero" style="border-radius:22px 22px 0 0;position:relative;z-index:2;padding:20px 20px 12px">
           <div class="lm-eyebrow">今日课时</div>
           <div class="lm-bignum">${todayAllH.length}<small>节课 · 已消 ${todayDoneH}</small></div>
           ${nextUpH ? `
-          <div class="mt-3.5 pt-3" style="border-top:1px solid #f0ebe2;display:flex;align-items:center;gap:8px">
+          <div class="mt-3 pt-2.5" style="border-top:1px solid #f0ebe2;display:flex;align-items:center;gap:8px">
             <span class="text-[11px] font-medium text-[#9c9fa5]" style="flex-shrink:0">下一节</span>
             <span class="text-[12.5px] font-bold text-[#111111]">${nextUpH.startTime} ${nextUpH.studentName || ''} · ${nextUpH.subject || nextUpH.courseName || ''}</span>
           </div>` : ''}
