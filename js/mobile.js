@@ -1298,7 +1298,7 @@
       const nowHM = `${String(nowD.getHours()).padStart(2, '0')}:${String(nowD.getMinutes()).padStart(2, '0')}`;
       const nextUpH = todayPendH ? todayAllH.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED && s.startTime > nowHM).sort((a, b) => a.startTime.localeCompare(b.startTime))[0] : null;
       hero.innerHTML = `
-        <div class="lm-card lm-hero" style="border-radius:22px 22px 0 0;position:relative;z-index:2;padding:20px 20px 26px">
+        <div class="lm-card lm-hero" style="border-radius:22px 22px 0 0;position:relative;z-index:2;padding:20px 20px 12px">
           <div class="lm-eyebrow">今日课时</div>
           <div class="lm-bignum">${todayAllH.length}<small>节课 · 已消 ${todayDoneH}</small></div>
           ${nextUpH ? `
@@ -1324,7 +1324,7 @@
       const myNext = myToday.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED && s.startTime > nowHM)[0] || null;
       const myTomorrow = schedules.filter((s) => s.date === tomorrowStr && inScope(s)).sort((a, b) => a.startTime.localeCompare(b.startTime));
       hero.innerHTML = `
-        <div class="lm-card lm-hero" style="border-radius:22px 22px 0 0;position:relative;z-index:2;padding:20px 20px 26px">
+        <div class="lm-card lm-hero" style="border-radius:22px 22px 0 0;position:relative;z-index:2;padding:20px 20px 12px">
           <div class="flex items-center justify-between">
             <div class="lm-eyebrow" style="margin-bottom:0">${teacherSession.name.endsWith('老师') ? teacherSession.name : teacherSession.name + '老师'} · 今日课时</div>
             <button id="btnTeacherExitHome" class="text-[11px] bg-white rounded-full px-2.5 py-1 font-bold text-[#626260] shadow-xs active:bg-[#f1ece3]">退出</button>
