@@ -1430,7 +1430,7 @@
         else if (nowHM >= endHM) badge = '<button class="lm-tag lm-tag-due" data-home-checkin="' + s.id + '">待消课 ›</button>';
         else badge = '<button class="lm-tag lm-tag-todo" data-home-checkin="' + s.id + '">待上课 ›</button>';
         return `
-        <div class="lm-card px-4.5 py-4 flex items-center gap-3.5">
+        <div class="lm-card px-5 py-4 flex items-center gap-3.5">
           <div class="text-center shrink-0 min-w-[52px]">
             <div class="font-bold text-[18px] text-[#111111]">${s.startTime}</div>
             <div class="text-[10.5px] text-[#9c9fa5] mt-0.5">${s.durationMinutes || 45}分钟</div>
