@@ -1295,7 +1295,8 @@
       const tomorrowAllH = schedules.filter((s) => s.date === tomorrowStr && inScope(s));
       const todayDoneH = todayAllH.filter((s) => s.status === SCHEDULE_STATUS.COMPLETED).length;
       const todayPendH = todayAllH.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).length;
-      const nextUpH = todayPendH ? todayAllH.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).sort((a, b) => a.startTime.localeCompare(b.startTime))[0] : null;
+      const nowHM = `${String(nowD.getHours()).padStart(2, '0')}:${String(nowD.getMinutes()).padStart(2, '0')}`;
+      const nextUpH = todayPendH ? todayAllH.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED && s.startTime > nowHM).sort((a, b) => a.startTime.localeCompare(b.startTime))[0] : null;
       hero.innerHTML = `
         <div class="lm-card lm-hero" style="border-radius:22px 22px 0 0;position:relative;z-index:2;padding:20px 20px 26px">
           <div class="lm-eyebrow">今日课时</div>
@@ -1319,7 +1320,8 @@
     } else {
       const myToday = schedules.filter((s) => s.date === todayStr && inScope(s)).sort((a, b) => a.startTime.localeCompare(b.startTime));
       const myTodayDone = myToday.filter((s) => s.status === SCHEDULE_STATUS.COMPLETED).length;
-      const myNext = myToday.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED)[0] || null;
+      const nowHM = `${String(nowD.getHours()).padStart(2, '0')}:${String(nowD.getMinutes()).padStart(2, '0')}`;
+      const myNext = myToday.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED && s.startTime > nowHM)[0] || null;
       const myTomorrow = schedules.filter((s) => s.date === tomorrowStr && inScope(s)).sort((a, b) => a.startTime.localeCompare(b.startTime));
       hero.innerHTML = `
         <div class="lm-card lm-hero" style="border-radius:22px 22px 0 0;position:relative;z-index:2;padding:20px 20px 26px">
@@ -2590,4 +2592,11 @@
   } else {
     initMobileApp();
   }
+
+  // 首页时间敏感数据（下一节/待消课）分钟级自动刷新：页面停留时数据不僵化
+  setInterval(() => {
+    if (document.getElementById('viewHome') && !document.getElementById('viewHome').classList.contains('hidden') && typeof renderMobileHome === 'function') {
+      try { renderMobileHome(); } catch (e) { /* 忽略刷新异常 */ }
+    }
+  }, 60000);
 })();
