@@ -196,6 +196,9 @@ body:has(.lm-island) .toast-safe-bottom {
 .lm-tag-done { background: #f1ece3; color: #4a4a48; }
 .lm-tag-todo { background: var(--lm-ink); color: #fff; }
 .lm-tag-leave { background: #ffe9ec; color: #d5304f; }
+/* 正在上课：橙；待消课：黄（可点） */
+.lm-tag-live { background: #ff5600; color: #fff; }
+.lm-tag-due { background: #f5b800; color: #3d2e00; cursor: pointer; }
 
 /* ---- 主按钮：Fin 橙 高48（唯一橙色） ---- */
 .lm-btn-fin {

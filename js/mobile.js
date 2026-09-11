@@ -1420,9 +1420,15 @@
       ${todays.map((s) => {
         const done = s.status === SCHEDULE_STATUS.COMPLETED;
         const leave = s.status === SCHEDULE_STATUS.STUDENT_LEAVE;
-        const badge = done ? '<span class="lm-tag lm-tag-done">已消课</span>'
-          : leave ? '<span class="lm-tag lm-tag-leave">请假</span>'
-          : '<span class="lm-tag lm-tag-todo">待上课</span>';
+        // 按当前时间分态：待上课(黑) → 正在上课(橙) → 待消课(黄)
+        const nowHM = `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`;
+        const endHM = (() => { const [h, m] = (s.startTime || '00:00').split(':').map(Number); const d = new Date(); d.setHours(h, m + (s.durationMinutes || 45), 0, 0); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; })();
+        let badge;
+        if (done) badge = '<span class="lm-tag lm-tag-done">已消课</span>';
+        else if (leave) badge = '<span class="lm-tag lm-tag-leave">请假</span>';
+        else if (nowHM >= (s.startTime || '00:00') && nowHM < endHM) badge = '<span class="lm-tag lm-tag-live">正在上课</span>';
+        else if (nowHM >= endHM) badge = '<button class="lm-tag lm-tag-due" data-home-checkin="' + s.id + '">待消课 ›</button>';
+        else badge = '<button class="lm-tag lm-tag-todo" data-home-checkin="' + s.id + '">待上课 ›</button>';
         return `
         <div class="lm-card px-4 py-3 flex items-center gap-3">
           <div class="text-center shrink-0">
@@ -1453,7 +1459,23 @@
     }
 
     // ---- 事件（委托到 cards 容器；走 window 桥避免作用域错误）----
+    // 今日课程容器独立委托（badge 在 todayBox 不在 cards）
+    const todayBoxEl = document.getElementById('mobileHomeToday');
+    if (todayBoxEl) todayBoxEl.onclick = (e) => {
+      const tag = e.target.closest('[data-home-checkin]');
+      if (tag) {
+        const sch = schedules.find((x) => x.id === tag.getAttribute('data-home-checkin'));
+        if (sch) openMobileScheduleActionMenu(sch);
+      }
+    };
     cards.onclick = (e) => {
+      // 今日课程状态胶囊 → 弹确认菜单（消课/请假二选一）
+      const tag = e.target.closest('[data-home-checkin]');
+      if (tag) {
+        const sch = schedules.find((x) => x.id === tag.getAttribute('data-home-checkin'));
+        if (sch && typeof openMobileScheduleActionMenu === 'function') openMobileScheduleActionMenu(sch);
+        return;
+      }
       const t = e.target.closest('#homeCardDebt, #homeCardRenew');
       if (!t) return;
       if (t.id === 'homeCardDebt') window.__switchMobileView('finance');
