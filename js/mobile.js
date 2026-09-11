@@ -1773,17 +1773,15 @@
   function populateMobileStudentFilters() {
     const tSel = document.getElementById('mobileStudentTeacherFilter');
     const cSel = document.getElementById('mobileStudentCourseFilter');
-    if (tSel) {
-      const prev = tSel.value;
-      // 范围 + 老师合并下拉：老师视角默认"我的学员"，管理员视角默认"全部学员"
+    if (tSel && !tSel.options.length) {
+      // 首次填充（HTML 只带骨架）：老师视角默认"我的学员"，管理员视角"全部学员"+各老师
       if (isTeacherView()) {
-        tSel.innerHTML = '<option value="mine">我的学员</option><option value="all">全部学员</option>' +
-          teachers.map((t) => `<option value="${t.id}">${t.name}</option>`).join('');
+        tSel.innerHTML = '<option value="mine">我的学员</option><option value="all">全部学员</option>';
+        tSel.value = 'mine';
       } else {
         tSel.innerHTML = '<option value="all">全部学员</option>' +
           teachers.map((t) => `<option value="${t.id}">${t.name}</option>`).join('');
       }
-      if ([...tSel.options].some((o) => o.value === prev)) tSel.value = prev;
     }
     if (cSel) {
       const prev = cSel.value;
@@ -1806,7 +1804,8 @@
     const query = ((searchEl ? searchEl.value : '') || '').trim().toLowerCase();
     const tSel = document.getElementById('mobileStudentTeacherFilter');
     const cSel = document.getElementById('mobileStudentCourseFilter');
-    const teacherFilter = tSel ? tSel.value : 'all';
+    // 老师视角默认"我的学员"：每次渲染下拉被重建后值可能回到第一项(mine)，但若用户之前选了"全部"则保留
+    const teacherFilter = tSel ? (tSel.value || 'all') : 'all';
     const courseFilter = cSel ? cSel.value : 'all';
 
     let list = students.filter((st) => {
