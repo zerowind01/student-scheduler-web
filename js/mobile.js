@@ -1085,27 +1085,6 @@
     safeBind('btnAddMobileCourseRow', 'click', () => addMobileCourseRow());
     safeBind('btnMobileAddStudent', 'click', () => openMobileStudentModal());
 
-    // 老师视角：我的学员/全部学员 切换
-    const scopeBtn = document.getElementById('teacherScopeToggle');
-    if (scopeBtn) {
-      const syncLabel = () => {
-        const showAll = sessionStorage.getItem('lm_teacher_show_all_students') === '1';
-        scopeBtn.textContent = showAll ? '全部学员 · 切回我的' : '我的学员 · 查全部';
-        scopeBtn.classList.toggle('lm-btn-ink', !showAll);
-        scopeBtn.classList.toggle('lm-btn-ghost', showAll);
-      };
-      syncLabel();
-      scopeBtn.addEventListener('click', () => {
-        const cur = sessionStorage.getItem('lm_teacher_show_all_students') === '1';
-        sessionStorage.setItem('lm_teacher_show_all_students', cur ? '0' : '1');
-        syncLabel();
-        renderMobileStudents();
-        showToast(cur ? '已切回我的学员' : '已显示全部学员');
-      });
-      // 老师视角才显示该按钮
-      if (isTeacherView()) scopeBtn.classList.remove('hidden');
-    }
-
     safeBind('btnCloseMobileSchedule', 'click', closeMobileScheduleModal);
     safeBind('btnCancelMobileSchedule', 'click', closeMobileScheduleModal);
     safeBind('formMobileSchedule', 'submit', handleSaveMobileSchedule);
@@ -1796,8 +1775,14 @@
     const cSel = document.getElementById('mobileStudentCourseFilter');
     if (tSel) {
       const prev = tSel.value;
-      tSel.innerHTML = '<option value="all">全部老师</option>' +
-        teachers.map((t) => `<option value="${t.id}">${t.name}</option>`).join('');
+      // 范围 + 老师合并下拉：老师视角默认"我的学员"，管理员视角默认"全部学员"
+      if (isTeacherView()) {
+        tSel.innerHTML = '<option value="mine">我的学员</option><option value="all">全部学员</option>' +
+          teachers.map((t) => `<option value="${t.id}">${t.name}</option>`).join('');
+      } else {
+        tSel.innerHTML = '<option value="all">全部学员</option>' +
+          teachers.map((t) => `<option value="${t.id}">${t.name}</option>`).join('');
+      }
       if ([...tSel.options].some((o) => o.value === prev)) tSel.value = prev;
     }
     if (cSel) {
@@ -1826,14 +1811,11 @@
 
     let list = students.filter((st) => {
       normalizeStudent(st);
-      // 老师视角：默认只显示"我的学员"（关联名单或排课相关）；切换"显示全部"后放开
-      if (isTeacherView()) {
-        const showAll = sessionStorage.getItem('lm_teacher_show_all_students') === '1';
-        if (!showAll) {
-          const related = (st.teacherIds || []).includes(teacherSession.teacherId) ||
-            schedules.some((s) => s.studentId === st.id && (s.teacherId === teacherSession.teacherId || s.assistantTeacherId === teacherSession.teacherId));
-          if (!related) return false;
-        }
+      // 范围下拉：mine=我的学员（关联名单或排课相关）；all=全部；其他值=指定老师
+      if (isTeacherView() && teacherFilter === 'mine') {
+        const related = (st.teacherIds || []).includes(teacherSession.teacherId) ||
+          schedules.some((s) => s.studentId === st.id && (s.teacherId === teacherSession.teacherId || s.assistantTeacherId === teacherSession.teacherId));
+        if (!related) return false;
       }
       const matchName = st.name.toLowerCase().includes(query) || (st.phone && st.phone.includes(query));
       const matchCourse = st.courses.some((c) => c.name.toLowerCase().includes(query));
@@ -1843,10 +1825,11 @@
         const total = st.courses.reduce((acc, c) => acc + c.remainingLessons, 0);
         return total <= 2 || st.courses.some((c) => c.remainingLessons <= 2);
       }
-      // 按老师筛选：排课记录里该老师（主讲或助教）上过/将上该学员的课
-      if (teacherFilter !== 'all') {
-        const matchT = schedules.some((s) => s.studentId === st.id && (s.teacherId === teacherFilter || s.assistantTeacherId === teacherFilter));
-        if (!matchT) return false;
+      // 按老师筛选：显式关联 或 排课记录里该老师（主讲或助教）上过/将上该学员的课
+      if (teacherFilter !== 'all' && teacherFilter !== 'mine') {
+        const explicit = (st.teacherIds || []).includes(teacherFilter);
+        const viaSchedule = schedules.some((s) => s.studentId === st.id && (s.teacherId === teacherFilter || s.assistantTeacherId === teacherFilter));
+        if (!explicit && !viaSchedule) return false;
       }
       // 按课程筛选：学员有该名字的课程
       if (courseFilter !== 'all') {

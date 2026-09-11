@@ -145,14 +145,12 @@
             </button>
           </div>
         </div>
-        <div class="flex items-center gap-1.5 text-xs overflow-x-auto lm-no-scrollbar pr-1" style="scrollbar-width: none;">
-          <button id="teacherScopeToggle" class="hidden shrink-0 whitespace-nowrap lm-btn-ghost px-3 py-1.5 rounded-full text-[11px] font-bold" title="切换学员范围"></button>
-          <button class="mobile-student-filter active shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full lm-btn-ink text-[11px]" data-filter="all">全部学员</button>
-          <button class="mobile-student-filter shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full lm-btn-ghost text-[11px]" data-filter="low">课时预警(≤2)</button>
-          <select id="mobileStudentTeacherFilter" aria-label="按老师筛选" class="shrink-0 max-w-[100px] bg-white border-0 rounded-full px-2 py-1 text-[11px] font-semibold text-[#111111] outline-none shadow-sm">
-            <option value="all">全部老师</option>
+        <div class="flex items-center gap-1.5 text-xs">
+          <select id="mobileStudentTeacherFilter" aria-label="范围与老师筛选" class="shrink-0 lm-select-ink px-3 py-1.5 text-[11px] outline-none">
+            <option value="all">全部学员</option>
           </select>
-          <select id="mobileStudentCourseFilter" aria-label="按课程筛选" class="shrink-0 max-w-[100px] bg-white border-0 rounded-full px-2 py-1 text-[11px] font-semibold text-[#111111] outline-none shadow-sm">
+          <button class="mobile-student-filter shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full lm-btn-ghost text-[11px]" data-filter="low">课时预警(≤2)</button>
+          <select id="mobileStudentCourseFilter" aria-label="按课程筛选" class="shrink-0 lm-select-ink px-3 py-1.5 text-[11px] outline-none ml-auto">
             <option value="all">全部课程</option>
           </select>
         </div>

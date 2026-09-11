@@ -221,6 +221,21 @@ body:has(.lm-island) .toast-safe-bottom {
   font-weight: 600;
 }
 .lm-btn-ink:active { filter: brightness(1.35); }
+/* 黑色胶囊下拉框：与筛选按钮统一风格 */
+select.lm-select-ink {
+  -webkit-appearance: none;
+  appearance: none;
+  background-color: var(--lm-ink);
+  color: #fff;
+  font-weight: 700;
+  border: 0;
+  border-radius: 999px;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='white' stroke-width='1.8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 26px;
+}
+select.lm-select-ink option { color: #111; background: #fff; }
 
 /* ---- 日历列：今天高亮改炭黑胶囊 ---- */
 .lm-today-col {
