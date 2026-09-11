@@ -199,6 +199,8 @@ body:has(.lm-island) .toast-safe-bottom {
 /* 正在上课：橙；待消课：黄（可点） */
 .lm-tag-live { background: #ff5600; color: #fff; }
 .lm-tag-due { background: #f5b800; color: #3d2e00; cursor: pointer; }
+/* 今日课程卡加大后，胶囊同步放大 */
+#mobileHomeToday .lm-tag { font-size: 12.5px; padding: 5px 12px; }
 
 /* ---- 主按钮：Fin 橙 高48（唯一橙色） ---- */
 .lm-btn-fin {

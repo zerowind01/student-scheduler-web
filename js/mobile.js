@@ -1430,33 +1430,21 @@
         else if (nowHM >= endHM) badge = '<button class="lm-tag lm-tag-due" data-home-checkin="' + s.id + '">待消课 ›</button>';
         else badge = '<button class="lm-tag lm-tag-todo" data-home-checkin="' + s.id + '">待上课 ›</button>';
         return `
-        <div class="lm-card px-4 py-3 flex items-center gap-3">
-          <div class="text-center shrink-0">
-            <div class="font-bold text-[15px] text-[#111111]">${s.startTime}</div>
-            <div class="text-[10px] text-[#9c9fa5]">${s.durationMinutes || 45}分钟</div>
+        <div class="lm-card px-4.5 py-4 flex items-center gap-3.5">
+          <div class="text-center shrink-0 min-w-[52px]">
+            <div class="font-bold text-[18px] text-[#111111]">${s.startTime}</div>
+            <div class="text-[10.5px] text-[#9c9fa5] mt-0.5">${s.durationMinutes || 45}分钟</div>
           </div>
-          <div class="flex-1 min-w-0" style="border-left:1px solid #f0ebe2;padding-left:12px">
-            <div class="font-bold text-[12.5px] text-[#111111] truncate">${s.studentName || ''} <span class="text-[#9c9fa5] font-medium">· ${s.subject || ''}</span></div>
-            <div class="text-[11px] text-[#9c9fa5] truncate mt-0.5">${s.teacherName ? s.teacherName : ''}${s.room ? ' · ' + s.room : ''}</div>
+          <div class="flex-1 min-w-0" style="border-left:1px solid #f0ebe2;padding-left:14px">
+            <div class="font-bold text-[14.5px] text-[#111111] truncate">${s.studentName || ''} <span class="text-[#9c9fa5] font-medium">· ${s.subject || ''}</span></div>
+            <div class="text-[12px] text-[#9c9fa5] truncate mt-1">${s.teacherName ? s.teacherName : ''}${s.room ? ' · ' + s.room : ''}</div>
           </div>
           ${badge}
         </div>`;
       }).join('')}`;
 
-    // ---- 续费跟进清单（今日课程下方）----
-    const renewBox = document.getElementById('mobileHomeRenew');
-    if (renewBox) {
-      renewBox.innerHTML = lowCount > 0 ? `
-      <div class="lm-card p-4">
-        <div class="font-bold text-[12px] text-[#111111] mb-2 flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full" style="background:#fe4c02"></span> 续费跟进清单</div>
-        ${lowList.slice(0, 5).map((x) => `
-          <div class="flex items-center justify-between py-1.5" style="border-bottom:1px solid #f0ebe2">
-            <div class="text-[11.5px] font-bold text-[#111111]">${x.student} <span class="text-[#9c9fa5] font-medium">· ${x.course}</span></div>
-            <div class="text-[11px] font-bold ${x.remaining <= 0 ? 'text-[#d5304f]' : 'text-[#fe4c02]'}">${x.remaining <= 0 ? '已用完' : '剩 ' + x.remaining + ' 节'}</div>
-          </div>`).join('')}
-        ${lowCount > 5 ? `<div class="text-[11px] text-[#9c9fa5] pt-1.5">还有 ${lowCount - 5} 项，去学员页查看</div>` : ''}
-      </div>` : '';
-    }
+    // 续费跟进清单已移至财务页（renderMobileFinancePanel）
+    void lowList; void lowCount;
 
     // ---- 事件（委托到 cards 容器；走 window 桥避免作用域错误）----
     // 今日课程容器独立委托（badge 在 todayBox 不在 cards）
@@ -2262,6 +2250,12 @@
     const relIds = new Set(relStudents.map((s) => s.id));
     const debtors = debts.filter((d) => d.amount > 0 && relIds.has(d.studentId));
 
+    // 续费跟进清单（剩余课时≤2，老师视角只看自己学员）
+    const financeLowList = [];
+    relStudents.forEach((st) => (st.courses || []).forEach((c) => {
+      if (c.remainingLessons <= 2) financeLowList.push({ student: st.name, course: c.courseName || c.name || '', remaining: c.remainingLessons });
+    }));
+
     container.innerHTML = `
       <div class="grid grid-cols-2 gap-2.5">
         <div class="lm-card p-4">
@@ -2280,6 +2274,16 @@
           <div class="text-[11px] ${debtors.length ? 'text-[#9c9fa5]' : 'text-[#9c9fa5]'} font-medium flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full" style="background:#ff2067"></span> 欠课学员</div>
           <div class="lm-stat-v ${debtors.length ? 'text-[#d5304f]' : 'text-[#c9c4bc]'} mt-1">${debtors.length} <span class="text-[11px] font-medium">人</span></div>
         </div>
+      </div>
+
+      <div class="lm-card p-4">
+        <div class="font-bold text-[12px] text-[#111111] mb-2 flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full" style="background:#fe4c02"></span> 续费跟进清单 <span class="text-[11px] font-medium text-[#9c9fa5]">${isTeacherView() ? '（我的学员）' : ''}</span></div>
+        ${financeLowList.length === 0 ? '<div class="text-[12px] text-[#9c9fa5] py-3 text-center">暂无待续费学员</div>' : financeLowList.slice(0, 5).map((x) => `
+          <div class="flex items-center justify-between py-1.5" style="border-bottom:1px solid #f0ebe2">
+            <div class="text-[11.5px] font-bold text-[#111111]">${x.student} <span class="text-[#9c9fa5] font-medium">· ${x.course}</span></div>
+            <div class="text-[11px] font-bold ${x.remaining <= 0 ? 'text-[#d5304f]' : 'text-[#fe4c02]'}">${x.remaining <= 0 ? '已用完' : '剩 ' + x.remaining + ' 节'}</div>
+          </div>`).join('')}
+        ${financeLowList.length > 5 ? `<div class="text-[11px] text-[#9c9fa5] pt-1.5">还有 ${financeLowList.length - 5} 项，去学员页查看</div>` : ''}
       </div>
 
       <div class="lm-card p-4">
