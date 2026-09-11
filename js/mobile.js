@@ -61,9 +61,10 @@
 
   function isTeacherView() { return !!teacherSession; }
 
-  // 老师视角：判断学员是否与该老师有关（主讲或助教上过/将上该学员的课）
+  // 老师视角：判断学员是否与该老师有关（显式关联名单、或主讲/助教上过/将上该学员的课）
   function studentRelatedToTeacher(st) {
     if (!teacherSession) return true;
+    if ((st.teacherIds || []).includes(teacherSession.teacherId)) return true;
     return schedules.some((s) => s.studentId === st.id && (s.teacherId === teacherSession.teacherId || s.assistantTeacherId === teacherSession.teacherId));
   }
 
@@ -1084,6 +1085,27 @@
     safeBind('btnAddMobileCourseRow', 'click', () => addMobileCourseRow());
     safeBind('btnMobileAddStudent', 'click', () => openMobileStudentModal());
 
+    // 老师视角：我的学员/全部学员 切换
+    const scopeBtn = document.getElementById('teacherScopeToggle');
+    if (scopeBtn) {
+      const syncLabel = () => {
+        const showAll = sessionStorage.getItem('lm_teacher_show_all_students') === '1';
+        scopeBtn.textContent = showAll ? '全部学员 · 切回我的' : '我的学员 · 查全部';
+        scopeBtn.classList.toggle('lm-btn-ink', !showAll);
+        scopeBtn.classList.toggle('lm-btn-ghost', showAll);
+      };
+      syncLabel();
+      scopeBtn.addEventListener('click', () => {
+        const cur = sessionStorage.getItem('lm_teacher_show_all_students') === '1';
+        sessionStorage.setItem('lm_teacher_show_all_students', cur ? '0' : '1');
+        syncLabel();
+        renderMobileStudents();
+        showToast(cur ? '已切回我的学员' : '已显示全部学员');
+      });
+      // 老师视角才显示该按钮
+      if (isTeacherView()) scopeBtn.classList.remove('hidden');
+    }
+
     safeBind('btnCloseMobileSchedule', 'click', closeMobileScheduleModal);
     safeBind('btnCancelMobileSchedule', 'click', closeMobileScheduleModal);
     safeBind('formMobileSchedule', 'submit', handleSaveMobileSchedule);
@@ -1804,10 +1826,14 @@
 
     let list = students.filter((st) => {
       normalizeStudent(st);
-      // 老师视角：只显示与自己相关的学员（排课里有她的课，或欠课账涉及）
+      // 老师视角：默认只显示"我的学员"（关联名单或排课相关）；切换"显示全部"后放开
       if (isTeacherView()) {
-        const related = schedules.some((s) => s.studentId === st.id && (s.teacherId === teacherSession.teacherId || s.assistantTeacherId === teacherSession.teacherId));
-        if (!related) return false;
+        const showAll = sessionStorage.getItem('lm_teacher_show_all_students') === '1';
+        if (!showAll) {
+          const related = (st.teacherIds || []).includes(teacherSession.teacherId) ||
+            schedules.some((s) => s.studentId === st.id && (s.teacherId === teacherSession.teacherId || s.assistantTeacherId === teacherSession.teacherId));
+          if (!related) return false;
+        }
       }
       const matchName = st.name.toLowerCase().includes(query) || (st.phone && st.phone.includes(query));
       const matchCourse = st.courses.some((c) => c.name.toLowerCase().includes(query));
@@ -2440,6 +2466,29 @@
       courses.forEach((c) => addMobileCourseRow(c));
     }
 
+    // 关联老师胶囊：勾选状态来自 student.teacherIds
+    const chipsBox = document.getElementById('mobileStudentTeacherChips');
+    if (chipsBox) {
+      const linked = new Set((student && student.teacherIds) || []);
+      chipsBox.innerHTML = teachers.map((t) => `
+        <button type="button" class="st-t-chip px-3 py-2 rounded-full text-[11px] font-bold border transition ${linked.has(t.id) ? 'bg-[#111111] text-white border-[#111111]' : 'bg-white text-[#626260] border-slate-200'}" data-tid="${t.id}">
+          ${linked.has(t.id) ? '<i class="fa-solid fa-check mr-1 text-[10px]"></i>' : ''}${t.name}
+        </button>`).join('') || '<span class="text-[11px] text-slate-400">还没有老师账号</span>';
+      chipsBox.onclick = (e) => {
+        const chip = e.target.closest('.st-t-chip');
+        if (!chip) return;
+        chip.classList.toggle('bg-[#111111]');
+        chip.classList.toggle('text-white');
+        chip.classList.toggle('border-[#111111]');
+        chip.classList.toggle('bg-white');
+        chip.classList.toggle('text-[#626260]');
+        chip.classList.toggle('border-slate-200');
+        const ic = chip.querySelector('i');
+        if (chip.classList.contains('bg-[#111111]') && !ic) chip.insertAdjacentHTML('afterbegin', '<i class="fa-solid fa-check mr-1 text-[10px]"></i>');
+        else if (!chip.classList.contains('bg-[#111111]') && ic) ic.remove();
+      };
+    }
+
     showModal('modalMobileStudent');
   }
 
@@ -2519,6 +2568,8 @@
     const phone = phoneEl ? phoneEl.value.trim() : '';
     const colorEl = document.getElementById('mobileStudentColorSelect');
     const colorTheme = colorEl ? colorEl.value : 'amber';
+    // 关联老师（多选）
+    const teacherIds = [...document.querySelectorAll('#mobileStudentTeacherChips .st-t-chip')].filter((c) => c.classList.contains('bg-[#111111]')).map((c) => c.getAttribute('data-tid'));
 
     if (!name) {
       showToast('请填写学员姓名');
@@ -2559,6 +2610,7 @@
           name,
           phone,
           colorTheme,
+          teacherIds,
           courses: courses.map((c, i) => ({
             ...c,
             id: oldCourses[i] ? oldCourses[i].id : c.id,
@@ -2573,6 +2625,7 @@
         name,
         phone,
         colorTheme,
+        teacherIds,
         courses,
       });
       showToast('成功添加新学员！');
