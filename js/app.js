@@ -1214,24 +1214,63 @@
   function renderPageStudents() {
     const container = document.getElementById('pageStudentsList');
     if (!container) return;
-    if (students.length === 0) {
-      container.innerHTML = `<div class="col-span-full text-center py-16 text-slate-400 text-sm">还没有学员，点击右上角"新建学员"开始</div>`;
+    const studentsPage = document.getElementById('pageStudents');
+    // 状态筛选条（首次渲染时插入标题行下方）
+    let filterBar = document.getElementById('pageStudentStatusFilter');
+    if (!filterBar && studentsPage) {
+      filterBar = document.createElement('div');
+      filterBar.id = 'pageStudentStatusFilter';
+      filterBar.className = 'flex items-center gap-2 flex-wrap';
+      filterBar.innerHTML = `
+        <button class="pstu-filter active text-[11px] font-bold px-3.5 py-1.5 rounded-full bg-slate-800 text-white transition" data-st="active">在读</button>
+        <button class="pstu-filter text-[11px] font-bold px-3.5 py-1.5 rounded-full bg-white text-slate-600 shadow-sm transition" data-st="paused">停课中</button>
+        <button class="pstu-filter text-[11px] font-bold px-3.5 py-1.5 rounded-full bg-white text-slate-600 shadow-sm transition" data-st="archived">已结课</button>
+        <span class="text-[10px] text-slate-400 font-semibold ml-1">按状态查看学员</span>`;
+      studentsPage.querySelector('.max-w-3xl').insertBefore(filterBar, studentsPage.querySelector('#pageStudentsList'));
+      filterBar.querySelectorAll('.pstu-filter').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          filterBar.querySelectorAll('.pstu-filter').forEach((b) => {
+            b.classList.remove('active', 'bg-slate-800', 'text-white');
+            b.classList.add('bg-white', 'text-slate-600');
+          });
+          btn.classList.add('active', 'bg-slate-800', 'text-white');
+          btn.classList.remove('bg-white', 'text-slate-600');
+          renderPageStudents();
+        });
+      });
+    }
+    const curStatus = filterBar ? (filterBar.querySelector('.pstu-filter.active')?.getAttribute('data-st') || 'active') : 'active';
+    const visibleStudents = students.filter((st) => (st.status || 'active') === curStatus);
+
+    if (visibleStudents.length === 0) {
+      container.innerHTML = `<div class="col-span-full text-center py-16 text-slate-400 text-sm">${curStatus === 'active' ? '还没有学员，点击右上角"新建学员"开始' : `暂无「${STUDENT_STATUS_LABEL[curStatus]}」学员`}</div>`;
       return;
     }
-    container.innerHTML = students.map((student) => {
+    container.innerHTML = visibleStudents.map((student) => {
       normalizeStudent(student);
       migrateStudentCourses(student);
       const totalLessons = student.courses.reduce((acc, c) => acc + c.remainingLessons, 0);
       const isLow = totalLessons <= 2;
       const themeColor = getThemeBadgeStyle(student.colorTheme || 'amber');
       const studentDebts = getStudentDebts(student.id);
+      const stBadge = student.status === 'paused'
+        ? '<span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">停课中</span>'
+        : student.status === 'archived'
+          ? '<span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-500">已结课</span>'
+          : '';
+      const statusActions = student.status === 'active'
+        ? `<button class="py-2 rounded-lg bg-amber-50 text-amber-700 text-[11px] font-bold border border-amber-200 hover:bg-amber-100 transition page-pause-student" data-id="${student.id}"><i class="fa-solid fa-pause"></i> 停课</button>`
+        : student.status === 'paused'
+          ? `<button class="py-2 rounded-lg bg-emerald-50 text-emerald-700 text-[11px] font-bold border border-emerald-200 hover:bg-emerald-100 transition page-resume-student" data-id="${student.id}"><i class="fa-solid fa-play"></i> 复课</button>
+             <button class="py-2 rounded-lg bg-slate-100 text-slate-600 text-[11px] font-bold border border-slate-200 hover:bg-slate-200 transition page-archive-student" data-id="${student.id}"><i class="fa-solid fa-flag-checkered"></i> 结课</button>`
+          : `<button class="py-2 rounded-lg bg-slate-100 text-slate-600 text-[11px] font-bold border border-slate-200 hover:bg-slate-200 transition page-restore-student" data-id="${student.id}"><i class="fa-solid fa-rotate-left"></i> 恢复在读</button>`;
       return `
-      <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs space-y-2" data-student-page-id="${student.id}">
+      <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs space-y-2 ${student.status === 'archived' ? 'opacity-60' : ''}" data-student-page-id="${student.id}">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2.5">
             <div class="w-9 h-9 rounded-full ${themeColor.bg} ${themeColor.text} flex items-center justify-center font-bold text-sm shrink-0">${student.name.substring(0, 1)}</div>
             <div>
-              <div class="font-bold text-sm text-slate-800">${student.name}</div>
+              <div class="font-bold text-sm text-slate-800 flex items-center gap-1.5">${student.name}${stBadge}</div>
               <div class="text-[10px] text-slate-400"><i class="fa-solid fa-phone text-[9px]"></i> ${student.phone || '无电话'}</div>
             </div>
           </div>
@@ -1247,11 +1286,22 @@
         <div class="flex gap-2 pt-1">
           <button class="flex-1 py-2 rounded-lg bg-sky-50 text-sky-700 text-[11px] font-bold border border-sky-200 hover:bg-sky-100 transition page-detail-student" data-id="${student.id}"><i class="fa-solid fa-circle-info"></i> 详情</button>
           <button class="flex-1 py-2 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-bold page-edit-student" data-id="${student.id}"><i class="fa-solid fa-pen-to-square"></i> 编辑</button>
-          <button class="flex-1 py-2 rounded-lg bg-emerald-500 text-white text-[11px] font-bold page-recharge-student" data-id="${student.id}"><i class="fa-solid fa-circle-plus"></i> 充值</button>
+          ${student.status === 'active' ? `<button class="flex-1 py-2 rounded-lg bg-emerald-500 text-white text-[11px] font-bold page-recharge-student" data-id="${student.id}"><i class="fa-solid fa-circle-plus"></i> 充值</button>` : ''}
+        </div>
+        <div class="flex gap-2">
+          ${statusActions}
         </div>
       </div>`;
     }).join('');
 
+    const setStatus = (id, status) => {
+      const st = students.find((s) => s.id === id);
+      if (!st) return;
+      st.status = status;
+      saveData();
+      renderPageStudents();
+      showToast(`${st.name} 已${status === 'paused' ? '停课' : status === 'archived' ? '结课' : '恢复在读'}`, 'circle-check');
+    };
     container.querySelectorAll('.page-detail-student').forEach((btn) => {
       btn.addEventListener('click', () => {
         const st = students.find((s) => s.id === btn.getAttribute('data-id'));
@@ -1270,6 +1320,10 @@
         if (st) openRechargeModal(st);
       });
     });
+    container.querySelectorAll('.page-pause-student').forEach((btn) => btn.addEventListener('click', () => setStatus(btn.getAttribute('data-id'), 'paused')));
+    container.querySelectorAll('.page-resume-student').forEach((btn) => btn.addEventListener('click', () => setStatus(btn.getAttribute('data-id'), 'active')));
+    container.querySelectorAll('.page-archive-student').forEach((btn) => btn.addEventListener('click', () => setStatus(btn.getAttribute('data-id'), 'archived')));
+    container.querySelectorAll('.page-restore-student').forEach((btn) => btn.addEventListener('click', () => setStatus(btn.getAttribute('data-id'), 'active')));
   }
 
   // 财务分页：完整经营面板（本月课消/收入明细/欠课名单）
