@@ -2417,7 +2417,7 @@
       setTimeout(() => {
         toast.classList.add('translate-y-10', 'opacity-0', 'pointer-events-none');
         toast.classList.remove('translate-y-0', 'opacity-100');
-      }, 2500);
+      }, 5000);
     }
   }
 
