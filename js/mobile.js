@@ -2406,15 +2406,25 @@
     document.body.appendChild(menu);
   }
 
+  let toastTimer = null;
   function showToast(msg) {
     const toast = document.getElementById('toast');
     const toastMsg = document.getElementById('toastMsg');
     if (toast && toastMsg) {
       toastMsg.textContent = msg;
+      // 清掉 GSAP 动画残留的内联样式，否则 opacity-0 class 会被内联 opacity:1 压住，toast 永远不消失
+      toast.style.opacity = '';
+      toast.style.transform = '';
+      toast.style.translate = '';
+      toast.style.rotate = '';
+      toast.style.scale = '';
       toast.classList.remove('translate-y-10', 'opacity-0', 'pointer-events-none');
       toast.classList.add('translate-y-0', 'opacity-100');
       if (window.uiAnim) window.uiAnim.toastIn(toast);
-      setTimeout(() => {
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.style.opacity = '';
+        toast.style.transform = '';
         toast.classList.add('translate-y-10', 'opacity-0', 'pointer-events-none');
         toast.classList.remove('translate-y-0', 'opacity-100');
       }, 5000);
