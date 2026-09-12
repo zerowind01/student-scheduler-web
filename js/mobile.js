@@ -1114,12 +1114,18 @@
 
     document.querySelectorAll('.mobile-student-filter').forEach((btn) => {
       btn.addEventListener('click', (e) => {
+        const clicked = e.currentTarget;
+        const wasActive = clicked.classList.contains('active');
+        // 统一重置为未选中（ghost）样式
         document.querySelectorAll('.mobile-student-filter').forEach((b) => {
-          b.classList.remove('active', 'lm-btn-ink');
-          b.classList.add('bg-slate-100', 'text-slate-600');
+          b.classList.remove('active', 'lm-btn-ink', 'bg-slate-100', 'text-slate-600');
+          b.classList.add('lm-btn-ghost');
         });
-        e.target.classList.add('active', 'lm-btn-ink');
-        e.target.classList.remove('bg-slate-100', 'text-slate-600');
+        // 再点一次已选中的按钮 = 取消筛选，恢复完整列表
+        if (!wasActive) {
+          clicked.classList.add('active', 'lm-btn-ink');
+          clicked.classList.remove('lm-btn-ghost');
+        }
         renderMobileStudents();
       });
     });
