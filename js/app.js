@@ -133,8 +133,14 @@
         },
       ];
     }
+    // 学员状态生命周期：active 在读(默认) / paused 停课中 / archived 已结课
+    if (!st.status) st.status = 'active';
+    if (!st.teacherIds) st.teacherIds = [];
     return st;
   }
+
+  const STUDENT_STATUS = { ACTIVE: 'active', PAUSED: 'paused', ARCHIVED: 'archived' };
+  const STUDENT_STATUS_LABEL = { active: '在读', paused: '停课中', archived: '已结课' };
 
   // ============ 教务扩展：数据迁移与规范化 ============
   // 排课状态：web 版语义（排课即扣课时）：
@@ -964,7 +970,9 @@
     if (window.uiAnim && activeEl) window.uiAnim.viewIn(activeEl);
 
     // 桌面侧栏按钮高亮（文字白、激活底色跟随功能色）
-    const pageAccent = { dashboard: 'bg-amber-500/90', schedule: 'bg-amber-500/90', students: 'bg-emerald-600/90', finance: 'bg-rose-500/90', settings: 'bg-sky-600/90' };
+    const pageAccent = { dashboard: 'bg-amber-500/90', schedule: 'bg-amber-500/90', students: 'bg-amber-500/90', finance: 'bg-amber-500/90', settings: 'bg-amber-500/90' };
+    // 兼容旧遗留：settings 页曾有 sky 高亮残留，激活时统一清理
+    ['bg-sky-600/90', 'bg-emerald-600/90', 'bg-rose-500/90'].forEach((c) => document.querySelectorAll('#mainSideNav .' + c.replace('/', '\\/')).forEach((b) => b.classList.remove(c)));
     document.querySelectorAll('.nav-page-btn[data-page]').forEach((btn) => {
       const active = btn.getAttribute('data-page') === page;
       btn.classList.toggle('active', active);

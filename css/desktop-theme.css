@@ -1,0 +1,107 @@
+/* ==========================================================================
+   LessonMate 电脑端 · Intercom 管理台主题 v1.0
+   与手机端 mobile-theme.css 同一设计语言：
+   奶油渐变底 · 软陶白卡（多层柔影去灰框）· 炭黑 #111 主色 · Fin 橙 #ff5600 主按钮
+   以 CSS 变量 + 覆盖层实现，不改 index.html 结构与 app.js 逻辑
+   ========================================================================== */
+
+:root {
+  --dt-canvas-top: #fdfbf8;
+  --dt-canvas-mid: #f7f2ea;
+  --dt-canvas-bot: #eadfc8;
+  --dt-ink: #111111;
+  --dt-ink-2: #626260;
+  --dt-ink-3: #9c9fa5;
+  --dt-fin: #ff5600;
+  --dt-card-shadow: 0 8px 22px rgba(120, 100, 70, 0.10), 0 2px 5px rgba(120, 100, 70, 0.06);
+  --dt-card-shadow-sm: 0 4px 14px rgba(120, 100, 70, 0.08), 0 1px 3px rgba(120, 100, 70, 0.05);
+}
+
+/* ---- 页面底：奶油亮渐变 ---- */
+body {
+  background: linear-gradient(180deg, var(--dt-canvas-top) 0%, var(--dt-canvas-mid) 45%, var(--dt-canvas-bot) 100%) !important;
+  background-attachment: fixed !important;
+}
+
+/* ---- 顶栏：融入画布 ---- */
+header {
+  background: rgba(253, 251, 248, 0.85) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(17, 17, 17, 0.06) !important;
+}
+
+/* ---- 左侧图标导航：深色岛台化（炭黑 + 圆角悬浮） ---- */
+#mainSideNav {
+  background: rgba(17, 17, 17, 0.96) !important;
+  margin: 10px 0 10px 10px !important;
+  border-radius: 22px !important;
+  box-shadow: 0 10px 28px rgba(17, 17, 17, 0.28), 0 2px 6px rgba(17, 17, 17, 0.12) !important;
+}
+
+/* ---- 分页底：透明化让画布透出 ---- */
+#pageStudents, #pageFinance, #pageSettings, #pageDashboard {
+  background: transparent !important;
+}
+
+/* ---- 全站白卡 → 软陶卡（多层柔影 + 去灰边框） ---- */
+#pageStudents .bg-white,
+#pageFinance .bg-white,
+#pageSettings .bg-white,
+#pageDashboard .bg-white,
+.modal-box {
+  background: #fff !important;
+  border-color: transparent !important;
+  box-shadow: var(--dt-card-shadow) !important;
+  border-radius: 20px !important;
+}
+
+/* 弹窗容器弱化边框 */
+#modalSyncKey > div, #modalQrSync > div, #modalStudentDetail > div, #modalTeacher > div,
+#modalSchedule > div, #modalStudent > div, #modalImport > div, #modalRecharge > div {
+  border-color: transparent !important;
+  box-shadow: 0 18px 44px rgba(17, 17, 17, 0.22), 0 4px 12px rgba(120, 100, 70, 0.10) !important;
+}
+
+/* ---- 主按钮统一：炭黑 / Fin 橙 ---- */
+#btnPageNewStudent, #btnNewStudent, #btnDashNewSchedule {
+  background: var(--dt-ink) !important;
+  border-radius: 999px !important;
+}
+#btnPageNewStudent:hover, #btnNewStudent:hover, #btnDashNewSchedule:hover {
+  background: #2a2a2a !important;
+}
+
+/* 消课按钮（emerald 主操作）保留绿色但圆角胶囊化 */
+.dash-checkin-btn { border-radius: 999px !important; }
+
+/* ---- 设置页卡片 hover：橙色光晕替代琥珀 ---- */
+#pageSettings .bg-white:hover {
+  box-shadow: var(--dt-card-shadow), 0 0 0 1.5px rgba(255, 86, 0, 0.25) !important;
+}
+
+/* ---- 表格/列表行分隔线淡化 ---- */
+#pageStudents .border-slate-100, #pageFinance .border-slate-100, #pageDashboard .border-slate-100 {
+  border-color: #f4f0e8 !important;
+}
+
+/* ---- 侧栏激活色统一 Fin 橙（覆盖 JS 加的 amber 高亮） ---- */
+#mainSideNav .nav-page-btn.active {
+  background: var(--dt-fin) !important;
+}
+#mainSideNav .bg-amber-500\/90 {
+  background: var(--dt-fin) !important;
+}
+
+/* ---- 手机底部导航（index 内嵌手机布局）：同步岛台风 ---- */
+#mobileBottomNav {
+  background: rgba(253, 251, 248, 0.92) !important;
+  border-top: 1px solid rgba(17, 17, 17, 0.06) !important;
+}
+
+/* ---- 滚动条弱化 ---- */
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(17, 17, 17, 0.12);
+  border-radius: 999px;
+}
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
