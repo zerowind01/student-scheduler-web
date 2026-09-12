@@ -1547,7 +1547,7 @@
           const rect = dayColumn.getBoundingClientRect();
           const offsetY = Math.max(0, Math.min(832, e.clientY - rect.top));
           const totalMinutes = Math.floor((offsetY / 832) * (13 * 60));
-          const roundedMinutes = Math.floor(totalMinutes / 15) * 15;
+          const roundedMinutes = Math.floor(totalMinutes / 5) * 5;
 
           const hour = Math.min(20, 8 + Math.floor(roundedMinutes / 60));
           const min = roundedMinutes % 60;
@@ -2081,7 +2081,11 @@
 
     const date = document.getElementById('inputMobileDate').value;
     const startTime = document.getElementById('inputMobileStartTime').value;
-    const durationMinutes = parseInt(document.getElementById('selectMobileDuration').value, 10);
+    // 时长校验：必须为 5 的倍数（5~240 分钟）
+    let durationMinutes = parseInt(document.getElementById('selectMobileDuration').value, 10);
+    if (!Number.isFinite(durationMinutes) || durationMinutes < 5) durationMinutes = 60;
+    durationMinutes = Math.min(240, Math.round(durationMinutes / 5) * 5);
+    document.getElementById('selectMobileDuration').value = String(durationMinutes);
     const room = document.getElementById('inputMobileRoom').value.trim();
 
     if (schId) {

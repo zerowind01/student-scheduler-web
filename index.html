@@ -438,7 +438,7 @@
           </div>
           <div>
             <label class="block font-medium text-slate-700 mb-1">开始时间</label>
-            <input type="time" id="inputStartTime" required step="900" class="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-amber-400 outline-none">
+            <input type="time" id="inputStartTime" required step="300" class="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-amber-400 outline-none">
           </div>
         </div>
 
@@ -450,13 +450,11 @@
           </div>
           <div>
             <label class="block font-medium text-slate-700 mb-1">课程时长</label>
-            <select id="selectDuration" class="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-amber-400 outline-none bg-white">
-              <option value="30">30 分钟 (0.5课时)</option>
-              <option value="45">45 分钟 (0.75课时)</option>
-              <option value="60" selected>60 分钟 (1课时)</option>
-              <option value="90">90 分钟 (1.5课时)</option>
-              <option value="120">120 分钟 (2课时)</option>
-            </select>
+            <div class="flex items-center gap-2">
+              <input type="number" id="selectDuration" min="5" max="240" step="5" value="60" inputmode="numeric" required class="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-amber-400 outline-none bg-white font-semibold text-slate-800">
+              <span class="text-xs text-slate-400 font-semibold shrink-0">分钟</span>
+            </div>
+            <div id="desktopDurationHint" class="text-[10px] text-slate-400 mt-0.5">5 分钟为单位 · 60 分钟 = 1 课时</div>
           </div>
         </div>
 
