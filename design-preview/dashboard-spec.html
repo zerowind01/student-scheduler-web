@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LessonMate 校务看板 · 效果稿</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+  body { font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+  .lp-card { background:#fff; border-radius:20px; box-shadow:0 8px 22px rgba(120,100,70,.11), 0 2px 5px rgba(120,100,70,.06); }
+  .lp-kpi-num { font-size:34px; font-weight:800; color:#111; line-height:1.1; }
+  .lp-label { font-size:12px; color:#9c9fa5; font-weight:600; }
+  .lp-fin { color:#ff5600; }
+  .lp-rose { color:#ff2067; }
+  .lp-tag { font-size:11px; font-weight:700; padding:2px 10px; border-radius:999px; }
+  .lp-btn-fin { background:#ff5600; color:#fff; border-radius:999px; font-weight:700; }
+  .lp-ink-btn { background:#111; color:#fff; border-radius:999px; font-weight:700; }
+  .lp-row { display:flex; align-items:center; justify-content:space-between; padding:10px 16px; border-top:1px solid #f4f0e8; }
+  .lp-dot { width:8px; height:8px; border-radius:999px; flex-shrink:0; }
+  .lp-bar { border-radius:6px 6px 3px 3px; background:linear-gradient(180deg,#ff8a4d,#ff5600); }
+  .lp-bar-dim { border-radius:6px 6px 3px 3px; background:#f0ebe2; }
+</style>
+</head>
+<body class="min-h-screen" style="background:linear-gradient(180deg,#fdfbf8,#f7f2ea 45%,#eadfc8);">
+
+<!-- 顶栏 -->
+<header class="sticky top-0 z-20" style="background:rgba(253,251,248,.85); backdrop-filter:blur(14px); border-bottom:1px solid rgba(17,17,17,.06);">
+  <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-2xl flex items-center justify-center" style="background:#111;">
+        <i class="fa-solid fa-chalkboard-user text-white text-sm"></i>
+      </div>
+      <div>
+        <div class="text-[15px] font-extrabold text-[#111] leading-tight">LessonMate 管理后台</div>
+        <div class="text-[10px] text-[#9c9fa5] font-medium">校务看板 · 周一 9月14日</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2.5">
+      <button class="lp-ink-btn text-xs px-4 py-2"><i class="fa-solid fa-plus mr-1"></i>新增排课</button>
+      <button class="text-xs font-bold text-[#626260] px-3 py-2 rounded-full hover:bg-black/5"><i class="fa-solid fa-gear mr-1"></i>设置</button>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-6 py-6 space-y-5">
+
+  <!-- KPI 行：4 张软陶卡 -->
+  <div class="grid grid-cols-4 gap-4">
+    <div class="lp-card p-5">
+      <div class="lp-label">今日课程</div>
+      <div class="lp-kpi-num mt-1.5">12 <span class="text-base font-bold text-[#9c9fa5]">节</span></div>
+      <div class="text-[11px] font-semibold mt-1.5 lp-fin"><i class="fa-solid fa-circle-check mr-1"></i>已消 5 · 待上 7</div>
+    </div>
+    <div class="lp-card p-5">
+      <div class="lp-label">本月课消</div>
+      <div class="lp-kpi-num mt-1.5">186 <span class="text-base font-bold text-[#9c9fa5]">节</span></div>
+      <div class="text-[11px] font-semibold mt-1.5" style="color:#1a9e5c;"><i class="fa-solid fa-arrow-trend-up mr-1"></i>较上月 +12%</div>
+    </div>
+    <div class="lp-card p-5">
+      <div class="lp-label">本月收入</div>
+      <div class="lp-kpi-num mt-1.5">¥28,600</div>
+      <div class="text-[11px] font-semibold mt-1.5" style="color:#1a9e5c;"><i class="fa-solid fa-arrow-trend-up mr-1"></i>续费 9 单</div>
+    </div>
+    <div class="lp-card p-5" style="box-shadow:0 8px 22px rgba(255,32,103,.10), 0 2px 5px rgba(120,100,70,.06);">
+      <div class="lp-label" style="color:#ff2067;">欠费预警</div>
+      <div class="lp-kpi-num mt-1.5 lp-rose">4 <span class="text-base font-bold" style="color:#ffb3cc;">人</span></div>
+      <div class="text-[11px] font-semibold mt-1.5 lp-rose">共欠 11 节 · 需跟进</div>
+    </div>
+  </div>
+
+  <!-- 中区：今日时间轴 + 课时预警 -->
+  <div class="grid grid-cols-3 gap-4">
+    <!-- 今日课表时间轴（占 2 列） -->
+    <div class="lp-card col-span-2 overflow-hidden">
+      <div class="px-5 pt-4 pb-3 flex items-center justify-between">
+        <div class="text-[15px] font-extrabold text-[#111]">今日时间轴</div>
+        <button class="lp-tag" style="background:#fff2e8; color:#fe4c02;">3 节待消课</button>
+      </div>
+      <div>
+        <div class="lp-row">
+          <div class="flex items-center gap-3">
+            <span class="lp-dot" style="background:#ff5600;"></span>
+            <div><span class="text-[13px] font-bold text-[#111]">09:00–09:45 钢琴 · 钟楚彤</span>
+            <span class="lp-tag ml-2" style="background:#ffe9ec;color:#d5304f;">欠课 2</span></div>
+          </div>
+          <span class="text-[11px] font-bold" style="color:#1a9e5c;">已消课</span>
+        </div>
+        <div class="lp-row">
+          <div class="flex items-center gap-3">
+            <span class="lp-dot" style="background:#111;"></span>
+            <span class="text-[13px] font-bold text-[#111]">10:30–11:15 吉他 · 王小明</span>
+          </div>
+          <button class="lp-btn-fin text-[11px] px-3 py-1.5">消课</button>
+        </div>
+        <div class="lp-row">
+          <div class="flex items-center gap-3">
+            <span class="lp-dot" style="background:#9c9fa5;"></span>
+            <span class="text-[13px] font-bold text-[#111]">14:00–14:45 钢琴 · 李小红</span>
+          </div>
+          <span class="text-[11px] font-semibold text-[#9c9fa5]">14:00 开始</span>
+        </div>
+        <div class="lp-row">
+          <div class="flex items-center gap-3">
+            <span class="lp-dot" style="background:#9c9fa5;"></span>
+            <span class="text-[13px] font-bold text-[#111]">16:00–16:45 声乐 · 赵一诺</span>
+            <span class="lp-tag" style="background:#f0ebe2;color:#626260;">请假待补</span>
+          </div>
+          <button class="text-[11px] font-bold text-[#111] px-3 py-1.5 rounded-full" style="background:#f0ebe2;">排补课</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 课时预警名单 -->
+    <div class="lp-card overflow-hidden self-start">
+      <div class="px-5 pt-4 pb-3 flex items-center justify-between">
+        <div class="text-[15px] font-extrabold text-[#111]">课时预警</div>
+        <span class="lp-tag" style="background:#ffe9ec; color:#d5304f;">≤2 节</span>
+      </div>
+      <div>
+        <div class="lp-row"><span class="text-[13px] font-bold text-[#111]">钟楚彤 <span class="lp-label">· 钢琴</span></span><span class="lp-tag" style="background:#ffe9ec;color:#d5304f;">剩 1 节</span></div>
+        <div class="lp-row"><span class="text-[13px] font-bold text-[#111]">孙小艾 <span class="lp-label">· 吉他</span></span><span class="lp-tag" style="background:#ffe9ec;color:#d5304f;">剩 2 节</span></div>
+        <div class="lp-row"><span class="text-[13px] font-bold text-[#111]">周天佑 <span class="lp-label">· 声乐</span></span><span class="lp-tag" style="background:#ffe9ec;color:#d5304f;">剩 0 节</span></div>
+      </div>
+      <div class="px-5 py-3">
+        <button class="w-full text-[12px] font-bold py-2.5 rounded-full" style="background:#f0ebe2; color:#111;">查看全部预警学员 →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 下区：本周课消趋势 + 老师课时统计 -->
+  <div class="grid grid-cols-3 gap-4">
+    <!-- 本周课消柱状图（占 2 列） -->
+    <div class="lp-card col-span-2 p-5">
+      <div class="flex items-center justify-between mb-4">
+        <div class="text-[15px] font-extrabold text-[#111]">本周课消趋势</div>
+        <div class="text-[11px] font-semibold text-[#9c9fa5]">本周合计 <b class="text-[#111]">42 节</b> · 环比 +8%</div>
+      </div>
+      <div class="flex items-end gap-3 h-32 px-2">
+        <div class="flex-1 flex flex-col items-center gap-1.5"><div class="lp-bar-dim w-full" style="height:45%"></div><span class="text-[10px] font-bold text-[#9c9fa5]">一 4</span></div>
+        <div class="flex-1 flex flex-col items-center gap-1.5"><div class="lp-bar w-full" style="height:70%"></div><span class="text-[10px] font-bold text-[#111]">二 8</span></div>
+        <div class="flex-1 flex flex-col items-center gap-1.5"><div class="lp-bar w-full" style="height:88%"></div><span class="text-[10px] font-bold text-[#111]">三 10</span></div>
+        <div class="flex-1 flex flex-col items-center gap-1.5"><div class="lp-bar w-full" style="height:62%"></div><span class="text-[10px] font-bold text-[#111]">四 7</span></div>
+        <div class="flex-1 flex flex-col items-center gap-1.5"><div class="lp-bar w-full" style="height:79%"></div><span class="text-[10px] font-bold text-[#111]">五 9</span></div>
+        <div class="flex-1 flex flex-col items-center gap-1.5"><div class="lp-bar-dim w-full" style="height:18%"></div><span class="text-[10px] font-bold text-[#9c9fa5]">六 2</span></div>
+        <div class="flex-1 flex flex-col items-center gap-1.5"><div class="lp-bar-dim w-full" style="height:9%"></div><span class="text-[10px] font-bold text-[#9c9fa5]">日 2</span></div>
+      </div>
+    </div>
+
+    <!-- 老师课时统计 -->
+    <div class="lp-card overflow-hidden self-start">
+      <div class="px-5 pt-4 pb-3 flex items-center justify-between">
+        <div class="text-[15px] font-extrabold text-[#111]">本月老师课时</div>
+        <span class="lp-label">按消课计</span>
+      </div>
+      <div>
+        <div class="lp-row"><div><span class="text-[13px] font-bold text-[#111]">任凌枫</span><span class="lp-label"> · 钢琴</span></div><div class="flex items-center gap-2"><span class="text-[13px] font-extrabold text-[#111]">96 节</span><span class="lp-tag" style="background:#fff2e8;color:#fe4c02;">应付 ¥9,600</span></div></div>
+        <div class="lp-row"><div><span class="text-[13px] font-bold text-[#111]">李文静</span><span class="lp-label"> · 吉他</span></div><div class="flex items-center gap-2"><span class="text-[13px] font-extrabold text-[#111]">64 节</span><span class="lp-tag" style="background:#fff2e8;color:#fe4c02;">应付 ¥6,400</span></div></div>
+        <div class="lp-row"><div><span class="text-[13px] font-bold text-[#111]">王小雨</span><span class="lp-label"> · 声乐</span></div><div class="flex items-center gap-2"><span class="text-[13px] font-extrabold text-[#111]">26 节</span><span class="lp-tag" style="background:#fff2e8;color:#fe4c02;">应付 ¥2,080</span></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="h-4"></div>
+</main>
+
+</body>
+</html>

@@ -103,6 +103,9 @@
 
     <!-- 左侧 主导航栏（桌面端图标条 / 手机端隐藏） -->
     <nav id="mainSideNav" class="hidden md:flex flex-col items-center w-14 bg-slate-900 text-white py-3 gap-1.5 shrink-0 z-20">
+      <button class="nav-page-btn flex flex-col items-center justify-center w-11 py-2 rounded-xl text-[9px] font-bold gap-0.5 transition text-slate-400 hover:text-white hover:bg-slate-800" data-page="dashboard" title="看板">
+        <i class="fa-solid fa-chart-line text-base fn-dashboard"></i><span>看板</span>
+      </button>
       <button class="nav-page-btn active flex flex-col items-center justify-center w-11 py-2 rounded-xl text-[9px] font-bold gap-0.5 transition" data-page="schedule" title="课表">
         <i class="fa-solid fa-calendar-week text-base fn-schedule is-active"></i><span>课表</span>
       </button>
@@ -122,6 +125,58 @@
         <i class="fa-solid fa-mobile-screen text-sm"></i>
       </div>
     </nav>
+
+    <!-- ============ 分页：校务看板 (新增) ============ -->
+    <section id="pageDashboard" class="flex-1 overflow-y-auto custom-scrollbar bg-slate-50 hidden p-4 md:p-6">
+      <div class="max-w-6xl mx-auto space-y-5">
+        <div class="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h2 class="text-lg font-black text-slate-800 flex items-center gap-2"><i class="fa-solid fa-chart-line text-amber-500"></i> 校务看板</h2>
+            <div id="dashDateLabel" class="text-[11px] text-slate-400 font-semibold mt-0.5"></div>
+          </div>
+          <button id="btnDashNewSchedule" class="px-4 py-2.5 bg-slate-800 text-white rounded-full text-xs font-bold hover:bg-slate-700 transition flex items-center gap-1.5">
+            <i class="fa-solid fa-plus text-xs"></i> 新增排课
+          </button>
+        </div>
+        <div id="dashKpiRow" class="grid grid-cols-2 lg:grid-cols-4 gap-4"><!-- KPI 卡动态渲染 --></div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div class="lg:col-span-2 bg-white border border-amber-100 rounded-2xl overflow-hidden">
+            <div class="px-5 pt-4 pb-3 flex items-center justify-between">
+              <div class="text-[15px] font-black text-slate-800">今日时间轴</div>
+              <span id="dashPendingBadge" class="hidden text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700"></span>
+            </div>
+            <div id="dashTodayList"><!-- 今日课程动态渲染 --></div>
+          </div>
+          <div class="bg-white border border-amber-100 rounded-2xl overflow-hidden self-start">
+            <div class="px-5 pt-4 pb-3 flex items-center justify-between">
+              <div class="text-[15px] font-black text-slate-800">课时预警</div>
+              <span class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-rose-50 text-rose-600">≤2 节</span>
+            </div>
+            <div id="dashLowList"></div>
+            <div class="px-5 py-3">
+              <button id="btnDashGotoLow" class="w-full text-[12px] font-bold py-2.5 rounded-full bg-slate-100 text-slate-700 hover:bg-slate-200 transition">查看全部预警学员 →</button>
+            </div>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div class="lg:col-span-2 bg-white border border-amber-100 rounded-2xl p-5">
+            <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+              <div class="text-[15px] font-black text-slate-800">本周课消趋势</div>
+              <div id="dashWeekSummary" class="text-[11px] font-semibold text-slate-400"></div>
+            </div>
+            <div id="dashWeekBars" class="flex items-end gap-3 h-32 px-2"></div>
+          </div>
+          <div class="bg-white border border-amber-100 rounded-2xl overflow-hidden self-start">
+            <div class="px-5 pt-4 pb-3 flex items-center justify-between">
+              <div class="text-[15px] font-black text-slate-800">本月老师课时</div>
+              <span class="text-[11px] font-semibold text-slate-400">按消课计</span>
+            </div>
+            <div id="dashTeacherStats"></div>
+          </div>
+        </div>
+        <div class="h-2"></div>
+      </div>
+    </section>
 
     <!-- ============ 分页：课表 (默认) ============ -->
     <section id="pageSchedule" class="flex-1 flex overflow-hidden">

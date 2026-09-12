@@ -975,7 +975,7 @@
   // ==========================================
   // 分页导航（课表/学员/财务/设置）
   // ==========================================
-  const PAGE_IDS = ['pageSchedule', 'pageStudents', 'pageFinance', 'pageSettings'];
+  const PAGE_IDS = ['pageDashboard', 'pageSchedule', 'pageStudents', 'pageFinance', 'pageSettings'];
 
   function switchPage(page) {
     PAGE_IDS.forEach((id) => {
@@ -987,7 +987,7 @@
     if (window.uiAnim && activeEl) window.uiAnim.viewIn(activeEl);
 
     // 桌面侧栏按钮高亮（文字白、激活底色跟随功能色）
-    const pageAccent = { schedule: 'bg-amber-500/90', students: 'bg-emerald-600/90', finance: 'bg-rose-500/90', settings: 'bg-sky-600/90' };
+    const pageAccent = { dashboard: 'bg-amber-500/90', schedule: 'bg-amber-500/90', students: 'bg-emerald-600/90', finance: 'bg-rose-500/90', settings: 'bg-sky-600/90' };
     document.querySelectorAll('.nav-page-btn[data-page]').forEach((btn) => {
       const active = btn.getAttribute('data-page') === page;
       btn.classList.toggle('active', active);
@@ -1018,12 +1018,183 @@
 
     if (page === 'students') renderPageStudents();
     if (page === 'finance') renderPageFinance();
+    if (page === 'dashboard') renderDashboard();
+  }
+
+  // ==========================================
+  // 校务看板（电脑端首页）
+  // ==========================================
+  function renderDashboard() {
+    const todayStr = formatDate(new Date());
+    const dateLabel = document.getElementById('dashDateLabel');
+    if (dateLabel) {
+      const week = ['日', '一', '二', '三', '四', '五', '六'][new Date().getDay()];
+      dateLabel.textContent = `${new Date().getMonth() + 1}月${new Date().getDate()}日 星期${week}`;
+    }
+
+    // ---- KPI 行 ----
+    const todaySchedules = schedules.filter((s) => s.date === todayStr);
+    const todayDone = todaySchedules.filter((s) => s.status === SCHEDULE_STATUS.COMPLETED).length;
+    const todayPending = todaySchedules.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).length;
+    const monthPrefix = todayStr.slice(0, 7);
+    const monthLogs = checkInLogs.filter((l) => (l.checkInTime || '').startsWith(monthPrefix));
+    const monthLessons = monthLogs.reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
+    const monthValue = monthLogs.reduce((acc, l) => acc + (l.paymentAmount || 0), 0);
+    const debtors = debts.filter((d) => d.amount > 0);
+    const debtTotal = debtors.reduce((n, d) => n + d.amount, 0);
+
+    const kpiRow = document.getElementById('dashKpiRow');
+    if (kpiRow) {
+      kpiRow.innerHTML = `
+        <div class="bg-white border border-amber-100 rounded-2xl p-5">
+          <div class="text-[11px] text-slate-400 font-bold">今日课程</div>
+          <div class="text-3xl font-black text-slate-800 mt-1.5">${todaySchedules.length} <span class="text-sm font-bold text-slate-400">节</span></div>
+          <div class="text-[11px] font-semibold mt-1.5 text-amber-600"><i class="fa-solid fa-circle-check mr-1"></i>已消 ${todayDone} · 待上 ${todayPending}</div>
+        </div>
+        <div class="bg-white border border-amber-100 rounded-2xl p-5">
+          <div class="text-[11px] text-slate-400 font-bold">本月课消</div>
+          <div class="text-3xl font-black text-slate-800 mt-1.5">${monthLessons.toFixed(0)} <span class="text-sm font-bold text-slate-400">节</span></div>
+          <div class="text-[11px] font-semibold mt-1.5 text-slate-400">${monthLogs.length} 条消课记录</div>
+        </div>
+        <div class="bg-white border border-amber-100 rounded-2xl p-5">
+          <div class="text-[11px] text-slate-400 font-bold">本月收入</div>
+          <div class="text-3xl font-black text-slate-800 mt-1.5">¥${monthValue.toFixed(0)}</div>
+          <div class="text-[11px] font-semibold mt-1.5 text-slate-400">课消价值合计</div>
+        </div>
+        <div class="bg-white border ${debtors.length ? 'border-rose-200' : 'border-amber-100'} rounded-2xl p-5">
+          <div class="text-[11px] font-bold ${debtors.length ? 'text-rose-500' : 'text-slate-400'}">欠费预警</div>
+          <div class="text-3xl font-black mt-1.5 ${debtors.length ? 'text-rose-600' : 'text-slate-300'}">${debtors.length} <span class="text-sm font-bold ${debtors.length ? 'text-rose-300' : 'text-slate-300'}">人</span></div>
+          <div class="text-[11px] font-semibold mt-1.5 ${debtors.length ? 'text-rose-500' : 'text-slate-300'}">共欠 ${debtTotal} 节${debtors.length ? ' · 需跟进' : ''}</div>
+        </div>`;
+    }
+
+    // ---- 今日时间轴 ----
+    const pendingBadge = document.getElementById('dashPendingBadge');
+    if (pendingBadge) {
+      pendingBadge.classList.toggle('hidden', todayPending === 0);
+      if (todayPending) pendingBadge.textContent = `${todayPending} 节待消课`;
+    }
+    const todayList = document.getElementById('dashTodayList');
+    if (todayList) {
+      const sorted = todaySchedules.slice().sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+      if (!sorted.length) {
+        todayList.innerHTML = `<div class="text-center py-10 text-slate-400 text-xs"><i class="fa-solid fa-mug-hot text-2xl mb-2 block opacity-40"></i>今天没有排课</div>`;
+      } else {
+        todayList.innerHTML = sorted.map((s) => {
+          const done = s.status === SCHEDULE_STATUS.COMPLETED;
+          const isLeave = s.status === SCHEDULE_STATUS.STUDENT_LEAVE;
+          const dot = done ? '#10b981' : isLeave ? '#9ca3af' : '#f59e0b';
+          const statusHtml = done
+            ? '<span class="text-[11px] font-bold text-emerald-600 shrink-0">已消课</span>'
+            : isLeave
+              ? '<span class="text-[10px] font-bold px-2 py-1 rounded-full bg-slate-100 text-slate-500 shrink-0">请假待补</span>'
+              : `<button class="dash-checkin-btn shrink-0 text-[11px] font-bold px-3.5 py-1.5 rounded-full bg-amber-500 text-white hover:bg-amber-600 transition" data-id="${s.id}">消课</button>`;
+          const student = students.find((st) => st.id === s.studentId);
+          const debtTag = student ? (debts.find((d) => d.studentId === student.id && d.amount > 0) ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-600 ml-1.5">欠课</span>' : '') : '';
+          return `<div class="flex items-center justify-between px-5 py-3 border-t border-slate-100">
+            <div class="flex items-center gap-3 min-w-0">
+              <span class="w-2 h-2 rounded-full shrink-0" style="background:${dot}"></span>
+              <div class="text-[13px] font-bold text-slate-800 truncate">${s.startTime || '--'} ${s.subject || ''} · ${s.studentName || ''}${debtTag}</div>
+            </div>
+            ${statusHtml}
+          </div>`;
+        }).join('');
+      }
+      todayList.querySelectorAll('.dash-checkin-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const sch = schedules.find((x) => x.id === btn.getAttribute('data-id'));
+          if (sch) openScheduleActionMenu(sch);
+        });
+      });
+    }
+
+    // ---- 课时预警 ----
+    const lowList = document.getElementById('dashLowList');
+    if (lowList) {
+      const lowStudents = students
+        .map((st) => {
+          normalizeStudent(st);
+          const lowCourses = (st.courses || []).filter((c) => c.remainingLessons <= 2);
+          return { st, lowCourses };
+        })
+        .filter((x) => x.lowCourses.length);
+      if (!lowStudents.length) {
+        lowList.innerHTML = `<div class="text-center py-8 text-slate-400 text-xs"><i class="fa-solid fa-shield-heart text-2xl mb-2 block opacity-40"></i>暂无课时预警</div>`;
+      } else {
+        lowList.innerHTML = lowStudents.slice(0, 8).map(({ st, lowCourses }) => {
+          const min = Math.min(...lowCourses.map((c) => c.remainingLessons));
+          return `<div class="flex items-center justify-between px-5 py-3 border-t border-slate-100 cursor-pointer hover:bg-slate-50 transition dash-low-student" data-id="${st.id}">
+            <span class="text-[13px] font-bold text-slate-800 truncate">${st.name} <span class="text-[11px] text-slate-400 font-semibold">· ${lowCourses.map((c) => c.name).join('、')}</span></span>
+            <span class="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0 ml-2 ${min < 0 ? 'bg-rose-100 text-rose-700' : 'bg-rose-50 text-rose-600'}">剩 ${min} 节</span>
+          </div>`;
+        }).join('');
+        lowList.querySelectorAll('.dash-low-student').forEach((el) => {
+          el.addEventListener('click', () => {
+            switchPage('students');
+            setTimeout(() => openStudentDetail(el.getAttribute('data-id')), 150);
+          });
+        });
+      }
+    }
+
+    // ---- 本周课消趋势 ----
+    const weekBars = document.getElementById('dashWeekBars');
+    const weekSummary = document.getElementById('dashWeekSummary');
+    if (weekBars && weekSummary) {
+      const names = ['一', '二', '三', '四', '五', '六', '日'];
+      const counts = [];
+      let weekTotal = 0;
+      for (let i = 0; i < 7; i++) {
+        const dstr = formatDate(addDays(currentWeekStart, i));
+        const n = checkInLogs.filter((l) => l.date === dstr).reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
+        counts.push(n);
+        weekTotal += n;
+      }
+      const max = Math.max(...counts, 1);
+      weekSummary.innerHTML = `本周合计 <b class="text-slate-700">${weekTotal} 节</b>`;
+      weekBars.innerHTML = counts.map((n, i) => {
+        const h = Math.max(6, Math.round((n / max) * 100));
+        const active = n > 0;
+        return `<div class="flex-1 flex flex-col items-center gap-1.5">
+          <div class="w-full rounded-md ${active ? 'bg-gradient-to-b from-amber-400 to-amber-500' : 'bg-slate-100'}" style="height:${h}%"></div>
+          <span class="text-[10px] font-bold ${active ? 'text-slate-700' : 'text-slate-400'}">${names[i]} ${n}</span>
+        </div>`;
+      }).join('');
+    }
+
+    // ---- 本月老师课时 ----
+    const tStats = document.getElementById('dashTeacherStats');
+    if (tStats) {
+      const byTeacher = {};
+      monthLogs.forEach((l) => {
+        const name = l.teacherName || '未指定老师';
+        if (!byTeacher[name]) byTeacher[name] = { lessons: 0, value: 0 };
+        byTeacher[name].lessons += l.deductedLessons || 0;
+        byTeacher[name].value += l.paymentAmount || 0;
+      });
+      const rows = Object.entries(byTeacher).sort((a, b) => b[1].lessons - a[1].lessons);
+      if (!rows.length) {
+        tStats.innerHTML = `<div class="text-center py-8 text-slate-400 text-xs"><i class="fa-solid fa-chalkboard-user text-2xl mb-2 block opacity-40"></i>本月暂无消课</div>`;
+      } else {
+        tStats.innerHTML = rows.map(([name, v]) => `
+          <div class="flex items-center justify-between px-5 py-3 border-t border-slate-100">
+            <span class="text-[13px] font-bold text-slate-800">${name}</span>
+            <div class="flex items-center gap-2">
+              <span class="text-[13px] font-black text-slate-800">${v.lessons} 节</span>
+              ${v.value > 0 ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">¥${v.value.toFixed(0)}</span>` : ''}
+            </div>
+          </div>`).join('');
+      }
+    }
   }
 
   function bindPageNav() {
     document.querySelectorAll('.nav-page-btn[data-page], .mnav-btn[data-page]').forEach((btn) => {
       btn.addEventListener('click', () => switchPage(btn.getAttribute('data-page')));
     });
+    // 看板：新增排课 / 预警直通
+    safeBind('btnDashNewSchedule', 'click', () => { switchPage('schedule'); setTimeout(() => openScheduleModalForNew(), 200); });
+    safeBind('btnDashGotoLow', 'click', () => switchPage('students'));
     // 底部导航"学员"按钮沿用原 btnMobileOpenStudents id
     safeBind('btnMobileOpenStudents', 'click', () => switchPage('students'));
     safeBind('btnMobileNewStudent', 'click', () => openStudentModal(null));
