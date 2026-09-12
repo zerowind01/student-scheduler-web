@@ -71,33 +71,6 @@
   // ==========================================
   // 2. 初始化与演示数据注入
   // ==========================================
-  function openQrSyncModal() {
-    const container = document.getElementById('qrcodeContainer');
-    if (!container) return;
-    container.innerHTML = '';
-
-    const syncDataStr = JSON.stringify({ students, schedules, teachers, updatedAt: Date.now() });
-    const encodedData = encodeURIComponent(syncDataStr);
-
-    const baseUrl = `${location.protocol}//${location.host}${location.pathname.replace('index.html', '')}mobile.html`;
-    const targetUrl = `${baseUrl}#${encodedData}`;
-
-    if (window.QRCode) {
-      new QRCode(container, {
-        text: targetUrl,
-        width: 180,
-        height: 180,
-        colorDark: '#1e293b',
-        colorLight: '#ffffff',
-        correctLevel: QRCode.CorrectLevel.L,
-      });
-    } else {
-      container.innerHTML = `<div class="p-3 text-xs text-rose-500 font-bold">二维码组件加载中，请复制同步码</div>`;
-    }
-
-    showModal('modalQrSync');
-  }
-
   function checkUrlSyncData() {
     try {
       const hashData = location.hash.substring(1);
@@ -786,9 +759,6 @@
       updateStats();
     });
 
-    safeBind('btnQrSync', 'click', openQrSyncModal);
-    safeBind('btnCloseQrModal', 'click', () => hideModal('modalQrSync'));
-
     safeBind('btnCloudSync', 'click', () => {
       const el = document.getElementById('inputSyncKey');
       if (el) el.value = schoolSyncKey;
@@ -1205,7 +1175,6 @@
       if (el) el.value = schoolSyncKey;
       showModal('modalSyncKey');
     });
-    safeBind('btnPageQrSync', 'click', openQrSyncModal);
     safeBind('btnPageManageTeachers', 'click', openTeacherModal);
     safeBind('btnPageImport', 'click', () => {
       const el = document.getElementById('btnImport');
