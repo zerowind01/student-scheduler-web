@@ -99,6 +99,7 @@
   function initApp() {
     checkUrlSyncData();
     loadData();
+    loadLedger();
     setupEventListeners();
     bindPageNav();
     renderTeacherOptions();
@@ -291,6 +292,30 @@
             </div>
           </div>`).join('')}
         </div>`}
+      </div>
+
+      <div>
+        <div class="font-bold text-[11px] text-slate-500 uppercase tracking-wider mb-1.5"><i class="fa-solid fa-book"></i> 课时台账（充值/消课/退还全流水）</div>
+        ${(() => {
+          const led = getStudentLedger(student.id).slice(0, 30);
+          if (!led.length) return '<div class="text-[11px] text-slate-400 py-3 text-center bg-slate-50 rounded-xl">暂无台账记录</div>';
+          const typeLabel = { recharge: '充值', consume: '消课', refund: '退还' };
+          const typeStyle = { recharge: 'bg-emerald-100 text-emerald-700', consume: 'bg-amber-100 text-amber-700', refund: 'bg-sky-100 text-sky-700' };
+          return `<div class="space-y-1 max-h-56 overflow-y-auto custom-scrollbar">
+          ${led.map((e) => `
+          <div class="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-lg">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${typeStyle[e.type] || 'bg-slate-100 text-slate-600'}">${typeLabel[e.type] || e.type}</span>
+              <span class="font-bold text-slate-700 truncate">${e.courseName}</span>
+              ${e.note ? `<span class="text-amber-600 text-[10px] truncate">${e.note}</span>` : ''}
+            </div>
+            <div class="text-right shrink-0 ml-2">
+              <div class="font-bold ${e.type === 'recharge' ? 'text-emerald-600' : e.type === 'refund' ? 'text-sky-600' : 'text-slate-600'}">${e.type === 'consume' ? '-' : '+'}${e.lessons}节${e.amount > 0 ? ' ¥' + Number(e.amount).toFixed(0) : ''}</div>
+              <div class="text-[9px] text-slate-400">${(e.time || '').slice(0, 10)}</div>
+            </div>
+          </div>`).join('')}
+        </div>`;
+        })()}
       </div>
 
       ${leaves.length ? `
@@ -642,6 +667,7 @@
 
     sch.status = SCHEDULE_STATUS.COMPLETED;
     recordCheckInLog(sch, deducted, payment, finalRemarks);
+    addLedgerEntry('consume', sch.studentId, sch.studentName, sch.subject, deducted, payment, finalRemarks);
     saveData();
     refreshView();
     showToast(`✅ 已消课：${sch.studentName} · ${sch.subject}（${deducted}节）`, 'circle-check');
@@ -665,6 +691,7 @@
         const course = (student.courses || []).find((c) => c.id === sch.courseId || c.name === sch.subject);
         if (course) course.remainingLessons += deducted;
       }
+      addLedgerEntry('refund', sch.studentId, sch.studentName, sch.subject, deducted, 0, '已消课改请假，退还课时');
       showToast(`🏖️ 已消课的课程改为请假，退还 ${deducted} 节课时`, 'circle-check');
     } else {
       showToast(`🏖️ 已为 ${sch.studentName} 办理请假`, 'circle-check');
@@ -689,6 +716,7 @@
         const course = (student.courses || []).find((c) => c.id === sch.courseId || c.name === sch.subject);
         if (course) course.remainingLessons += deducted;
       }
+      addLedgerEntry('refund', sch.studentId, sch.studentName, sch.subject, deducted, 0, '撤销消课，退还课时');
     }
     // 请假撤销：App 语义下请假本不扣课时，直接还原状态即可
 
@@ -712,6 +740,39 @@
       }
     }
     saveData();
+  }
+
+  // ==========================================
+  // 课时台账：充值/消课/退费 全流水（对账依据）
+  // 存储：edu_scheduler_ledger_v2（随云同步 checkInLogs 一同走?否——独立键，由 saveData 一起推送）
+  // 类型：recharge 充值 / consume 消课 / refund 退课时
+  // ==========================================
+  let ledger = [];
+  const STORAGE_KEY_LEDGER = 'edu_scheduler_ledger_v2';
+
+  function normalizeLedgerEntry(e) {
+    if (!e.id) e.id = 'led_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+    if (!e.type) e.type = 'recharge';
+    if (!e.time) e.time = new Date().toISOString();
+    return e;
+  }
+
+  function addLedgerEntry(type, studentId, studentName, courseName, lessons, amount, note) {
+    const entry = normalizeLedgerEntry({ type, studentId, studentName, courseName, lessons, amount: amount || 0, note: note || '', time: new Date().toISOString() });
+    ledger.push(entry);
+    localStorage.setItem(STORAGE_KEY_LEDGER, JSON.stringify(ledger));
+    return entry;
+  }
+
+  function loadLedger() {
+    try {
+      ledger = JSON.parse(localStorage.getItem(STORAGE_KEY_LEDGER) || '[]').map(normalizeLedgerEntry);
+    } catch (e) { ledger = []; }
+    return ledger;
+  }
+
+  function getStudentLedger(studentId) {
+    return ledger.filter((e) => e.studentId === studentId).slice().sort((a, b) => (b.time || '').localeCompare(a.time || ''));
   }
 
   // 新购/充值课时包（自动抵扣同课程名欠课）
@@ -743,6 +804,7 @@
     }
 
     saveData();
+    addLedgerEntry('recharge', studentId, student.name, courseName, lessons, lessons * (unitPrice || 0), remark);
     refreshView();
     showToast(`💳 ${student.name} 充值「${courseName}」${lessons} 节${remark}`, 'circle-check');
   }
