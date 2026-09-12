@@ -595,9 +595,9 @@
   // 教务核心操作（移植自 Teacher-manager App）
   // ==========================================
 
-  // 从排课推导扣费节数（与排课时的扣课逻辑一致：1小时=1节，最低1节）
+  // 从排课推导扣费节数（与排课时的扣课逻辑一致：45分钟=1节，最低1节）
   function getLessonCost(schedule) {
-    return Math.max(1, Math.round((schedule.durationMinutes || 60) / 60));
+    return Math.max(1, Math.round((schedule.durationMinutes || 45) / 45));
   }
 
   // 消课（签到确认）：状态→completed，记财务流水；课时不足部分记欠课账
@@ -2165,7 +2165,7 @@
     if (timeEl) timeEl.value = startTimeStr;
 
     const durEl = document.getElementById('selectDuration');
-    if (durEl) durEl.value = '60';
+    if (durEl) durEl.value = '45';
 
     const roomEl = document.getElementById('inputRoom');
     if (roomEl) roomEl.value = '琴房 101';
@@ -2307,9 +2307,9 @@
 
     const date = document.getElementById('inputCourseDate').value;
     const startTime = document.getElementById('inputStartTime').value;
-    // 时长校验：必须为 5 的倍数（5~240 分钟）
+    // 时长校验：必须为 5 的倍数（5~240 分钟），默认 45 = 1 课时
     let durationMinutes = parseInt(document.getElementById('selectDuration').value, 10);
-    if (!Number.isFinite(durationMinutes) || durationMinutes < 5) durationMinutes = 60;
+    if (!Number.isFinite(durationMinutes) || durationMinutes < 5) durationMinutes = 45;
     durationMinutes = Math.min(240, Math.round(durationMinutes / 5) * 5);
     document.getElementById('selectDuration').value = String(durationMinutes);
     const room = document.getElementById('inputRoom').value.trim();

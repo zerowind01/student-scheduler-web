@@ -452,7 +452,7 @@
   }
 
   function getLessonCost(schedule) {
-    return Math.max(1, Math.round((schedule.durationMinutes || 60) / 60));
+    return Math.max(1, Math.round((schedule.durationMinutes || 45) / 45));
   }
 
   function executeCheckIn(scheduleId, remarks) {
@@ -1943,7 +1943,7 @@
     if (timeEl) timeEl.value = startTimeStr;
 
     const durEl = document.getElementById('selectMobileDuration');
-    if (durEl) durEl.value = '60';
+    if (durEl) durEl.value = '45';
 
     const roomEl = document.getElementById('inputMobileRoom');
     if (roomEl) roomEl.value = '琴房 101';
@@ -2081,9 +2081,9 @@
 
     const date = document.getElementById('inputMobileDate').value;
     const startTime = document.getElementById('inputMobileStartTime').value;
-    // 时长校验：必须为 5 的倍数（5~240 分钟）
+    // 时长校验：必须为 5 的倍数（5~240 分钟），默认 45 = 1 课时
     let durationMinutes = parseInt(document.getElementById('selectMobileDuration').value, 10);
-    if (!Number.isFinite(durationMinutes) || durationMinutes < 5) durationMinutes = 60;
+    if (!Number.isFinite(durationMinutes) || durationMinutes < 5) durationMinutes = 45;
     durationMinutes = Math.min(240, Math.round(durationMinutes / 5) * 5);
     document.getElementById('selectMobileDuration').value = String(durationMinutes);
     const room = document.getElementById('inputMobileRoom').value.trim();
