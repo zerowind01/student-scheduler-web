@@ -183,8 +183,15 @@
       checkInTime: new Date().toISOString(),
       remarks: remarks || '',
       teacherName: schedule.teacherName || '',
+      teacherId: schedule.teacherId || '',
       date: schedule.date || '',
     });
+    // 老流水回填：消课流水缺 teacherId 时从排课记录补
+    const log = checkInLogs[checkInLogs.length - 1];
+    if (!log.teacherId && schedule.id) {
+      const sch = schedules.find((s) => s.id === schedule.id);
+      if (sch) log.teacherId = sch.teacherId || '';
+    }
   }
 
   // ==========================================

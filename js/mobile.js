@@ -68,9 +68,19 @@
     return schedules.some((s) => s.studentId === st.id && (s.teacherId === teacherSession.teacherId || s.assistantTeacherId === teacherSession.teacherId));
   }
 
-  // 老师视角：检查记录是否属于该老师的课
+  // 老师视角：某条学员课程是否属于该老师的教学范围
+  // 判定：排课记录里该老师（主讲或助教）上过/将上这门课 → 归属该老师
+  function courseRelatedToTeacher(st, courseName) {
+    if (!teacherSession) return true;
+    return schedules.some((s) => s.studentId === st.id &&
+      (s.teacherId === teacherSession.teacherId || s.assistantTeacherId === teacherSession.teacherId) &&
+      ((s.subject || '') === courseName || s.courseId === st.courses.find((c) => c.name === courseName)?.id));
+  }
+
+  // 老师视角：某条消课流水是否属于该老师的课（流水带 teacherId 直接判，老流水回退查排课）
   function logRelatedToTeacher(log) {
     if (!teacherSession) return true;
+    if (log.teacherId) return log.teacherId === teacherSession.teacherId;
     const sch = schedules.find((s) => s.id === log.scheduleId);
     return !sch || sch.teacherId === teacherSession.teacherId || sch.assistantTeacherId === teacherSession.teacherId;
   }
@@ -1167,7 +1177,7 @@
     const myUpcoming = myToday.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).sort((a, b) => a.startTime.localeCompare(b.startTime));
     const myLow = students
       .filter(studentRelatedToTeacher)
-      .flatMap((st) => (st.courses || []).filter((c) => c.remainingLessons <= 2).map((c) => ({ st, c })));
+      .flatMap((st) => (isTeacherView() ? (st.courses || []).filter((c) => c.remainingLessons <= 2 && courseRelatedToTeacher(st, c.name)) : (st.courses || []).filter((c) => c.remainingLessons <= 2)).map((c) => ({ st, c })));
     const nextClass = myUpcoming[0];
     el.innerHTML = `
       <div class="lm-card px-4 py-3">
@@ -2258,15 +2268,18 @@
     const monthLessons = monthLogs.reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
     const monthValue = monthLogs.reduce((acc, l) => acc + (l.paymentAmount || 0), 0);
 
-    // 老师视角：待消存量/欠课学员只看与自己相关的学员；管理员看全部
+    // 老师视角：待消存量/欠课学员/续费清单只统计**自己授课科目**的课时；管理员看全部
     const relStudents = isTeacherView() ? students.filter(studentRelatedToTeacher) : students;
-    const totalRemaining = relStudents.reduce((acc, st) => acc + (st.courses || []).reduce((a, c) => a + Math.max(0, c.remainingLessons), 0), 0);
+    const myCoursesOf = (st) => isTeacherView() ? (st.courses || []).filter((c) => courseRelatedToTeacher(st, c.name)) : (st.courses || []);
+    const totalRemaining = relStudents.reduce((acc, st) => acc + myCoursesOf(st).reduce((a, c) => a + Math.max(0, c.remainingLessons), 0), 0);
     const relIds = new Set(relStudents.map((s) => s.id));
-    const debtors = debts.filter((d) => d.amount > 0 && relIds.has(d.studentId));
+    const debtors = isTeacherView()
+      ? debts.filter((d) => d.amount > 0 && relIds.has(d.studentId) && relStudents.some((st) => st.id === d.studentId && courseRelatedToTeacher(st, d.courseName)))
+      : debts.filter((d) => d.amount > 0 && relIds.has(d.studentId));
 
-    // 续费跟进清单（剩余课时≤2，老师视角只看自己学员）
+    // 续费跟进清单（剩余课时≤2，老师视角只看自己授课科目）
     const financeLowList = [];
-    relStudents.forEach((st) => (st.courses || []).forEach((c) => {
+    relStudents.forEach((st) => myCoursesOf(st).forEach((c) => {
       if (c.remainingLessons <= 2) financeLowList.push({ student: st.name, course: c.courseName || c.name || '', remaining: c.remainingLessons });
     }));
 
