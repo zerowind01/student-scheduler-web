@@ -295,26 +295,29 @@
     normalizeStudent(student);
     migrateStudentCourses(student);
 
-    let remaining = lessons;
     let remark = '';
-    const repaid = repayDebt(studentId, courseName, lessons);
-    if (repaid > 0) {
-      remaining -= repaid;
-      remark = ` (自动抵扣欠课 ${repaid} 节)`;
-    }
+    const debtBefore = debts.find((x) => x.studentId === studentId && x.courseName === courseName && x.amount > 0);
+    const owedBefore = debtBefore ? debtBefore.amount : 0;
 
     const existing = (student.courses || []).find((c) => c.name === courseName);
     if (existing) {
-      existing.remainingLessons += remaining;
+      existing.remainingLessons += lessons;
       if (unitPrice > 0) existing.unitPrice = unitPrice;
     } else {
       student.courses.push({
         id: 'course_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
         name: courseName,
-        remainingLessons: remaining,
+        remainingLessons: lessons,
         unitPrice,
       });
     }
+
+    // 充值全额计入余额后，按新余额重算欠课（余额转正则欠课自动清除）
+    syncDebtForCourse(studentId, courseName, existing ? existing.remainingLessons : lessons);
+    const debtAfter = debts.find((x) => x.studentId === studentId && x.courseName === courseName && x.amount > 0);
+    const owedAfter = debtAfter ? debtAfter.amount : 0;
+    const repaid = Math.max(0, owedBefore - owedAfter);
+    if (repaid > 0) remark = ` (自动抵扣欠课 ${repaid} 节)`;
 
     saveData();
   }

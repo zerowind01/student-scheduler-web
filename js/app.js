@@ -782,26 +782,29 @@
     normalizeStudent(student);
     migrateStudentCourses(student);
 
-    let remaining = lessons;
     let remark = '';
-    const repaid = repayDebt(studentId, courseName, lessons);
-    if (repaid > 0) {
-      remaining -= repaid;
-      remark = ` (自动抵扣欠课 ${repaid} 节)`;
-    }
+    const debtBefore = getStudentDebts(studentId).find((x) => x.courseName === courseName);
+    const owedBefore = debtBefore ? debtBefore.amount : 0;
 
     const existing = (student.courses || []).find((c) => c.name === courseName);
     if (existing) {
-      existing.remainingLessons += remaining;
+      existing.remainingLessons += lessons;
       if (unitPrice > 0) existing.unitPrice = unitPrice;
     } else {
       student.courses.push({
         id: 'course_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
         name: courseName,
-        remainingLessons: remaining,
+        remainingLessons: lessons,
         unitPrice,
       });
     }
+
+    // 充值全额计入余额后，按新余额重算欠课（余额转正则欠课自动清除）
+    syncDebtForCourse(studentId, courseName, existing ? existing.remainingLessons : lessons);
+    const debtAfter = getStudentDebts(studentId).find((x) => x.courseName === courseName);
+    const owedAfter = debtAfter ? debtAfter.amount : 0;
+    const repaid = Math.max(0, owedBefore - owedAfter);
+    if (repaid > 0) remark = ` (自动抵扣欠课 ${repaid} 节)`;
 
     saveData();
     addLedgerEntry('recharge', studentId, student.name, courseName, lessons, lessons * (unitPrice || 0), remark);
@@ -1215,7 +1218,7 @@
       const byTeacher = {};
       monthLogs.forEach((l) => {
         const name = l.teacherName || '未指定老师';
-        if (!byTeacher[name]) byTeacher[name] = { lessons: 0, value: 0 };
+        if (!byTeacher[name]) byTeacher[name] = { lessons: 0, value: 0, teacherId: l.teacherId || '' };
         byTeacher[name].lessons += l.deductedLessons || 0;
         byTeacher[name].value += l.paymentAmount || 0;
       });
@@ -1223,14 +1226,22 @@
       if (!rows.length) {
         tStats.innerHTML = `<div class="text-center py-8 text-slate-400 text-xs"><i class="fa-solid fa-chalkboard-user text-2xl mb-2 block opacity-40"></i>本月暂无消课</div>`;
       } else {
-        tStats.innerHTML = rows.map(([name, v]) => `
+        tStats.innerHTML = rows.map(([name, v]) => {
+          // 应付工资：优先老师课时单价 × 节数；没设单价则显示"未设置单价"
+          const t = teachers.find((x) => x.name === name || x.id === v.teacherId);
+          const payable = t && t.hourlyRate > 0 ? v.lessons * t.hourlyRate : null;
+          return `
           <div class="flex items-center justify-between px-5 py-3 border-t border-slate-100">
-            <span class="text-[13px] font-bold text-slate-800">${name}</span>
-            <div class="flex items-center gap-2">
-              <span class="text-[13px] font-black text-slate-800">${v.lessons} 节</span>
-              ${v.value > 0 ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">¥${v.value.toFixed(0)}</span>` : ''}
+            <div class="min-w-0">
+              <div class="text-[13px] font-bold text-slate-800">${name}</div>
+              ${payable === null ? '<div class="text-[10px] text-slate-400">教师管理里设置课时单价后显示应付</div>' : ''}
             </div>
-          </div>`).join('');
+            <div class="flex items-center gap-2 shrink-0">
+              <span class="text-[13px] font-black text-slate-800">${v.lessons} 节</span>
+              ${payable !== null ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">应付 ¥${payable.toFixed(0)}</span>` : ''}
+            </div>
+          </div>`;
+        }).join('');
       }
     }
   }
@@ -2570,13 +2581,27 @@
             <div class="text-[10px] text-slate-500">主讲: ${t.subject || '全科'}${t.accessPin ? ` · 访问码 <b class="text-amber-700">${t.accessPin}</b>` : ' · 未开通访问'}</div>
           </div>
         </div>
-        <div class="flex items-center gap-1">
+        <div class="flex items-center gap-1.5">
+          <div class="flex items-center gap-1 shrink-0">
+            <span class="text-slate-400 text-[10px]">¥</span>
+            <input type="number" min="0" step="1" inputmode="decimal" class="teacher-rate-input w-14 px-1.5 py-1 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 outline-none focus:ring-1 focus:ring-amber-400" placeholder="时薪" value="${t.hourlyRate > 0 ? t.hourlyRate : ''}" aria-label="课时单价（元/节）">
+            <span class="text-slate-400 text-[10px]">/节</span>
+          </div>
           <button class="btn-pin-teacher text-[10px] font-bold px-2 py-1 rounded-lg ${t.accessPin ? 'bg-slate-200 text-slate-600 hover:bg-slate-300' : 'bg-sky-100 text-sky-700 hover:bg-sky-200'} transition" data-id="${t.id}">${t.accessPin ? '换码' : '生成访问码'}</button>
           <button class="btn-del-teacher text-slate-400 hover:text-rose-600 transition px-2 py-1" title="删除教师" data-id="${t.id}">
             <i class="fa-solid fa-trash-can"></i>
           </button>
         </div>
       `;
+
+      const rateInput = item.querySelector('.teacher-rate-input');
+      rateInput.addEventListener('change', () => {
+        const v = parseFloat(rateInput.value);
+        t.hourlyRate = Number.isFinite(v) && v > 0 ? v : 0;
+        saveData();
+        renderDashboard();
+        showToast(`${t.name} 课时单价已设为 ${t.hourlyRate > 0 ? '¥' + t.hourlyRate + '/节' : '未设置'}`, 'circle-check');
+      });
 
       item.querySelector('.btn-pin-teacher').addEventListener('click', () => {
         const pin = String(Math.floor(1000 + Math.random() * 9000));
