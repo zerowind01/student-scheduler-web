@@ -99,6 +99,7 @@
   function initApp() {
     checkUrlSyncData();
     loadData();
+    backfillLogTeachers();
     loadLedger();
     setupEventListeners();
     bindPageNav();
@@ -204,6 +205,18 @@
   // ==========================================
   // 学员详情弹窗（课时/单价/欠课/消课记录）
   // ==========================================
+  // 老流水回填：缺 teacherId/teacherName 的消课记录，从对应排课反查补齐（持久化一次）
+  function backfillLogTeachers() {
+    const schById = new Map(schedules.map((s) => [s.id, s]));
+    let fixed = false;
+    checkInLogs.forEach((l) => {
+      const sch = schById.get(l.scheduleId);
+      if (sch && !l.teacherId && sch.teacherId) { l.teacherId = sch.teacherId; fixed = true; }
+      if (sch && !l.teacherName && sch.teacherName) { l.teacherName = sch.teacherName; fixed = true; }
+    });
+    if (fixed) localStorage.setItem(STORAGE_KEY_CHECKIN_LOGS, JSON.stringify(checkInLogs));
+  }
+
   function openStudentDetail(studentId) {
     const student = students.find((s) => s.id === studentId);
     if (!student) return;
@@ -1215,25 +1228,28 @@
     // ---- 本月老师课时 ----
     const tStats = document.getElementById('dashTeacherStats');
     if (tStats) {
+      // 按老师 ID 归组（改名不拆分）；无 ID 的老流水按名字兜底
       const byTeacher = {};
       monthLogs.forEach((l) => {
-        const name = l.teacherName || '未指定老师';
-        if (!byTeacher[name]) byTeacher[name] = { lessons: 0, value: 0, teacherId: l.teacherId || '' };
-        byTeacher[name].lessons += l.deductedLessons || 0;
-        byTeacher[name].value += l.paymentAmount || 0;
+        const t = l.teacherId ? teachers.find((x) => x.id === l.teacherId)
+                              : teachers.find((x) => x.name === l.teacherName);
+        const key = t ? t.id : ('name:' + (l.teacherName || ''));
+        const displayName = t ? t.name : (l.teacherName || '未指定老师');
+        if (!byTeacher[key]) byTeacher[key] = { name: displayName, lessons: 0, value: 0, ref: t || null };
+        byTeacher[key].lessons += l.deductedLessons || 0;
+        byTeacher[key].value += l.paymentAmount || 0;
       });
-      const rows = Object.entries(byTeacher).sort((a, b) => b[1].lessons - a[1].lessons);
+      const rows = Object.values(byTeacher).sort((a, b) => b.lessons - a.lessons);
       if (!rows.length) {
         tStats.innerHTML = `<div class="text-center py-8 text-slate-400 text-xs"><i class="fa-solid fa-chalkboard-user text-2xl mb-2 block opacity-40"></i>本月暂无消课</div>`;
       } else {
-        tStats.innerHTML = rows.map(([name, v]) => {
+        tStats.innerHTML = rows.map((v) => {
           // 应付工资：优先老师课时单价 × 节数；没设单价则显示"未设置单价"
-          const t = teachers.find((x) => x.name === name || x.id === v.teacherId);
-          const payable = t && t.hourlyRate > 0 ? v.lessons * t.hourlyRate : null;
+          const payable = v.ref && v.ref.hourlyRate > 0 ? v.lessons * v.ref.hourlyRate : null;
           return `
           <div class="flex items-center justify-between px-5 py-3 border-t border-slate-100">
             <div class="min-w-0">
-              <div class="text-[13px] font-bold text-slate-800">${name}</div>
+              <div class="text-[13px] font-bold text-slate-800">${v.name}</div>
               ${payable === null ? '<div class="text-[10px] text-slate-400">教师管理里设置课时单价后显示应付</div>' : ''}
             </div>
             <div class="flex items-center gap-2 shrink-0">
