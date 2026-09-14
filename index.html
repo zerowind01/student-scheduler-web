@@ -160,7 +160,13 @@
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div class="lg:col-span-2 bg-white border border-amber-100 rounded-2xl p-5">
             <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
-              <div class="text-[15px] font-black text-slate-800">本周课消趋势</div>
+              <div class="flex items-center gap-2.5">
+                <div class="text-[15px] font-black text-slate-800">课消趋势</div>
+                <div id="dashWeekTabs" class="flex items-center gap-1 bg-slate-100 p-0.5 rounded-full">
+                  <button class="dash-week-tab text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-800 text-white" data-week="cur">本周消课</button>
+                  <button class="dash-week-tab text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-500" data-week="prev">上周消课</button>
+                </div>
+              </div>
               <div id="dashWeekSummary" class="text-[11px] font-semibold text-slate-400"></div>
             </div>
             <div id="dashWeekBars" class="flex items-end gap-3 h-32 px-2"></div>

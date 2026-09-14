@@ -1200,29 +1200,51 @@
       }
     }
 
-    // ---- 本周课消趋势 ----
+    // ---- 课消趋势（本周/上周标签切换，单独柱状图） ----
     const weekBars = document.getElementById('dashWeekBars');
     const weekSummary = document.getElementById('dashWeekSummary');
+    const weekTabs = document.getElementById('dashWeekTabs');
     if (weekBars && weekSummary) {
-      const names = ['一', '二', '三', '四', '五', '六', '日'];
-      const counts = [];
-      let weekTotal = 0;
-      for (let i = 0; i < 7; i++) {
-        const dstr = formatDate(addDays(currentWeekStart, i));
-        const n = checkInLogs.filter((l) => l.date === dstr).reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
-        counts.push(n);
-        weekTotal += n;
+      const renderWeekBars = (which) => {
+        const names = ['一', '二', '三', '四', '五', '六', '日'];
+        const base = which === 'prev' ? addDays(currentWeekStart, -7) : currentWeekStart;
+        const counts = [];
+        let total = 0;
+        for (let i = 0; i < 7; i++) {
+          const dstr = formatDate(addDays(base, i));
+          const n = checkInLogs.filter((l) => l.date === dstr).reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
+          counts.push(n);
+          total += n;
+        }
+        const max = Math.max(...counts, 1);
+        weekSummary.innerHTML = `${which === 'prev' ? '上周' : '本周'}合计 <b class="text-slate-700">${total} 节</b>`;
+        weekBars.innerHTML = counts.map((n, i) => {
+          const h = Math.max(4, Math.round((n / max) * 100));
+          return `<div class="flex-1 flex flex-col items-center gap-1.5">
+            <div class="w-full rounded-md ${n > 0 ? 'bg-gradient-to-b from-amber-400 to-amber-500' : 'bg-slate-100'}" style="height:${h}%"></div>
+            <span class="text-[10px] font-bold ${n > 0 ? 'text-slate-700' : 'text-slate-400'}">${names[i]} ${n}</span>
+          </div>`;
+        }).join('');
+        if (weekTabs) {
+          weekTabs.querySelectorAll('.dash-week-tab').forEach((b) => {
+            const on = b.getAttribute('data-week') === which;
+            b.classList.toggle('bg-slate-800', on);
+            b.classList.toggle('text-white', on);
+            b.classList.toggle('bg-slate-100', !on);
+            b.classList.toggle('text-slate-500', !on);
+          });
+        }
+      };
+      renderWeekBars(window.__dashWeekTab || 'cur');
+      if (weekTabs && !weekTabs.dataset.bound) {
+        weekTabs.dataset.bound = '1';
+        weekTabs.querySelectorAll('.dash-week-tab').forEach((b) => {
+          b.addEventListener('click', () => {
+            window.__dashWeekTab = b.getAttribute('data-week');
+            renderWeekBars(window.__dashWeekTab);
+          });
+        });
       }
-      const max = Math.max(...counts, 1);
-      weekSummary.innerHTML = `本周合计 <b class="text-slate-700">${weekTotal} 节</b>`;
-      weekBars.innerHTML = counts.map((n, i) => {
-        const h = Math.max(6, Math.round((n / max) * 100));
-        const active = n > 0;
-        return `<div class="flex-1 flex flex-col items-center gap-1.5">
-          <div class="w-full rounded-md ${active ? 'bg-gradient-to-b from-amber-400 to-amber-500' : 'bg-slate-100'}" style="height:${h}%"></div>
-          <span class="text-[10px] font-bold ${active ? 'text-slate-700' : 'text-slate-400'}">${names[i]} ${n}</span>
-        </div>`;
-      }).join('');
     }
 
     // ---- 本月老师课时 ----
