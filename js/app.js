@@ -1228,11 +1228,26 @@
     // ---- 本月老师课时 ----
     const tStats = document.getElementById('dashTeacherStats');
     if (tStats) {
-      // 按老师 ID 归组（改名不拆分）；无 ID 的老流水按名字兜底
+      // 按老师身份归组（改名不拆分）：流水ID → 排课反查 → 改名别名映射
+      const schById = new Map(schedules.map((s) => [s.id, s]));
+      // 改名别名：旧名 → 当前老师 ID（用户在统计列表手动指认后持久化）
+      let nameAlias = {};
+      try { nameAlias = JSON.parse(localStorage.getItem('edu_scheduler_name_alias_v1') || '{}'); } catch (e) { nameAlias = {}; }
+      const resolveTeacher = (l) => {
+        if (l.teacherId) { const t = teachers.find((x) => x.id === l.teacherId); if (t) return t; }
+        const sch = schById.get(l.scheduleId);
+        if (sch && sch.teacherId) { const t = teachers.find((x) => x.id === sch.teacherId); if (t) return t; }
+        if (l.teacherName) {
+          const aliasId = nameAlias[l.teacherName];
+          if (aliasId) { const t = teachers.find((x) => x.id === aliasId); if (t) return t; }
+          const t = teachers.find((x) => x.name === l.teacherName);
+          if (t) return t;
+        }
+        return null;
+      };
       const byTeacher = {};
       monthLogs.forEach((l) => {
-        const t = l.teacherId ? teachers.find((x) => x.id === l.teacherId)
-                              : teachers.find((x) => x.name === l.teacherName);
+        const t = resolveTeacher(l);
         const key = t ? t.id : ('name:' + (l.teacherName || ''));
         const displayName = t ? t.name : (l.teacherName || '未指定老师');
         if (!byTeacher[key]) byTeacher[key] = { name: displayName, lessons: 0, value: 0, ref: t || null };
@@ -1246,11 +1261,19 @@
         tStats.innerHTML = rows.map((v) => {
           // 应付工资：优先老师课时单价 × 节数；没设单价则显示"未设置单价"
           const payable = v.ref && v.ref.hourlyRate > 0 ? v.lessons * v.ref.hourlyRate : null;
+          // 孤儿行（未匹配到当前老师）：给一个"归到…"下拉，手动指认改名前后关系
+          const orphan = !v.ref;
+          const assignSel = orphan && teachers.length ? `
+            <select class="dash-assign-teacher mt-1 block w-full text-[10px] font-bold text-slate-500 bg-slate-100 border-none rounded-lg px-2 py-1 outline-none" data-old="${v.name === '未指定老师' ? '' : v.name}">
+              <option value="">归到哪位老师？</option>
+              ${teachers.map((t) => `<option value="${t.id}">${t.name}</option>`).join('')}
+            </select>` : '';
           return `
           <div class="flex items-center justify-between px-5 py-3 border-t border-slate-100">
             <div class="min-w-0">
-              <div class="text-[13px] font-bold text-slate-800">${v.name}</div>
-              ${payable === null ? '<div class="text-[10px] text-slate-400">教师管理里设置课时单价后显示应付</div>' : ''}
+              <div class="text-[13px] font-bold text-slate-800">${v.name}${orphan ? ' <span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 align-middle">待认领</span>' : ''}</div>
+              ${payable === null && !orphan ? '<div class="text-[10px] text-slate-400">教师管理里设置课时单价后显示应付</div>' : ''}
+              ${assignSel}
             </div>
             <div class="flex items-center gap-2 shrink-0">
               <span class="text-[13px] font-black text-slate-800">${v.lessons} 节</span>
@@ -1258,6 +1281,29 @@
             </div>
           </div>`;
         }).join('');
+        // 绑定"归到"：有旧名的写别名表；"未指定老师"的直接回写流水 teacherId；重渲染
+        tStats.querySelectorAll('.dash-assign-teacher').forEach((sel) => {
+          sel.addEventListener('change', () => {
+            const oldName = sel.getAttribute('data-old');
+            const tid = sel.value;
+            if (!tid) return;
+            const tName = (teachers.find((t) => t.id === tid) || {}).name || tid;
+            if (oldName) {
+              let alias = {};
+              try { alias = JSON.parse(localStorage.getItem('edu_scheduler_name_alias_v1') || '{}'); } catch (e) { alias = {}; }
+              alias[oldName] = tid;
+              localStorage.setItem('edu_scheduler_name_alias_v1', JSON.stringify(alias));
+            } else {
+              // 无名流水：直接补上老师身份
+              checkInLogs.forEach((l) => {
+                if (resolveTeacher(l) === null && !(l.teacherName || '')) { l.teacherId = tid; l.teacherName = tName; }
+              });
+              localStorage.setItem(STORAGE_KEY_CHECKIN_LOGS, JSON.stringify(checkInLogs));
+            }
+            renderDashboard();
+            showToast(`历史课时已归到 ${tName}`, 'circle-check');
+          });
+        });
       }
     }
   }
