@@ -1220,9 +1220,11 @@
         weekSummary.innerHTML = `${which === 'prev' ? '上周' : '本周'}合计 <b class="text-slate-700">${total} 节</b>`;
         weekBars.innerHTML = counts.map((n, i) => {
           const h = Math.max(4, Math.round((n / max) * 100));
-          return `<div class="flex-1 flex flex-col items-center gap-1.5">
-            <div class="w-full rounded-md ${n > 0 ? 'bg-gradient-to-b from-amber-400 to-amber-500' : 'bg-slate-100'}" style="height:${h}%"></div>
-            <span class="text-[10px] font-bold ${n > 0 ? 'text-slate-700' : 'text-slate-400'}">${names[i]} ${n}</span>
+          return `<div class="flex-1 h-full flex flex-col items-center gap-1.5 min-w-0">
+            <div class="w-full flex-1 flex items-end min-h-0">
+              <div class="w-full rounded-md ${n > 0 ? 'bg-gradient-to-b from-amber-400 to-amber-500' : 'bg-slate-100'}" style="height:${h}%"></div>
+            </div>
+            <span class="text-[10px] font-bold ${n > 0 ? 'text-slate-700' : 'text-slate-400'} whitespace-nowrap">${names[i]} ${n}</span>
           </div>`;
         }).join('');
         if (weekTabs) {
