@@ -1,10 +1,10 @@
 // LessonMate PWA Service Worker
 // 策略：页面导航 network-first（保更新，断网回退缓存）；静态资源 SWR；/api/* 永不缓存
 // 更新版本号 CACHE 即可让全量客户端刷新
-const CACHE = 'lessonmate-v3';
+const CACHE = 'lessonmate-v4';
 const CORE = [
   '/', '/mobile', '/index.html', '/mobile.html', '/manifest.json',
-  '/icons/icon-192.png?v=3', '/icons/icon-512.png?v=3', '/icons/apple-touch-icon.png?v=3',
+  '/icons/icon-192.png?v=4', '/icons/icon-512.png?v=4', '/icons/apple-touch-icon.png?v=4',
 ];
 
 self.addEventListener('install', (e) => {
