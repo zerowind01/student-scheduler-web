@@ -643,7 +643,7 @@
   // 服务端实现见 netlify/functions/sync.js —— 读取 UPSTASH_REST_URL / UPSTASH_REST_TOKEN 环境变量
   const CLOUD_SYNC_ENDPOINT = '/api/sync';
 
-  let schoolSyncKey = localStorage.getItem('edu_scheduler_school_key') || 'school_demo_2026';
+  let schoolSyncKey = localStorage.getItem('edu_scheduler_school_key') || '';
   let isPushingToCloud = false;
   let isPullingFromCloud = false;
   let cloudSyncFailedOnce = false; // 只提醒一次，避免弹窗轰炸
@@ -800,6 +800,58 @@
     }
   }
 
+  // 新设备首次访问：必须先创建或登录云同步码（机构级账号），否则不进入应用
+  function randomSyncKey() {
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    let s = '';
+    for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
+    return 'LM' + s;
+  }
+
+  function applySyncKey(val) {
+    schoolSyncKey = val;
+    localStorage.setItem('edu_scheduler_school_key', val);
+  }
+
+  function showSyncGate() {
+    const ov = document.createElement('div');
+    ov.id = 'syncGateOverlay';
+    ov.className = 'fixed inset-0 z-[95] bg-slate-900/60 backdrop-blur-sm flex items-end justify-center';
+    ov.innerHTML = `
+      <div class="bg-white w-full rounded-t-3xl p-6 space-y-4" style="padding-bottom: calc(2rem + env(safe-area-inset-bottom))">
+        <div class="text-center">
+          <div class="w-14 h-14 mx-auto rounded-2xl bg-[#ff5600] text-white font-bold flex items-center justify-center text-xl">课</div>
+          <div class="font-bold text-base text-slate-800 mt-3">欢迎使用 LessonMate</div>
+          <div class="text-[11px] text-slate-400 mt-1">先设置机构同步码，多设备才能互通课表</div>
+        </div>
+        <button id="gateCreate" class="w-full py-3.5 rounded-2xl lm-btn-fin text-sm">🎬 我是新机构，创建同步码</button>
+        <div class="flex items-center gap-2">
+          <input id="gateKeyInput" type="text" placeholder="输入已有同步码加入机构" class="flex-1 min-w-0 px-3 py-3 border border-slate-200 rounded-2xl text-center font-bold tracking-wider outline-none focus:ring-1 focus:ring-[#ff5600]/30">
+          <button id="gateJoin" class="shrink-0 px-5 py-3 rounded-2xl bg-slate-900 text-white text-sm font-bold active:opacity-80">登录</button>
+        </div>
+      </div>`;
+    ov.addEventListener('click', async (e) => {
+      if (e.target.closest('#gateCreate')) {
+        const code = randomSyncKey();
+        applySyncKey(code);
+        ov.remove();
+        saveData(); // 把本机初始数据推上云，其他设备凭此码即可加入
+        if (typeof renderMobileHome === 'function') renderMobileHome();
+        showToast(`同步码 ${code} 已创建，可在 设置 → 实时云同步 查看`);
+      } else if (e.target.closest('#gateJoin')) {
+        const el = document.getElementById('gateKeyInput');
+        const val = (el ? el.value.trim() : '').toUpperCase();
+        if (!val || val.length < 4) { showToast('请输入正确的同步码'); return; }
+        applySyncKey(val);
+        await pullFromCloudSync(true);
+        ov.remove();
+        if (typeof renderMobileHome === 'function') renderMobileHome();
+        showToast(`已登录机构 ${val}`);
+      }
+    });
+    document.body.appendChild(ov);
+  }
+
   function initMobileApp() {
     checkUrlSyncData();
     loadData();
@@ -813,6 +865,8 @@
     pullFromCloudSync(true).then(() => {
       if (typeof renderMobileHome === 'function') renderMobileHome();
     });
+    // 新设备无同步码 → 弹出创建/登录引导（最高层，处理完才能用）
+    if (!schoolSyncKey) showSyncGate();
   }
 
   // 老师访问码登录门：有未过期会话则不拦；无会话则先遮住页面再等输入
@@ -885,7 +939,8 @@
 
     safeBind('btnSaveSyncKey', 'click', () => {
       const el = document.getElementById('inputSyncKey');
-      const val = (el ? el.value.trim() : '') || 'school_demo_2026';
+      const val = (el ? el.value.trim() : '');
+      if (!val) { showToast('请输入同步码'); return; }
       schoolSyncKey = val;
       localStorage.setItem('edu_scheduler_school_key', val);
       hideModal('modalSyncKey');

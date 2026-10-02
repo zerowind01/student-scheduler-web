@@ -706,6 +706,24 @@
     </div>
   </div>
 
+  <!-- 新设备同步码引导 Modal（不可关闭） -->
+  <div id="modalSyncGate" role="dialog" aria-modal="true" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[95] hidden p-2 sm:p-0">
+    <div class="lm-modal w-full sm:w-[400px] overflow-hidden">
+      <div class="px-6 pt-7 pb-2 text-center">
+        <div class="w-14 h-14 mx-auto rounded-2xl bg-[#ff5600] text-white font-bold flex items-center justify-center text-xl">课</div>
+        <h3 class="font-bold text-base mt-3" style="color:var(--lm-ink);">欢迎使用 LessonMate</h3>
+        <div class="text-[11px] mt-1" style="color:var(--lm-ink-3);">先设置机构同步码，多设备才能互通课表</div>
+      </div>
+      <div class="px-6 pb-6 space-y-3 text-xs">
+        <button type="button" id="btnGateCreate" class="lm-btn-ink w-full px-3 py-3 font-bold rounded-xl transition">🎬 我是新机构，创建同步码</button>
+        <div class="flex items-center gap-2">
+          <input id="gateKeyInput" type="text" placeholder="输入已有同步码加入机构" class="flex-1 min-w-0 px-3 py-2.5 border border-slate-200 rounded-xl text-center font-bold tracking-wider outline-none">
+          <button type="button" id="btnGateJoin" class="shrink-0 px-5 py-2.5 lm-btn-ink font-bold rounded-xl">登录</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 上课提醒日历订阅 Modal 弹窗 -->
   <div id="modalIcsCalendar" role="dialog" aria-modal="true" class="fixed inset-0 lm-scrim backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
     <div class="lm-modal w-full sm:w-[480px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">

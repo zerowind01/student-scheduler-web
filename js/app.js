@@ -134,6 +134,8 @@
     renderCalendarGrid();
     updateStats();
     pullFromCloudSync(true);
+    // 新设备无同步码 → 弹出创建/登录引导（最高层，处理完才能用）
+    if (!schoolSyncKey) openSyncGate();
   }
 
   function getMonday(d) {
@@ -464,7 +466,7 @@
   // ==========================================
   // 云端实时跨设备同步引擎
   // ==========================================
-  let schoolSyncKey = localStorage.getItem('edu_scheduler_school_key') || 'school_demo_2026';
+  let schoolSyncKey = localStorage.getItem('edu_scheduler_school_key') || '';
   let isPushingToCloud = false;
   let isPullingFromCloud = false;
   let cloudSyncFailedOnce = false; // 只提醒一次，避免弹窗轰炸
@@ -800,7 +802,8 @@
     safeBind('btnCancelSyncModal', 'click', () => hideModal('modalSyncKey'));
     safeBind('btnSaveSyncKey', 'click', () => {
       const el = document.getElementById('inputSyncKey');
-      const val = (el ? el.value.trim() : '') || 'school_demo_2026';
+      const val = (el ? el.value.trim() : '');
+      if (!val) { showToast('请输入同步码', 'circle-info'); return; }
       schoolSyncKey = val;
       localStorage.setItem('edu_scheduler_school_key', val);
       hideModal('modalSyncKey');
@@ -1074,6 +1077,39 @@
       });
     }
     showModal('modalIcsCalendar');
+  }
+
+  // 新设备首次访问：必须先创建或登录云同步码（机构级账号），否则不进入应用
+  function randomSyncKey() {
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    let s = '';
+    for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
+    return 'LM' + s;
+  }
+
+  function applySyncKey(val) {
+    schoolSyncKey = val;
+    localStorage.setItem('edu_scheduler_school_key', val);
+  }
+
+  function openSyncGate() {
+    document.getElementById('btnGateCreate').onclick = () => {
+      const code = randomSyncKey();
+      applySyncKey(code);
+      hideModal('modalSyncGate');
+      saveData(); // 把本机初始数据推上云，其他设备凭此码即可加入
+      showToast(`同步码 ${code} 已创建，可在 设置 → 实时云同步 查看`, 'circle-check');
+    };
+    document.getElementById('btnGateJoin').onclick = async () => {
+      const el = document.getElementById('gateKeyInput');
+      const val = (el ? el.value.trim() : '').toUpperCase();
+      if (!val || val.length < 4) { showToast('请输入正确的同步码', 'circle-info'); return; }
+      applySyncKey(val);
+      await pullFromCloudSync(true);
+      hideModal('modalSyncGate');
+      showToast(`已登录机构 ${val}`, 'circle-check');
+    };
+    showModal('modalSyncGate');
   }
 
   function updateDebtBadges() {
