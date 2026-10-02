@@ -185,33 +185,33 @@ body {
   overflow: visible !important;
 }
 
-/* 颜色主题高级配色 */
+/* 颜色主题高级配色（扁平化：纯色底 + 发丝描边 + 左侧主色竖条，与 Intercom 主题一致） */
 .event-amber {
-  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  background: #fff8e6;
   border-color: #fde68a;
   border-left-color: #f59e0b;
   color: #78350f;
 }
 .event-emerald {
-  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  background: #e9fbf2;
   border-color: #a7f3d0;
   border-left-color: #10b981;
   color: #064e3b;
 }
 .event-sky {
-  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  background: #eaf6ff;
   border-color: #bae6fd;
   border-left-color: #0284c7;
   color: #0c4a6e;
 }
 .event-purple {
-  background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%);
+  background: #f7f0ff;
   border-color: #e9d5ff;
   border-left-color: #9333ea;
   color: #581c87;
 }
 .event-rose {
-  background: linear-gradient(135deg, #fff1f2 0%, #ffe4e6 100%);
+  background: #fff0f2;
   border-color: #fecdd3;
   border-left-color: #f43f5e;
   color: #881337;

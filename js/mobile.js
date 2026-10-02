@@ -1768,10 +1768,10 @@
     // 状态角标 + 视觉弱化（与桌面端一致）
     let statusBadge = '';
     if (schedule.status === SCHEDULE_STATUS.COMPLETED) {
-      statusBadge = `<span class="absolute top-0.5 right-1 text-[9px] font-black text-white bg-emerald-500 px-1 py-0.2 rounded-md z-10">✓ 消</span>`;
+      statusBadge = `<span class="absolute top-0.5 right-1 text-[8px] font-black text-white bg-emerald-500 px-1 py-0.2 rounded-md shadow-xs z-10" title="已消课">✓ 消</span>`;
       card.style.opacity = '0.65';
     } else if (schedule.status === SCHEDULE_STATUS.STUDENT_LEAVE) {
-      statusBadge = `<span class="absolute top-0.5 right-1 text-[9px] font-black text-white bg-rose-400 px-1 py-0.2 rounded-md z-10">假</span>`;
+      statusBadge = `<span class="absolute top-0.5 right-1 text-[8px] font-black text-white bg-rose-400 px-1 py-0.2 rounded-md shadow-xs z-10" title="学员请假">假</span>`;
       card.style.opacity = '0.5';
       card.classList.add('grayscale');
     }
@@ -1781,17 +1781,21 @@
       <div class="flex flex-col justify-between h-full space-y-0.5 pointer-events-none px-1.5 py-1">
         <div class="flex items-center justify-between font-extrabold text-[12px] text-slate-900 leading-tight">
           <span class="truncate flex-1">${schedule.studentName}</span>
-          ${totalCols === 1 ? `<span class="text-[9px] opacity-75 font-mono bg-white/70 px-1 rounded">${schedule.startTime}</span>` : ''}
+          ${
+            totalCols === 1
+              ? `<span class="text-[9px] font-mono opacity-80 shrink-0 bg-white/75 px-1 py-0.2 rounded border border-black/5">${schedule.startTime}</span>`
+              : ''
+          }
         </div>
-        <div class="text-[10px] font-bold opacity-90 truncate flex items-center gap-1 leading-none">
-          <span class="bg-white/80 px-1 py-0.2 rounded border border-black/5 truncate">${schedule.subject || schedule.courseName || '课程'}</span>
-          ${teacherText ? `<span class="opacity-80 truncate text-[9px]">${teacherText}</span>` : ''}
+        <div class="leading-none flex items-center gap-1 flex-wrap truncate shrink-0 -mt-[2px]">
+          <span class="text-[11px] font-bold px-1.5 py-0.5 bg-white/80 lm-t1 rounded-md border border-black/5 shadow-2xs truncate">${schedule.subject || schedule.courseName || '课程'}</span>
+          ${teacherText ? `<span class="opacity-85 text-[10.5px] font-semibold truncate">${teacherText}</span>` : ''}
         </div>
         ${
           hasConflict
-            ? `<div class="text-[8.5px] font-bold text-rose-700 bg-rose-100 border border-rose-300 px-1 py-0.2 rounded truncate flex items-center gap-0.5">
-                <i class="fa-solid fa-triangle-exclamation text-rose-500 text-[8px] animate-pulse"></i>
-                <span class="truncate">${conflictInfo.reasons.join('; ')}</span>
+            ? `<div class="text-[9px] font-bold text-rose-700 bg-rose-100/95 border border-rose-300 px-1 py-0.2 rounded truncate flex items-center gap-0.5 shadow-2xs shrink-0 mt-0.5" title="${conflictInfo.reasons.join(' | ')}">
+                <i class="fa-solid fa-triangle-exclamation text-rose-500 animate-pulse shrink-0 text-[8px]"></i>
+                <span class="truncate leading-normal">${conflictInfo.reasons.join('; ')}</span>
                </div>`
             : ''
         }
