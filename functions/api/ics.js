@@ -109,7 +109,8 @@ function buildIcs(data, teacherLabel) {
 
   schedules.forEach((s, i) => {
     if (!s || !s.date || s.date < minDate || s.date > maxDate) return;
-    if (s.status === 'student_leave') return; // 请假课不进日历
+    // 白名单：只有排课中和已完成（透明占位）进日历；请假/取消等一切其他状态一律不计入
+    if (s.status !== 'scheduled' && s.status !== 'completed') return;
     if (!s.teacherId && !s.assistantTeacherId && !s.teacherName) return;
 
     const studentName =
