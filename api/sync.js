@@ -28,10 +28,12 @@ export default async function handler(req, res) {
       const data = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
 
       if (up) {
-        const r = await fetch(
-          `${up.url}/set/${encodeURIComponent(syncKey)}/${encodeURIComponent(JSON.stringify(data))}`,
-          { headers: { Authorization: `Bearer ${up.token}` } }
-        );
+        // value 放请求体（POST /set/{key} + body），避免 URL 路径超长触发 Upstash 431
+        const r = await fetch(`${up.url}/set/${encodeURIComponent(syncKey)}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${up.token}`, 'Content-Type': 'text/plain' },
+          body: JSON.stringify(data),
+        });
         if (!r.ok) throw new Error(`upstash set failed: ${r.status}`);
       } else {
         cloudMemoryStore[syncKey] = data;

@@ -676,11 +676,12 @@
       }
 
       const valStr = JSON.stringify(payload);
-      await fetch(`${CLOUD_SYNC_ENDPOINT}?key=${encodeURIComponent(schoolSyncKey)}`, {
+      const pushRes = await fetch(`${CLOUD_SYNC_ENDPOINT}?key=${encodeURIComponent(schoolSyncKey)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: valStr
       });
+      if (!pushRes.ok) throw new Error(`cloud push failed: ${pushRes.status}`);
       cloudSyncFailedOnce = false;
     } catch (err) {
       console.warn('Cloud sync push:', err);

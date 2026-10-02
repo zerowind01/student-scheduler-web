@@ -34,10 +34,12 @@ exports.handler = async function (event) {
         typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
 
       if (up) {
-        const res = await fetch(
-          `${up.url}/set/${encodeURIComponent(key)}/${encodeURIComponent(JSON.stringify(data))}`,
-          { headers: { Authorization: `Bearer ${up.token}` } }
-        );
+        // value 放请求体（POST /set/{key} + body），避免 URL 路径超长触发 Upstash 431
+        const res = await fetch(`${up.url}/set/${encodeURIComponent(key)}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${up.token}`, 'Content-Type': 'text/plain' },
+          body: JSON.stringify(data),
+        });
         if (!res.ok) throw new Error(`upstash set failed: ${res.status}`);
       } else {
         memoryStore[key] = data;
