@@ -1851,11 +1851,11 @@
               : ''
           }
         </div>
-        <div class="leading-none flex items-center gap-1 flex-wrap truncate shrink-0 -mt-[2px]">
-          <span class="text-[11px] font-bold px-1.5 py-0.5 bg-white/80 lm-t1 rounded-md border border-black/5 shadow-2xs truncate">${schedule.subject || schedule.courseName || '课程'}</span>
+        <div class="leading-none flex items-center gap-1 min-w-0 -mt-[2px]">
+          <span class="text-[11px] font-bold px-1.5 py-0.5 bg-white/80 lm-t1 rounded-md border border-black/5 shadow-2xs truncate min-w-0 max-w-[68%]">${schedule.subject || schedule.courseName || '课程'}</span>
           ${
             roomConflict
-              ? `<span class="text-[9px] font-bold text-rose-700 bg-rose-100/95 border border-rose-300 px-1 py-0.2 rounded shrink-0 shadow-2xs flex items-center gap-0.5" title="课室冲突">
+              ? `<span class="text-[9px] font-bold text-rose-700 bg-rose-100 border border-rose-300 px-1 py-0.2 rounded shrink-0 shadow-2xs flex items-center gap-0.5 whitespace-nowrap" title="课室冲突">
                    <i class="fa-solid fa-triangle-exclamation text-rose-500 animate-pulse text-[8px]"></i>课室冲突
                  </span>`
               : ''
