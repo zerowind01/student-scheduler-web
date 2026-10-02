@@ -43,7 +43,7 @@
   }
 
   function selectStudentForTap(student, cardElement) {
-    document.querySelectorAll('.student-card').forEach((c) => c.classList.remove('ring-2', 'ring-amber-500', 'border-amber-400'));
+    document.querySelectorAll('.student-card').forEach((c) => c.classList.remove('lm-picked'));
 
     if (selectedStudentForTap && selectedStudentForTap.id === student.id) {
       clearStudentForTap();
@@ -51,7 +51,7 @@
     }
 
     selectedStudentForTap = student;
-    if (cardElement) cardElement.classList.add('ring-2', 'ring-amber-500', 'border-amber-400');
+    if (cardElement) cardElement.classList.add('lm-picked');
 
     const banner = document.getElementById('mobileTapScheduleBanner');
     const nameEl = document.getElementById('tapStudentName');
@@ -63,7 +63,7 @@
 
   function clearStudentForTap() {
     selectedStudentForTap = null;
-    document.querySelectorAll('.student-card').forEach((c) => c.classList.remove('ring-2', 'ring-amber-500', 'border-amber-400'));
+    document.querySelectorAll('.student-card').forEach((c) => c.classList.remove('lm-picked'));
     const banner = document.getElementById('mobileTapScheduleBanner');
     if (banner) banner.classList.add('hidden');
   }
@@ -71,6 +71,33 @@
   // ==========================================
   // 2. 初始化与演示数据注入
   // ==========================================
+  function openQrSyncModal() {
+    const container = document.getElementById('qrcodeContainer');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const syncDataStr = JSON.stringify({ students, schedules, teachers, updatedAt: Date.now() });
+    const encodedData = encodeURIComponent(syncDataStr);
+
+    const baseUrl = `${location.protocol}//${location.host}${location.pathname.replace('index.html', '')}mobile.html`;
+    const targetUrl = `${baseUrl}#${encodedData}`;
+
+    if (window.QRCode) {
+      new QRCode(container, {
+        text: targetUrl,
+        width: 180,
+        height: 180,
+        colorDark: '#1e293b',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.L,
+      });
+    } else {
+      container.innerHTML = `<div class="p-3 text-xs text-rose-500 font-bold">二维码组件加载中，请复制同步码</div>`;
+    }
+
+    showModal('modalQrSync');
+  }
+
   function checkUrlSyncData() {
     try {
       const hashData = location.hash.substring(1);
@@ -99,8 +126,6 @@
   function initApp() {
     checkUrlSyncData();
     loadData();
-    backfillLogTeachers();
-    loadLedger();
     setupEventListeners();
     bindPageNav();
     renderTeacherOptions();
@@ -135,14 +160,8 @@
         },
       ];
     }
-    // 学员状态生命周期：active 在读(默认) / paused 停课中 / archived 已结课
-    if (!st.status) st.status = 'active';
-    if (!st.teacherIds) st.teacherIds = [];
     return st;
   }
-
-  const STUDENT_STATUS = { ACTIVE: 'active', PAUSED: 'paused', ARCHIVED: 'archived' };
-  const STUDENT_STATUS_LABEL = { active: '在读', paused: '停课中', archived: '已结课' };
 
   // ============ 教务扩展：数据迁移与规范化 ============
   // 排课状态：web 版语义（排课即扣课时）：
@@ -191,32 +210,13 @@
       checkInTime: new Date().toISOString(),
       remarks: remarks || '',
       teacherName: schedule.teacherName || '',
-      teacherId: schedule.teacherId || '',
       date: schedule.date || '',
     });
-    // 老流水回填：消课流水缺 teacherId 时从排课记录补
-    const log = checkInLogs[checkInLogs.length - 1];
-    if (!log.teacherId && schedule.id) {
-      const sch = schedules.find((s) => s.id === schedule.id);
-      if (sch) log.teacherId = sch.teacherId || '';
-    }
   }
 
   // ==========================================
   // 学员详情弹窗（课时/单价/欠课/消课记录）
   // ==========================================
-  // 老流水回填：缺 teacherId/teacherName 的消课记录，从对应排课反查补齐（持久化一次）
-  function backfillLogTeachers() {
-    const schById = new Map(schedules.map((s) => [s.id, s]));
-    let fixed = false;
-    checkInLogs.forEach((l) => {
-      const sch = schById.get(l.scheduleId);
-      if (sch && !l.teacherId && sch.teacherId) { l.teacherId = sch.teacherId; fixed = true; }
-      if (sch && !l.teacherName && sch.teacherName) { l.teacherName = sch.teacherName; fixed = true; }
-    });
-    if (fixed) localStorage.setItem(STORAGE_KEY_CHECKIN_LOGS, JSON.stringify(checkInLogs));
-  }
-
   function openStudentDetail(studentId) {
     const student = students.find((s) => s.id === studentId);
     if (!student) return;
@@ -243,33 +243,33 @@
     const totalOwed = studentDebts.reduce((acc, d) => acc + d.amount, 0);
 
     body.innerHTML = `
-      <div class="flex items-center gap-3 bg-slate-50 rounded-xl p-3">
+      <div class="flex items-center gap-3 lm-soft rounded-xl p-3">
         <div class="w-11 h-11 rounded-full ${themeColor.bg} ${themeColor.text} flex items-center justify-center font-bold text-base">${student.name.substring(0, 1)}</div>
         <div class="flex-1">
-          <div class="font-bold text-sm text-slate-800">${student.name}</div>
-          <div class="text-[11px] text-slate-500">${student.phone ? '<i class="fa-solid fa-phone text-[9px]"></i> ' + student.phone : '未填电话'}</div>
+          <div class="font-bold text-sm lm-t1">${student.name}</div>
+          <div class="text-[11px] lm-t2">${student.phone ? '<i class="fa-solid fa-phone text-[9px]"></i> ' + student.phone : '未填电话'}</div>
         </div>
         <div class="text-right">
-          <div class="text-lg font-black ${totalOwed > 0 ? 'text-rose-600' : 'text-amber-700'}">${totalLessons}</div>
-          <div class="text-[9px] text-slate-400 font-bold">总剩课时${totalOwed > 0 ? ' · 欠' + totalOwed + '节' : ''}</div>
+          <div class="text-lg font-black ${totalOwed > 0 ? 'text-rose-600' : 'lm-t1'}">${totalLessons}</div>
+          <div class="text-[9px] lm-t3 font-bold">总剩课时${totalOwed > 0 ? ' · 欠' + totalOwed + '节' : ''}</div>
         </div>
       </div>
 
       <div>
-        <div class="font-bold text-[11px] text-slate-500 uppercase tracking-wider mb-1.5">课程与课时</div>
+        <div class="font-bold text-[11px] lm-t2 uppercase tracking-wider mb-1.5">课程与课时</div>
         <div class="space-y-1.5">
           ${student.courses.map((c) => {
             const isDebt = c.remainingLessons < 0;
             const isLow = !isDebt && c.remainingLessons <= 2;
             return `
-            <div class="flex items-center justify-between bg-white border ${isDebt ? 'border-rose-200 bg-rose-50/40' : isLow ? 'border-amber-200' : 'border-slate-200/70'} rounded-xl px-3 py-2">
+            <div class="flex items-center justify-between bg-white border ${isDebt ? 'border-rose-200 bg-rose-50/40' : isLow ? 'border-[#ffd9c7]' : 'lm-hairline'} rounded-xl px-3 py-2">
               <div>
-                <span class="font-bold text-slate-800">${c.name}</span>
-                ${isDebt ? '<span class="text-[9px] font-bold text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded ml-1.5">欠课</span>' : isLow ? '<span class="text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded ml-1.5">课时不足</span>' : ''}
+                <span class="font-bold lm-t1">${c.name}</span>
+                ${isDebt ? '<span class="text-[9px] font-bold text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded ml-1.5">欠课</span>' : isLow ? '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded ml-1.5" style="background:#fff2ec;color:var(--lm-orange);">课时不足</span>' : ''}
               </div>
               <div class="flex items-center gap-3 text-[11px]">
-                ${c.unitPrice > 0 ? `<span class="text-slate-500">¥${c.unitPrice}/节</span>` : ''}
-                <span class="font-black ${isDebt ? 'text-rose-600' : isLow ? 'text-amber-700' : 'text-slate-700'}">${c.remainingLessons} 课时</span>
+                ${c.unitPrice > 0 ? `<span class="lm-t2">¥${c.unitPrice}/节</span>` : ''}
+                <span class="font-black ${isDebt ? 'text-rose-600' : isLow ? 'lm-warn' : 'lm-t1'}">${c.remainingLessons} 课时</span>
               </div>
             </div>`;
           }).join('')}
@@ -282,63 +282,39 @@
         <div class="space-y-1.5">
           ${studentDebts.map((d) => `
           <div class="flex items-center justify-between bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
-            <span class="font-bold text-slate-700">${d.courseName}</span>
+            <span class="font-bold lm-t1">${d.courseName}</span>
             <span class="font-black text-rose-600">欠 ${d.amount} 节</span>
           </div>`).join('')}
         </div>
       </div>` : ''}
 
       <div>
-        <div class="font-bold text-[11px] text-slate-500 uppercase tracking-wider mb-1.5"><i class="fa-solid fa-clock-rotate-left"></i> 消课记录（最近 ${logs.length} 条）</div>
-        ${logs.length === 0 ? '<div class="text-[11px] text-slate-400 py-3 text-center bg-slate-50 rounded-xl">暂无消课记录</div>' : `
+        <div class="font-bold text-[11px] lm-t2 uppercase tracking-wider mb-1.5"><i class="fa-solid fa-clock-rotate-left"></i> 消课记录（最近 ${logs.length} 条）</div>
+        ${logs.length === 0 ? '<div class="text-[11px] lm-t3 py-3 text-center lm-soft rounded-xl">暂无消课记录</div>' : `
         <div class="space-y-1 max-h-56 overflow-y-auto custom-scrollbar">
           ${logs.map((l) => `
-          <div class="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-lg">
+          <div class="flex items-center justify-between lm-soft px-3 py-2 rounded-lg">
             <div>
-              <span class="font-bold text-slate-700">${l.courseName}</span>
-              ${l.teacherName ? `<span class="text-slate-400 ml-1.5">${l.teacherName}</span>` : ''}
-              ${l.remarks ? `<span class="text-amber-600 ml-1">${l.remarks}</span>` : ''}
+              <span class="font-bold lm-t1">${l.courseName}</span>
+              ${l.teacherName ? `<span class="lm-t3 ml-1.5">${l.teacherName}</span>` : ''}
+              ${l.remarks ? `<span class="lm-t2 ml-1">${l.remarks}</span>` : ''}
             </div>
             <div class="text-right shrink-0 ml-2">
-              <div class="font-bold text-slate-600">${l.deductedLessons}节${l.paymentAmount > 0 ? ' ¥' + l.paymentAmount.toFixed(0) : ''}</div>
-              <div class="text-[9px] text-slate-400">${(l.date || (l.checkInTime || '').slice(0, 10))}</div>
+              <div class="font-bold lm-t2">${l.deductedLessons}节${l.paymentAmount > 0 ? ' ¥' + l.paymentAmount.toFixed(0) : ''}</div>
+              <div class="text-[9px] lm-t3">${(l.date || (l.checkInTime || '').slice(0, 10))}</div>
             </div>
           </div>`).join('')}
         </div>`}
       </div>
 
-      <div>
-        <div class="font-bold text-[11px] text-slate-500 uppercase tracking-wider mb-1.5"><i class="fa-solid fa-book"></i> 课时台账（充值/消课/退还全流水）</div>
-        ${(() => {
-          const led = getStudentLedger(student.id).slice(0, 30);
-          if (!led.length) return '<div class="text-[11px] text-slate-400 py-3 text-center bg-slate-50 rounded-xl">暂无台账记录</div>';
-          const typeLabel = { recharge: '充值', consume: '消课', refund: '退还' };
-          const typeStyle = { recharge: 'bg-emerald-100 text-emerald-700', consume: 'bg-amber-100 text-amber-700', refund: 'bg-sky-100 text-sky-700' };
-          return `<div class="space-y-1 max-h-56 overflow-y-auto custom-scrollbar">
-          ${led.map((e) => `
-          <div class="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-lg">
-            <div class="flex items-center gap-2 min-w-0">
-              <span class="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${typeStyle[e.type] || 'bg-slate-100 text-slate-600'}">${typeLabel[e.type] || e.type}</span>
-              <span class="font-bold text-slate-700 truncate">${e.courseName}</span>
-              ${e.note ? `<span class="text-amber-600 text-[10px] truncate">${e.note}</span>` : ''}
-            </div>
-            <div class="text-right shrink-0 ml-2">
-              <div class="font-bold ${e.type === 'recharge' ? 'text-emerald-600' : e.type === 'refund' ? 'text-sky-600' : 'text-slate-600'}">${e.type === 'consume' ? '-' : '+'}${e.lessons}节${e.amount > 0 ? ' ¥' + Number(e.amount).toFixed(0) : ''}</div>
-              <div class="text-[9px] text-slate-400">${(e.time || '').slice(0, 10)}</div>
-            </div>
-          </div>`).join('')}
-        </div>`;
-        })()}
-      </div>
-
       ${leaves.length ? `
       <div>
-        <div class="font-bold text-[11px] text-slate-500 uppercase tracking-wider mb-1.5"><i class="fa-solid fa-umbrella-beach"></i> 请假记录（最近 ${leaves.length} 次）</div>
+        <div class="font-bold text-[11px] lm-t2 uppercase tracking-wider mb-1.5"><i class="fa-solid fa-umbrella-beach"></i> 请假记录（最近 ${leaves.length} 次）</div>
         <div class="space-y-1">
           ${leaves.map((s) => `
-          <div class="flex items-center justify-between bg-slate-50 px-3 py-1.5 rounded-lg text-[11px]">
-            <span class="text-slate-600">${s.date} ${s.startTime || ''}</span>
-            <span class="text-slate-500">${s.subject || ''}</span>
+          <div class="flex items-center justify-between lm-soft px-3 py-1.5 rounded-lg text-[11px]">
+            <span class="lm-t2">${s.date} ${s.startTime || ''}</span>
+            <span class="lm-t2">${s.subject || ''}</span>
           </div>`).join('')}
         </div>
       </div>` : ''}
@@ -639,9 +615,9 @@
   // 教务核心操作（移植自 Teacher-manager App）
   // ==========================================
 
-  // 从排课推导扣费节数（与排课时的扣课逻辑一致：45分钟=1节，最低1节）
+  // 从排课推导扣费节数（与排课时的扣课逻辑一致：1小时=1节，最低1节）
   function getLessonCost(schedule) {
-    return Math.max(1, Math.round((schedule.durationMinutes || 45) / 45));
+    return Math.max(1, Math.round((schedule.durationMinutes || 60) / 60));
   }
 
   // 消课（签到确认）：状态→completed，记财务流水；课时不足部分记欠课账
@@ -680,7 +656,6 @@
 
     sch.status = SCHEDULE_STATUS.COMPLETED;
     recordCheckInLog(sch, deducted, payment, finalRemarks);
-    addLedgerEntry('consume', sch.studentId, sch.studentName, sch.subject, deducted, payment, finalRemarks);
     saveData();
     refreshView();
     showToast(`✅ 已消课：${sch.studentName} · ${sch.subject}（${deducted}节）`, 'circle-check');
@@ -704,7 +679,6 @@
         const course = (student.courses || []).find((c) => c.id === sch.courseId || c.name === sch.subject);
         if (course) course.remainingLessons += deducted;
       }
-      addLedgerEntry('refund', sch.studentId, sch.studentName, sch.subject, deducted, 0, '已消课改请假，退还课时');
       showToast(`🏖️ 已消课的课程改为请假，退还 ${deducted} 节课时`, 'circle-check');
     } else {
       showToast(`🏖️ 已为 ${sch.studentName} 办理请假`, 'circle-check');
@@ -729,7 +703,6 @@
         const course = (student.courses || []).find((c) => c.id === sch.courseId || c.name === sch.subject);
         if (course) course.remainingLessons += deducted;
       }
-      addLedgerEntry('refund', sch.studentId, sch.studentName, sch.subject, deducted, 0, '撤销消课，退还课时');
     }
     // 请假撤销：App 语义下请假本不扣课时，直接还原状态即可
 
@@ -755,39 +728,6 @@
     saveData();
   }
 
-  // ==========================================
-  // 课时台账：充值/消课/退费 全流水（对账依据）
-  // 存储：edu_scheduler_ledger_v2（随云同步 checkInLogs 一同走?否——独立键，由 saveData 一起推送）
-  // 类型：recharge 充值 / consume 消课 / refund 退课时
-  // ==========================================
-  let ledger = [];
-  const STORAGE_KEY_LEDGER = 'edu_scheduler_ledger_v2';
-
-  function normalizeLedgerEntry(e) {
-    if (!e.id) e.id = 'led_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
-    if (!e.type) e.type = 'recharge';
-    if (!e.time) e.time = new Date().toISOString();
-    return e;
-  }
-
-  function addLedgerEntry(type, studentId, studentName, courseName, lessons, amount, note) {
-    const entry = normalizeLedgerEntry({ type, studentId, studentName, courseName, lessons, amount: amount || 0, note: note || '', time: new Date().toISOString() });
-    ledger.push(entry);
-    localStorage.setItem(STORAGE_KEY_LEDGER, JSON.stringify(ledger));
-    return entry;
-  }
-
-  function loadLedger() {
-    try {
-      ledger = JSON.parse(localStorage.getItem(STORAGE_KEY_LEDGER) || '[]').map(normalizeLedgerEntry);
-    } catch (e) { ledger = []; }
-    return ledger;
-  }
-
-  function getStudentLedger(studentId) {
-    return ledger.filter((e) => e.studentId === studentId).slice().sort((a, b) => (b.time || '').localeCompare(a.time || ''));
-  }
-
   // 新购/充值课时包（自动抵扣同课程名欠课）
   function purchaseCoursePack(studentId, courseName, lessons, unitPrice) {
     const student = students.find((st) => st.id === studentId);
@@ -795,32 +735,28 @@
     normalizeStudent(student);
     migrateStudentCourses(student);
 
+    let remaining = lessons;
     let remark = '';
-    const debtBefore = getStudentDebts(studentId).find((x) => x.courseName === courseName);
-    const owedBefore = debtBefore ? debtBefore.amount : 0;
+    const repaid = repayDebt(studentId, courseName, lessons);
+    if (repaid > 0) {
+      remaining -= repaid;
+      remark = ` (自动抵扣欠课 ${repaid} 节)`;
+    }
 
     const existing = (student.courses || []).find((c) => c.name === courseName);
     if (existing) {
-      existing.remainingLessons += lessons;
+      existing.remainingLessons += remaining;
       if (unitPrice > 0) existing.unitPrice = unitPrice;
     } else {
       student.courses.push({
         id: 'course_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
         name: courseName,
-        remainingLessons: lessons,
+        remainingLessons: remaining,
         unitPrice,
       });
     }
 
-    // 充值全额计入余额后，按新余额重算欠课（余额转正则欠课自动清除）
-    syncDebtForCourse(studentId, courseName, existing ? existing.remainingLessons : lessons);
-    const debtAfter = getStudentDebts(studentId).find((x) => x.courseName === courseName);
-    const owedAfter = debtAfter ? debtAfter.amount : 0;
-    const repaid = Math.max(0, owedBefore - owedAfter);
-    if (repaid > 0) remark = ` (自动抵扣欠课 ${repaid} 节)`;
-
     saveData();
-    addLedgerEntry('recharge', studentId, student.name, courseName, lessons, lessons * (unitPrice || 0), remark);
     refreshView();
     showToast(`💳 ${student.name} 充值「${courseName}」${lessons} 节${remark}`, 'circle-check');
   }
@@ -849,6 +785,9 @@
       renderCalendarGrid();
       updateStats();
     });
+
+    safeBind('btnQrSync', 'click', openQrSyncModal);
+    safeBind('btnCloseQrModal', 'click', () => hideModal('modalQrSync'));
 
     safeBind('btnCloudSync', 'click', () => {
       const el = document.getElementById('inputSyncKey');
@@ -925,10 +864,10 @@
 
     document.querySelectorAll('.filter-student-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {
-        document.querySelectorAll('.filter-student-btn').forEach((b) => b.classList.remove('active', 'bg-amber-500', 'text-white'));
-        document.querySelectorAll('.filter-student-btn').forEach((b) => b.classList.add('text-slate-600'));
-        e.target.classList.add('active', 'bg-amber-500', 'text-white');
-        e.target.classList.remove('text-slate-600');
+        document.querySelectorAll('.filter-student-btn').forEach((b) => b.classList.remove('active'));
+        document.querySelectorAll('.filter-student-btn').forEach((b) => b.classList.add('lm-t2'));
+        e.target.classList.add('active');
+        e.target.classList.remove('lm-t2');
         currentFilter = e.target.getAttribute('data-filter');
         renderStudentList();
       });
@@ -1036,7 +975,7 @@
   // ==========================================
   // 分页导航（课表/学员/财务/设置）
   // ==========================================
-  const PAGE_IDS = ['pageDashboard', 'pageSchedule', 'pageStudents', 'pageFinance', 'pageSettings'];
+  const PAGE_IDS = ['pageSchedule', 'pageStudents', 'pageFinance', 'pageSettings'];
 
   function switchPage(page) {
     PAGE_IDS.forEach((id) => {
@@ -1047,22 +986,10 @@
     const activeEl = document.getElementById('page' + page.charAt(0).toUpperCase() + page.slice(1));
     if (window.uiAnim && activeEl) window.uiAnim.viewIn(activeEl);
 
-    // 桌面侧栏按钮高亮（文字白、激活底色跟随功能色）
-    const pageAccent = { dashboard: 'bg-amber-500/90', schedule: 'bg-amber-500/90', students: 'bg-amber-500/90', finance: 'bg-amber-500/90', settings: 'bg-amber-500/90' };
-    // 兼容旧遗留：settings 页曾有 sky 高亮残留，激活时统一清理
-    ['bg-sky-600/90', 'bg-emerald-600/90', 'bg-rose-500/90'].forEach((c) => document.querySelectorAll('#mainSideNav .' + c.replace('/', '\\/')).forEach((b) => b.classList.remove(c)));
+    // 桌面侧栏按钮高亮：只切 active，配色统一由 css/desktop-theme.css 负责
     document.querySelectorAll('.nav-page-btn[data-page]').forEach((btn) => {
       const active = btn.getAttribute('data-page') === page;
       btn.classList.toggle('active', active);
-      // 清掉所有功能色底再按需加
-      Object.values(pageAccent).forEach((c) => btn.classList.remove(c));
-      if (active) {
-        btn.classList.remove('text-slate-400');
-        btn.classList.add(pageAccent[page] || 'bg-amber-500/90', 'text-white');
-      } else {
-        btn.classList.add('text-slate-400');
-        btn.classList.remove('bg-amber-500/90', 'text-white');
-      }
       const icon = btn.querySelector('i.fa-solid');
       if (icon) icon.classList.toggle('is-active', active);
     });
@@ -1070,9 +997,9 @@
     // 手机底部导航高亮
     document.querySelectorAll('.mnav-btn').forEach((btn) => {
       const active = btn.getAttribute('data-page') === page;
-      btn.classList.toggle('text-amber-600', active);
+      btn.classList.toggle('lm-t1', active);
       btn.classList.toggle('font-bold', active);
-      btn.classList.toggle('text-slate-700', !active);
+      btn.classList.toggle('lm-t2', !active);
     });
 
     // 课表页隐藏手机浮动栏（因为课表有自己的操作），其他页显示
@@ -1081,264 +1008,12 @@
 
     if (page === 'students') renderPageStudents();
     if (page === 'finance') renderPageFinance();
-    if (page === 'dashboard') renderDashboard();
-  }
-
-  // ==========================================
-  // 校务看板（电脑端首页）
-  // ==========================================
-  function renderDashboard() {
-    const todayStr = formatDate(new Date());
-    const dateLabel = document.getElementById('dashDateLabel');
-    if (dateLabel) {
-      const week = ['日', '一', '二', '三', '四', '五', '六'][new Date().getDay()];
-      dateLabel.textContent = `${new Date().getMonth() + 1}月${new Date().getDate()}日 星期${week}`;
-    }
-
-    // ---- KPI 行 ----
-    const todaySchedules = schedules.filter((s) => s.date === todayStr);
-    const todayDone = todaySchedules.filter((s) => s.status === SCHEDULE_STATUS.COMPLETED).length;
-    const todayPending = todaySchedules.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).length;
-    const monthPrefix = todayStr.slice(0, 7);
-    const monthLogs = checkInLogs.filter((l) => (l.checkInTime || '').startsWith(monthPrefix));
-    const monthLessons = monthLogs.reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
-    const monthValue = monthLogs.reduce((acc, l) => acc + (l.paymentAmount || 0), 0);
-    const debtors = debts.filter((d) => d.amount > 0);
-    const debtTotal = debtors.reduce((n, d) => n + d.amount, 0);
-
-    const kpiRow = document.getElementById('dashKpiRow');
-    if (kpiRow) {
-      kpiRow.innerHTML = `
-        <div class="bg-white border border-amber-100 rounded-2xl p-5">
-          <div class="text-[11px] text-slate-400 font-bold">今日课程</div>
-          <div class="text-3xl font-black text-slate-800 mt-1.5">${todaySchedules.length} <span class="text-sm font-bold text-slate-400">节</span></div>
-          <div class="text-[11px] font-semibold mt-1.5 text-amber-600"><i class="fa-solid fa-circle-check mr-1"></i>已消 ${todayDone} · 待上 ${todayPending}</div>
-        </div>
-        <div class="bg-white border border-amber-100 rounded-2xl p-5">
-          <div class="text-[11px] text-slate-400 font-bold">本月课消</div>
-          <div class="text-3xl font-black text-slate-800 mt-1.5">${monthLessons.toFixed(0)} <span class="text-sm font-bold text-slate-400">节</span></div>
-          <div class="text-[11px] font-semibold mt-1.5 text-slate-400">${monthLogs.length} 条消课记录</div>
-        </div>
-        <div class="bg-white border border-amber-100 rounded-2xl p-5">
-          <div class="text-[11px] text-slate-400 font-bold">本月收入</div>
-          <div class="text-3xl font-black text-slate-800 mt-1.5">¥${monthValue.toFixed(0)}</div>
-          <div class="text-[11px] font-semibold mt-1.5 text-slate-400">课消价值合计</div>
-        </div>
-        <div class="bg-white border ${debtors.length ? 'border-rose-200' : 'border-amber-100'} rounded-2xl p-5">
-          <div class="text-[11px] font-bold ${debtors.length ? 'text-rose-500' : 'text-slate-400'}">欠费预警</div>
-          <div class="text-3xl font-black mt-1.5 ${debtors.length ? 'text-rose-600' : 'text-slate-300'}">${debtors.length} <span class="text-sm font-bold ${debtors.length ? 'text-rose-300' : 'text-slate-300'}">人</span></div>
-          <div class="text-[11px] font-semibold mt-1.5 ${debtors.length ? 'text-rose-500' : 'text-slate-300'}">共欠 ${debtTotal} 节${debtors.length ? ' · 需跟进' : ''}</div>
-        </div>`;
-    }
-
-    // ---- 今日时间轴 ----
-    const pendingBadge = document.getElementById('dashPendingBadge');
-    if (pendingBadge) {
-      pendingBadge.classList.toggle('hidden', todayPending === 0);
-      if (todayPending) pendingBadge.textContent = `${todayPending} 节待消课`;
-    }
-    const todayList = document.getElementById('dashTodayList');
-    if (todayList) {
-      const sorted = todaySchedules.slice().sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
-      if (!sorted.length) {
-        todayList.innerHTML = `<div class="text-center py-10 text-slate-400 text-xs"><i class="fa-solid fa-mug-hot text-2xl mb-2 block opacity-40"></i>今天没有排课</div>`;
-      } else {
-        todayList.innerHTML = sorted.map((s) => {
-          const done = s.status === SCHEDULE_STATUS.COMPLETED;
-          const isLeave = s.status === SCHEDULE_STATUS.STUDENT_LEAVE;
-          const dot = done ? '#10b981' : isLeave ? '#9ca3af' : '#f59e0b';
-          const statusHtml = done
-            ? '<span class="text-[11px] font-bold text-emerald-600 shrink-0">已消课</span>'
-            : isLeave
-              ? '<span class="text-[10px] font-bold px-2 py-1 rounded-full bg-slate-100 text-slate-500 shrink-0">请假待补</span>'
-              : `<button class="dash-checkin-btn shrink-0 text-[11px] font-bold px-3.5 py-1.5 rounded-full bg-amber-500 text-white hover:bg-amber-600 transition" data-id="${s.id}">消课</button>`;
-          const student = students.find((st) => st.id === s.studentId);
-          const debtTag = student ? (debts.find((d) => d.studentId === student.id && d.amount > 0) ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-600 ml-1.5">欠课</span>' : '') : '';
-          return `<div class="flex items-center justify-between px-5 py-3 border-t border-slate-100">
-            <div class="flex items-center gap-3 min-w-0">
-              <span class="w-2 h-2 rounded-full shrink-0" style="background:${dot}"></span>
-              <div class="text-[13px] font-bold text-slate-800 truncate">${s.startTime || '--'} ${s.subject || ''} · ${s.studentName || ''}${debtTag}</div>
-            </div>
-            ${statusHtml}
-          </div>`;
-        }).join('');
-      }
-      todayList.querySelectorAll('.dash-checkin-btn').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const sch = schedules.find((x) => x.id === btn.getAttribute('data-id'));
-          if (sch) openScheduleActionMenu(sch);
-        });
-      });
-    }
-
-    // ---- 课时预警 ----
-    const lowList = document.getElementById('dashLowList');
-    if (lowList) {
-      const lowStudents = students
-        .map((st) => {
-          normalizeStudent(st);
-          const lowCourses = (st.courses || []).filter((c) => c.remainingLessons <= 2);
-          return { st, lowCourses };
-        })
-        .filter((x) => x.lowCourses.length);
-      if (!lowStudents.length) {
-        lowList.innerHTML = `<div class="text-center py-8 text-slate-400 text-xs"><i class="fa-solid fa-shield-heart text-2xl mb-2 block opacity-40"></i>暂无课时预警</div>`;
-      } else {
-        lowList.innerHTML = lowStudents.slice(0, 8).map(({ st, lowCourses }) => {
-          const min = Math.min(...lowCourses.map((c) => c.remainingLessons));
-          return `<div class="flex items-center justify-between px-5 py-3 border-t border-slate-100 cursor-pointer hover:bg-slate-50 transition dash-low-student" data-id="${st.id}">
-            <span class="text-[13px] font-bold text-slate-800 truncate">${st.name} <span class="text-[11px] text-slate-400 font-semibold">· ${lowCourses.map((c) => c.name).join('、')}</span></span>
-            <span class="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0 ml-2 ${min < 0 ? 'bg-rose-100 text-rose-700' : 'bg-rose-50 text-rose-600'}">剩 ${min} 节</span>
-          </div>`;
-        }).join('');
-        lowList.querySelectorAll('.dash-low-student').forEach((el) => {
-          el.addEventListener('click', () => {
-            switchPage('students');
-            setTimeout(() => openStudentDetail(el.getAttribute('data-id')), 150);
-          });
-        });
-      }
-    }
-
-    // ---- 课消趋势（本周/上周标签切换，单独柱状图） ----
-    const weekBars = document.getElementById('dashWeekBars');
-    const weekSummary = document.getElementById('dashWeekSummary');
-    const weekTabs = document.getElementById('dashWeekTabs');
-    if (weekBars && weekSummary) {
-      const renderWeekBars = (which) => {
-        const names = ['一', '二', '三', '四', '五', '六', '日'];
-        const base = which === 'prev' ? addDays(currentWeekStart, -7) : currentWeekStart;
-        const counts = [];
-        let total = 0;
-        for (let i = 0; i < 7; i++) {
-          const dstr = formatDate(addDays(base, i));
-          const n = checkInLogs.filter((l) => l.date === dstr).reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
-          counts.push(n);
-          total += n;
-        }
-        const max = Math.max(...counts, 1);
-        weekSummary.innerHTML = `${which === 'prev' ? '上周' : '本周'}合计 <b class="text-slate-700">${total} 节</b>`;
-        weekBars.innerHTML = counts.map((n, i) => {
-          const h = Math.max(4, Math.round((n / max) * 100));
-          return `<div class="flex-1 h-full flex flex-col items-center gap-1.5 min-w-0">
-            <div class="w-full flex-1 flex items-end min-h-0">
-              <div class="w-full rounded-md ${n > 0 ? 'bg-gradient-to-b from-amber-400 to-amber-500' : 'bg-slate-100'}" style="height:${h}%"></div>
-            </div>
-            <span class="text-[10px] font-bold ${n > 0 ? 'text-slate-700' : 'text-slate-400'} whitespace-nowrap">${names[i]} ${n}</span>
-          </div>`;
-        }).join('');
-        if (weekTabs) {
-          weekTabs.querySelectorAll('.dash-week-tab').forEach((b) => {
-            const on = b.getAttribute('data-week') === which;
-            b.classList.toggle('bg-slate-800', on);
-            b.classList.toggle('text-white', on);
-            b.classList.toggle('bg-slate-100', !on);
-            b.classList.toggle('text-slate-500', !on);
-          });
-        }
-      };
-      renderWeekBars(window.__dashWeekTab || 'cur');
-      if (weekTabs && !weekTabs.dataset.bound) {
-        weekTabs.dataset.bound = '1';
-        weekTabs.querySelectorAll('.dash-week-tab').forEach((b) => {
-          b.addEventListener('click', () => {
-            window.__dashWeekTab = b.getAttribute('data-week');
-            renderWeekBars(window.__dashWeekTab);
-          });
-        });
-      }
-    }
-
-    // ---- 本月老师课时 ----
-    const tStats = document.getElementById('dashTeacherStats');
-    if (tStats) {
-      // 按老师身份归组（改名不拆分）：流水ID → 排课反查 → 改名别名映射
-      const schById = new Map(schedules.map((s) => [s.id, s]));
-      // 改名别名：旧名 → 当前老师 ID（用户在统计列表手动指认后持久化）
-      let nameAlias = {};
-      try { nameAlias = JSON.parse(localStorage.getItem('edu_scheduler_name_alias_v1') || '{}'); } catch (e) { nameAlias = {}; }
-      const resolveTeacher = (l) => {
-        if (l.teacherId) { const t = teachers.find((x) => x.id === l.teacherId); if (t) return t; }
-        const sch = schById.get(l.scheduleId);
-        if (sch && sch.teacherId) { const t = teachers.find((x) => x.id === sch.teacherId); if (t) return t; }
-        if (l.teacherName) {
-          const aliasId = nameAlias[l.teacherName];
-          if (aliasId) { const t = teachers.find((x) => x.id === aliasId); if (t) return t; }
-          const t = teachers.find((x) => x.name === l.teacherName);
-          if (t) return t;
-        }
-        return null;
-      };
-      const byTeacher = {};
-      monthLogs.forEach((l) => {
-        const t = resolveTeacher(l);
-        const key = t ? t.id : ('name:' + (l.teacherName || ''));
-        const displayName = t ? t.name : (l.teacherName || '未指定老师');
-        if (!byTeacher[key]) byTeacher[key] = { name: displayName, lessons: 0, value: 0, ref: t || null };
-        byTeacher[key].lessons += l.deductedLessons || 0;
-        byTeacher[key].value += l.paymentAmount || 0;
-      });
-      const rows = Object.values(byTeacher).sort((a, b) => b.lessons - a.lessons);
-      if (!rows.length) {
-        tStats.innerHTML = `<div class="text-center py-8 text-slate-400 text-xs"><i class="fa-solid fa-chalkboard-user text-2xl mb-2 block opacity-40"></i>本月暂无消课</div>`;
-      } else {
-        tStats.innerHTML = rows.map((v) => {
-          // 应付工资：优先老师课时单价 × 节数；没设单价则显示"未设置单价"
-          const payable = v.ref && v.ref.hourlyRate > 0 ? v.lessons * v.ref.hourlyRate : null;
-          // 孤儿行（未匹配到当前老师）：给一个"归到…"下拉，手动指认改名前后关系
-          const orphan = !v.ref;
-          const assignSel = orphan && teachers.length ? `
-            <select class="dash-assign-teacher mt-1 block w-full text-[10px] font-bold text-slate-500 bg-slate-100 border-none rounded-lg px-2 py-1 outline-none" data-old="${v.name === '未指定老师' ? '' : v.name}">
-              <option value="">归到哪位老师？</option>
-              ${teachers.map((t) => `<option value="${t.id}">${t.name}</option>`).join('')}
-            </select>` : '';
-          return `
-          <div class="flex items-center justify-between px-5 py-3 border-t border-slate-100">
-            <div class="min-w-0">
-              <div class="text-[13px] font-bold text-slate-800">${v.name}${orphan ? ' <span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 align-middle">待认领</span>' : ''}</div>
-              ${payable === null && !orphan ? '<div class="text-[10px] text-slate-400">教师管理里设置课时单价后显示应付</div>' : ''}
-              ${assignSel}
-            </div>
-            <div class="flex items-center gap-2 shrink-0">
-              <span class="text-[13px] font-black text-slate-800">${v.lessons} 节</span>
-              ${payable !== null ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">应付 ¥${payable.toFixed(0)}</span>` : ''}
-            </div>
-          </div>`;
-        }).join('');
-        // 绑定"归到"：有旧名的写别名表；"未指定老师"的直接回写流水 teacherId；重渲染
-        tStats.querySelectorAll('.dash-assign-teacher').forEach((sel) => {
-          sel.addEventListener('change', () => {
-            const oldName = sel.getAttribute('data-old');
-            const tid = sel.value;
-            if (!tid) return;
-            const tName = (teachers.find((t) => t.id === tid) || {}).name || tid;
-            if (oldName) {
-              let alias = {};
-              try { alias = JSON.parse(localStorage.getItem('edu_scheduler_name_alias_v1') || '{}'); } catch (e) { alias = {}; }
-              alias[oldName] = tid;
-              localStorage.setItem('edu_scheduler_name_alias_v1', JSON.stringify(alias));
-            } else {
-              // 无名流水：直接补上老师身份
-              checkInLogs.forEach((l) => {
-                if (resolveTeacher(l) === null && !(l.teacherName || '')) { l.teacherId = tid; l.teacherName = tName; }
-              });
-              localStorage.setItem(STORAGE_KEY_CHECKIN_LOGS, JSON.stringify(checkInLogs));
-            }
-            renderDashboard();
-            showToast(`历史课时已归到 ${tName}`, 'circle-check');
-          });
-        });
-      }
-    }
   }
 
   function bindPageNav() {
     document.querySelectorAll('.nav-page-btn[data-page], .mnav-btn[data-page]').forEach((btn) => {
       btn.addEventListener('click', () => switchPage(btn.getAttribute('data-page')));
     });
-    // 看板：新增排课 / 预警直通
-    safeBind('btnDashNewSchedule', 'click', () => { switchPage('schedule'); setTimeout(() => openScheduleModalForNew(), 200); });
-    safeBind('btnDashGotoLow', 'click', () => switchPage('students'));
     // 底部导航"学员"按钮沿用原 btnMobileOpenStudents id
     safeBind('btnMobileOpenStudents', 'click', () => switchPage('students'));
     safeBind('btnMobileNewStudent', 'click', () => openStudentModal(null));
@@ -1349,6 +1024,7 @@
       if (el) el.value = schoolSyncKey;
       showModal('modalSyncKey');
     });
+    safeBind('btnPageQrSync', 'click', openQrSyncModal);
     safeBind('btnPageManageTeachers', 'click', openTeacherModal);
     safeBind('btnPageImport', 'click', () => {
       const el = document.getElementById('btnImport');
@@ -1373,94 +1049,44 @@
   function renderPageStudents() {
     const container = document.getElementById('pageStudentsList');
     if (!container) return;
-    const studentsPage = document.getElementById('pageStudents');
-    // 状态筛选条（首次渲染时插入标题行下方）
-    let filterBar = document.getElementById('pageStudentStatusFilter');
-    if (!filterBar && studentsPage) {
-      filterBar = document.createElement('div');
-      filterBar.id = 'pageStudentStatusFilter';
-      filterBar.className = 'flex items-center gap-2 flex-wrap';
-      filterBar.innerHTML = `
-        <button class="pstu-filter active text-[11px] font-bold px-3.5 py-1.5 rounded-full bg-slate-800 text-white transition" data-st="active">在读</button>
-        <button class="pstu-filter text-[11px] font-bold px-3.5 py-1.5 rounded-full bg-white text-slate-600 shadow-sm transition" data-st="paused">停课中</button>
-        <button class="pstu-filter text-[11px] font-bold px-3.5 py-1.5 rounded-full bg-white text-slate-600 shadow-sm transition" data-st="archived">已结课</button>
-        <span class="text-[10px] text-slate-400 font-semibold ml-1">按状态查看学员</span>`;
-      studentsPage.querySelector('.max-w-3xl').insertBefore(filterBar, studentsPage.querySelector('#pageStudentsList'));
-      filterBar.querySelectorAll('.pstu-filter').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          filterBar.querySelectorAll('.pstu-filter').forEach((b) => {
-            b.classList.remove('active', 'bg-slate-800', 'text-white');
-            b.classList.add('bg-white', 'text-slate-600');
-          });
-          btn.classList.add('active', 'bg-slate-800', 'text-white');
-          btn.classList.remove('bg-white', 'text-slate-600');
-          renderPageStudents();
-        });
-      });
-    }
-    const curStatus = filterBar ? (filterBar.querySelector('.pstu-filter.active')?.getAttribute('data-st') || 'active') : 'active';
-    const visibleStudents = students.filter((st) => (st.status || 'active') === curStatus);
-
-    if (visibleStudents.length === 0) {
-      container.innerHTML = `<div class="col-span-full text-center py-16 text-slate-400 text-sm">${curStatus === 'active' ? '还没有学员，点击右上角"新建学员"开始' : `暂无「${STUDENT_STATUS_LABEL[curStatus]}」学员`}</div>`;
+    if (students.length === 0) {
+      container.innerHTML = `<div class="col-span-full text-center py-16 lm-t3 text-sm">还没有学员，点击右上角"新建学员"开始</div>`;
       return;
     }
-    container.innerHTML = visibleStudents.map((student) => {
+    container.innerHTML = students.map((student) => {
       normalizeStudent(student);
       migrateStudentCourses(student);
       const totalLessons = student.courses.reduce((acc, c) => acc + c.remainingLessons, 0);
       const isLow = totalLessons <= 2;
       const themeColor = getThemeBadgeStyle(student.colorTheme || 'amber');
       const studentDebts = getStudentDebts(student.id);
-      const stBadge = student.status === 'paused'
-        ? '<span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">停课中</span>'
-        : student.status === 'archived'
-          ? '<span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-500">已结课</span>'
-          : '';
-      const statusActions = student.status === 'active'
-        ? `<button class="py-2 rounded-lg bg-amber-50 text-amber-700 text-[11px] font-bold border border-amber-200 hover:bg-amber-100 transition page-pause-student" data-id="${student.id}"><i class="fa-solid fa-pause"></i> 停课</button>`
-        : student.status === 'paused'
-          ? `<button class="py-2 rounded-lg bg-emerald-50 text-emerald-700 text-[11px] font-bold border border-emerald-200 hover:bg-emerald-100 transition page-resume-student" data-id="${student.id}"><i class="fa-solid fa-play"></i> 复课</button>
-             <button class="py-2 rounded-lg bg-slate-100 text-slate-600 text-[11px] font-bold border border-slate-200 hover:bg-slate-200 transition page-archive-student" data-id="${student.id}"><i class="fa-solid fa-flag-checkered"></i> 结课</button>`
-          : `<button class="py-2 rounded-lg bg-slate-100 text-slate-600 text-[11px] font-bold border border-slate-200 hover:bg-slate-200 transition page-restore-student" data-id="${student.id}"><i class="fa-solid fa-rotate-left"></i> 恢复在读</button>`;
       return `
-      <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs space-y-2 ${student.status === 'archived' ? 'opacity-60' : ''}" data-student-page-id="${student.id}">
+      <div class="lm-stat-card p-4 space-y-2" data-student-page-id="${student.id}">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2.5">
             <div class="w-9 h-9 rounded-full ${themeColor.bg} ${themeColor.text} flex items-center justify-center font-bold text-sm shrink-0">${student.name.substring(0, 1)}</div>
             <div>
-              <div class="font-bold text-sm text-slate-800 flex items-center gap-1.5">${student.name}${stBadge}</div>
-              <div class="text-[10px] text-slate-400"><i class="fa-solid fa-phone text-[9px]"></i> ${student.phone || '无电话'}</div>
+              <div class="font-bold text-sm lm-t1">${student.name}</div>
+              <div class="text-[10px] lm-t3"><i class="fa-solid fa-phone text-[9px]"></i> ${student.phone || '无电话'}</div>
             </div>
           </div>
         </div>
         ${studentDebts.length ? `<div class="text-[10px] text-rose-600 bg-rose-50 border border-rose-200 px-2 py-1 rounded-lg"><i class="fa-solid fa-triangle-exclamation"></i> 欠课: ${studentDebts.map((d) => `${d.courseName} ${d.amount}节`).join('、')}</div>` : ''}
         <div class="space-y-1">
           ${student.courses.map((c) => `
-            <div class="flex items-center justify-between text-[11px] bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100">
-              <span class="font-semibold text-slate-700">${c.name}</span>
-              <span class="font-bold ${c.remainingLessons <= 2 ? 'text-rose-600' : 'text-slate-500'}">剩${c.remainingLessons}课时${c.unitPrice > 0 ? ` · ¥${c.unitPrice}/节` : ''}</span>
+            <div class="flex items-center justify-between text-[11px] lm-soft px-2.5 py-1.5 rounded-lg lm-hairline">
+              <span class="font-semibold lm-t1">${c.name}</span>
+              <span class="font-bold ${c.remainingLessons <= 2 ? 'text-rose-600' : 'lm-t2'}">剩${c.remainingLessons}课时${c.unitPrice > 0 ? ` · ¥${c.unitPrice}/节` : ''}</span>
             </div>`).join('')}
         </div>
         <div class="flex gap-2 pt-1">
-          <button class="flex-1 py-2 rounded-lg bg-sky-50 text-sky-700 text-[11px] font-bold border border-sky-200 hover:bg-sky-100 transition page-detail-student" data-id="${student.id}"><i class="fa-solid fa-circle-info"></i> 详情</button>
-          <button class="flex-1 py-2 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-bold page-edit-student" data-id="${student.id}"><i class="fa-solid fa-pen-to-square"></i> 编辑</button>
-          ${student.status === 'active' ? `<button class="flex-1 py-2 rounded-lg bg-emerald-500 text-white text-[11px] font-bold page-recharge-student" data-id="${student.id}"><i class="fa-solid fa-circle-plus"></i> 充值</button>` : ''}
-        </div>
-        <div class="flex gap-2">
-          ${statusActions}
+          <button class="flex-1 py-2 rounded-lg btn-quiet text-[11px] font-bold transition page-detail-student" data-id="${student.id}"><i class="fa-solid fa-circle-info"></i> 详情</button>
+          <button class="flex-1 py-2 rounded-lg btn-quiet text-[11px] font-bold transition page-edit-student" data-id="${student.id}"><i class="fa-solid fa-pen-to-square"></i> 编辑</button>
+          <button class="flex-1 py-2 rounded-lg lm-btn-ink text-white text-[11px] font-bold transition page-recharge-student" data-id="${student.id}"><i class="fa-solid fa-circle-plus"></i> 充值</button>
         </div>
       </div>`;
     }).join('');
 
-    const setStatus = (id, status) => {
-      const st = students.find((s) => s.id === id);
-      if (!st) return;
-      st.status = status;
-      saveData();
-      renderPageStudents();
-      showToast(`${st.name} 已${status === 'paused' ? '停课' : status === 'archived' ? '结课' : '恢复在读'}`, 'circle-check');
-    };
     container.querySelectorAll('.page-detail-student').forEach((btn) => {
       btn.addEventListener('click', () => {
         const st = students.find((s) => s.id === btn.getAttribute('data-id'));
@@ -1479,10 +1105,6 @@
         if (st) openRechargeModal(st);
       });
     });
-    container.querySelectorAll('.page-pause-student').forEach((btn) => btn.addEventListener('click', () => setStatus(btn.getAttribute('data-id'), 'paused')));
-    container.querySelectorAll('.page-resume-student').forEach((btn) => btn.addEventListener('click', () => setStatus(btn.getAttribute('data-id'), 'active')));
-    container.querySelectorAll('.page-archive-student').forEach((btn) => btn.addEventListener('click', () => setStatus(btn.getAttribute('data-id'), 'archived')));
-    container.querySelectorAll('.page-restore-student').forEach((btn) => btn.addEventListener('click', () => setStatus(btn.getAttribute('data-id'), 'active')));
   }
 
   // 财务分页：完整经营面板（本月课消/收入明细/欠课名单）
@@ -1502,63 +1124,63 @@
 
     container.innerHTML = `
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div class="bg-white border border-amber-100 rounded-2xl p-4">
-          <div class="text-[10px] text-amber-600/70 font-bold">本月课消</div>
-          <div class="text-xl font-black text-amber-700 mt-1">${monthLessons.toFixed(1)} <span class="text-xs">节</span></div>
+        <div class="lm-stat-card rounded-2xl p-4">
+          <div class="text-[10px] font-bold lm-t3">本月课消</div>
+          <div class="text-xl font-black lm-t1 mt-1">${monthLessons.toFixed(1)} <span class="text-xs">节</span></div>
         </div>
-        <div class="bg-white border border-emerald-100 rounded-2xl p-4">
-          <div class="text-[10px] text-emerald-600/70 font-bold">课消价值</div>
-          <div class="text-xl font-black text-emerald-700 mt-1">¥${monthValue.toFixed(0)}</div>
+        <div class="lm-stat-card rounded-2xl p-4">
+          <div class="text-[10px] font-bold lm-t3">课消价值</div>
+          <div class="text-xl font-black lm-t1 mt-1">¥${monthValue.toFixed(0)}</div>
         </div>
-        <div class="bg-white border border-sky-100 rounded-2xl p-4">
-          <div class="text-[10px] text-sky-600/70 font-bold">待消存量</div>
-          <div class="text-xl font-black text-sky-700 mt-1">${totalRemaining.toFixed(1)} <span class="text-xs">节</span></div>
+        <div class="lm-stat-card rounded-2xl p-4">
+          <div class="text-[10px] font-bold lm-t3">待消存量</div>
+          <div class="text-xl font-black lm-t1 mt-1">${totalRemaining.toFixed(1)} <span class="text-xs">节</span></div>
         </div>
-        <div class="bg-white border ${debtors.length ? 'border-rose-200' : 'border-slate-100'} rounded-2xl p-4">
-          <div class="text-[10px] ${debtors.length ? 'text-rose-600/70' : 'text-slate-400'} font-bold">欠课学员</div>
-          <div class="text-xl font-black ${debtors.length ? 'text-rose-600' : 'text-slate-300'} mt-1">${debtors.length} <span class="text-xs">人</span></div>
+        <div class="lm-stat-card rounded-2xl p-4"${debtors.length ? ' style="background:#fff1f2;"' : ''}>
+          <div class="text-[10px] font-bold ${debtors.length ? 'text-rose-600' : 'lm-t3'}">欠课学员</div>
+          <div class="text-xl font-black ${debtors.length ? 'text-rose-600' : 'lm-t3'} mt-1">${debtors.length} <span class="text-xs">人</span></div>
         </div>
       </div>
 
-      <div class="bg-white border border-slate-200 rounded-2xl p-4">
-        <div class="font-bold text-xs text-slate-800 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-receipt text-amber-500"></i> 本月收入明细（消课流水）</div>
-        ${monthLogs.length === 0 ? '<div class="text-[11px] text-slate-400 py-4 text-center">本月暂无消课记录</div>' : `
+      <div class="lm-stat-card rounded-2xl p-4">
+        <div class="font-bold text-xs lm-t1 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-receipt"></i> 本月收入明细（消课流水）</div>
+        ${monthLogs.length === 0 ? '<div class="text-[11px] lm-t3 py-4 text-center">本月暂无消课记录</div>' : `
         <div class="space-y-1.5 max-h-64 overflow-y-auto custom-scrollbar">
           ${monthLogs.map((l) => `
-            <div class="flex items-center justify-between text-[11px] bg-slate-50 px-3 py-2 rounded-lg">
+            <div class="flex items-center justify-between text-[11px] lm-soft px-3 py-2 rounded-lg">
               <div>
-                <span class="font-bold text-slate-700">${l.studentName}</span>
-                <span class="text-slate-400 ml-1.5">${l.courseName}</span>
-                ${l.remarks ? `<span class="text-amber-600 ml-1">${l.remarks}</span>` : ''}
+                <span class="font-bold lm-t1">${l.studentName}</span>
+                <span class="lm-t3 ml-1.5">${l.courseName}</span>
+                ${l.remarks ? `<span class="lm-t2 ml-1">${l.remarks}</span>` : ''}
               </div>
               <div class="text-right shrink-0 ml-2">
-                <div class="font-bold text-slate-600">${l.deductedLessons}节 ${l.paymentAmount > 0 ? `· ¥${l.paymentAmount.toFixed(0)}` : ''}</div>
-                <div class="text-[9px] text-slate-400">${(l.checkInTime || '').replace('T', ' ').slice(5, 16)}</div>
+                <div class="font-bold lm-t2">${l.deductedLessons}节 ${l.paymentAmount > 0 ? `· ¥${l.paymentAmount.toFixed(0)}` : ''}</div>
+                <div class="text-[9px] lm-t3">${(l.checkInTime || '').replace('T', ' ').slice(5, 16)}</div>
               </div>
             </div>`).join('')}
         </div>`}
       </div>
 
-      <div class="bg-white border ${debtors.length ? 'border-rose-200' : 'border-slate-200'} rounded-2xl p-4">
-        <div class="font-bold text-xs text-slate-800 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-triangle-exclamation text-rose-500"></i> 欠课名单</div>
-        ${debtors.length === 0 ? '<div class="text-[11px] text-slate-400 py-4 text-center">没有欠课学员，太棒了 🎉</div>' : `
+      <div class="lm-stat-card rounded-2xl p-4">
+        <div class="font-bold text-xs lm-t1 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-triangle-exclamation" style="color:var(--lm-pink);"></i> 欠课名单</div>
+        ${debtors.length === 0 ? '<div class="text-[11px] lm-t3 py-4 text-center">没有欠课学员，太棒了 🎉</div>' : `
         <div class="space-y-1.5">
           ${debtors.map((d) => {
             const st = students.find((s) => s.id === d.studentId);
             return `
             <div class="flex items-center justify-between text-[11px] bg-rose-50/60 px-3 py-2 rounded-lg">
-              <span class="font-bold text-slate-700">${st ? st.name : '未知学员'} · ${d.courseName}</span>
+              <span class="font-bold lm-t1">${st ? st.name : '未知学员'} · ${d.courseName}</span>
               <span class="font-black text-rose-600">欠 ${d.amount} 节</span>
             </div>`;}).join('')}
-          <div class="text-[10px] text-slate-400 pt-1">💡 到"学员"页点对应学员的"充值"按钮，会自动抵扣欠课</div>
+          <div class="text-[10px] lm-t3 pt-1">💡 到"学员"页点对应学员的"充值"按钮，会自动抵扣欠课</div>
         </div>`}
       </div>
 
-      <div class="bg-white border border-slate-200 rounded-2xl p-4">
-        <div class="font-bold text-xs text-slate-800 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-wallet text-emerald-500"></i> 课时存量价值</div>
+      <div class="lm-stat-card rounded-2xl p-4">
+        <div class="font-bold text-xs lm-t1 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-wallet"></i> 课时存量价值</div>
         <div class="flex items-baseline gap-2">
-          <span class="text-2xl font-black text-emerald-600">¥${totalStockValue.toFixed(0)}</span>
-          <span class="text-[10px] text-slate-400">全部学员剩余课时按单价折算</span>
+          <span class="text-2xl font-black lm-t1">¥${totalStockValue.toFixed(0)}</span>
+          <span class="text-[10px] lm-t3">全部学员剩余课时按单价折算</span>
         </div>
       </div>
     `;
@@ -1618,8 +1240,8 @@
       colHeader.className = `py-2 px-1 text-center transition ${isToday ? 'today-column-header' : 'bg-white'}`;
 
       colHeader.innerHTML = `
-        <div class="text-[11px] ${isToday ? 'text-amber-600 font-bold' : 'text-slate-400 font-medium'}">${weekdayNames[i]}</div>
-        <div class="text-xs sm:text-sm font-bold mt-0.5 ${isToday ? 'today-badge inline-block' : 'text-slate-700'}">
+        <div class="text-[11px] ${isToday ? 'lm-t1 font-bold' : 'lm-t3 font-medium'}">${weekdayNames[i]}</div>
+        <div class="text-xs sm:text-sm font-bold mt-0.5 ${isToday ? 'today-badge inline-block' : 'lm-t1'}">
           ${dayDate.getMonth() + 1}/${dayDate.getDate()}
         </div>
       `;
@@ -1699,8 +1321,8 @@
 
     if (filtered.length === 0) {
       container.innerHTML = `
-        <div class="text-center py-10 text-slate-400 text-xs">
-          <i class="fa-solid fa-user-slash text-2xl mb-2 text-slate-300"></i>
+        <div class="text-center py-10 lm-t3 text-xs">
+          <i class="fa-solid fa-user-slash text-2xl mb-2 lm-t3"></i>
           <p>暂无符合条件的学生</p>
         </div>
       `;
@@ -1709,7 +1331,7 @@
 
     filtered.forEach((student) => {
       const card = document.createElement('div');
-      card.className = 'student-card bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs flex flex-col gap-2 group relative';
+      card.className = 'student-card bg-white p-3 rounded-xl border lm-hairline shadow-2xs flex flex-col gap-2 group relative';
       card.setAttribute('draggable', 'true');
       card.setAttribute('data-student-id', student.id);
 
@@ -1726,9 +1348,9 @@
       const coursesHtml = student.courses
         .map(
           (c) => `
-        <div class="flex items-center justify-between text-[11px] bg-slate-50/90 px-2.5 py-1 rounded-lg border border-slate-100">
-          <span class="font-semibold text-slate-700 truncate">${c.name}${c.unitPrice > 0 ? `<span class="text-slate-400 font-normal ml-1">¥${c.unitPrice}/节</span>` : ''}</span>
-          <span class="font-bold shrink-0 ml-1.5 ${c.remainingLessons <= 2 ? 'text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200' : 'text-slate-500'}">
+        <div class="flex items-center justify-between text-[11px] lm-soft px-2.5 py-1 rounded-lg lm-hairline">
+          <span class="font-semibold lm-t1 truncate">${c.name}${c.unitPrice > 0 ? `<span class="lm-t3 font-normal ml-1">¥${c.unitPrice}/节</span>` : ''}</span>
+          <span class="font-bold shrink-0 ml-1.5 ${c.remainingLessons <= 2 ? 'text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200' : 'lm-t2'}">
             ${c.remainingLessons <= 2 ? '<span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping inline-block mr-1"></span>' : ''}剩${c.remainingLessons}课时
           </span>
         </div>
@@ -1739,18 +1361,18 @@
       card.innerHTML = `
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2.5">
-            <div class="text-slate-300 group-hover:text-amber-500 transition cursor-grab">
+            <div class="lm-t3 group-hover:text-[#111111] transition cursor-grab">
               <i class="fa-solid fa-grip-vertical text-xs"></i>
             </div>
             <div class="w-8 h-8 rounded-full ${themeColor.bg} ${themeColor.text} flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
               ${student.name.substring(0, 1)}
             </div>
             <div>
-              <div class="font-bold text-xs text-slate-800 flex items-center gap-1">
+              <div class="font-bold text-xs lm-t1 flex items-center gap-1">
                 <span>${student.name}</span>
-                <span class="text-[10px] text-slate-400 font-normal">(${student.courses.length}门课)</span>
+                <span class="text-[10px] lm-t3 font-normal">(${student.courses.length}门课)</span>
               </div>
-              <div class="text-[10px] text-slate-400">
+              <div class="text-[10px] lm-t3">
                 <i class="fa-solid fa-phone text-[9px]"></i> ${student.phone || '无电话'}
               </div>
             </div>
@@ -1760,7 +1382,7 @@
             <button class="btn-detail-student text-sky-400 hover:text-sky-600 transition" title="查看详情">
               <i class="fa-solid fa-circle-info"></i>
             </button>
-            <button class="btn-edit-student text-slate-400 hover:text-slate-700 transition" title="编辑学生课程">
+            <button class="btn-edit-student lm-t3 hover:lm-t1 transition" title="编辑学生课程">
               <i class="fa-solid fa-pen-to-square"></i>
             </button>
             <button class="btn-recharge-student text-emerald-500 hover:text-emerald-600 transition" title="充值课时">
@@ -1771,7 +1393,7 @@
 
         ${debtsHtml}
 
-        <div class="space-y-1 pt-1 border-t border-slate-100">
+        <div class="space-y-1 pt-1 border-t lm-hairline">
           ${coursesHtml}
         </div>
       `;
@@ -1791,7 +1413,7 @@
         e.dataTransfer.setData('application/json', JSON.stringify({ type: 'student', id: student.id }));
 
         const dragGhost = document.createElement('div');
-        dragGhost.className = 'bg-amber-500 text-white px-3 py-1.5 rounded-xl font-bold text-xs shadow-lg';
+        dragGhost.className = 'bg-[#111111] text-white px-3 py-1.5 rounded-xl font-bold text-xs shadow-lg';
         dragGhost.textContent = `📅 正在对 [${student.name}] 排课...`;
         document.body.appendChild(dragGhost);
         e.dataTransfer.setDragImage(dragGhost, 10, 10);
@@ -1937,7 +1559,7 @@
         const offsetY = Math.max(0, Math.min(832, e.clientY - rect.top));
 
         const totalMinutes = Math.floor((offsetY / 832) * (13 * 60));
-        const roundedMinutes = Math.floor(totalMinutes / 5) * 5;
+        const roundedMinutes = Math.floor(totalMinutes / 15) * 15;
 
         const hour = 8 + Math.floor(roundedMinutes / 60);
         const min = roundedMinutes % 60;
@@ -1974,7 +1596,7 @@
         const rect = dayColumn.getBoundingClientRect();
         const offsetY = Math.max(0, Math.min(832, e.clientY - rect.top));
         const totalMinutes = Math.floor((offsetY / 832) * (13 * 60));
-        const roundedMinutes = Math.floor(totalMinutes / 5) * 5;
+        const roundedMinutes = Math.floor(totalMinutes / 15) * 15;
 
         const hour = Math.min(20, 8 + Math.floor(roundedMinutes / 60));
         const min = roundedMinutes % 60;
@@ -1998,7 +1620,7 @@
           const rect = dayColumn.getBoundingClientRect();
           const offsetY = Math.max(0, Math.min(832, e.clientY - rect.top));
           const totalMinutes = Math.floor((offsetY / 832) * (13 * 60));
-          const roundedMinutes = Math.floor(totalMinutes / 5) * 5;
+          const roundedMinutes = Math.floor(totalMinutes / 15) * 15;
 
           const hour = Math.min(20, 8 + Math.floor(roundedMinutes / 60));
           const min = roundedMinutes % 60;
@@ -2116,7 +1738,7 @@
         </div>
 
         <div class="leading-none flex items-center gap-1 flex-wrap truncate shrink-0 -mt-[2px]">
-          <span class="${badgeFontSize} px-1.5 py-0.5 bg-white/80 text-slate-800 rounded-md border border-black/5 shadow-2xs truncate">${schedule.subject}</span>
+          <span class="${badgeFontSize} px-1.5 py-0.5 bg-white/80 lm-t1 rounded-md border border-black/5 shadow-2xs truncate">${schedule.subject}</span>
           ${teacherText ? `<span class="opacity-85 ${textFontSize} truncate">${teacherText}</span>` : ''}
           ${roomText ? `<span class="opacity-85 ${textFontSize} truncate">${roomText}</span>` : ''}
         </div>
@@ -2177,24 +1799,24 @@
 
     // 系列存在 → 双选项弹窗
     const ov = document.createElement('div');
-    ov.className = 'fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-[60] flex items-center justify-center p-4';
+    ov.className = 'fixed inset-0 lm-scrim backdrop-blur-xs z-[60] flex items-center justify-center p-4';
     ov.innerHTML = `
       <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
-        <div class="flex items-start gap-3 pb-3 border-b border-slate-100">
+        <div class="flex items-start gap-3 pb-3 border-b lm-hairline">
           <div class="w-9 h-9 rounded-full bg-rose-100 text-rose-500 flex items-center justify-center shrink-0"><i class="fa-solid fa-trash-can"></i></div>
           <div>
-            <div class="font-bold text-sm text-slate-800">删除重复排课系列</div>
-            <div class="text-[11px] text-slate-400 mt-0.5">${sch.studentName} · ${sch.subject} · ${sch.date} ${sch.startTime}<br>该时段之后还有 <b class="text-rose-500">${laterCount}</b> 节同样的排课</div>
+            <div class="font-bold text-sm lm-t1">删除重复排课系列</div>
+            <div class="text-[11px] lm-t3 mt-0.5">${sch.studentName} · ${sch.subject} · ${sch.date} ${sch.startTime}<br>该时段之后还有 <b class="text-rose-500">${laterCount}</b> 节同样的排课</div>
           </div>
         </div>
         <div class="space-y-2 mt-3">
-          <button data-scope="this" class="w-full py-2.5 rounded-xl text-sm font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition">
+          <button data-scope="this" class="w-full py-2.5 rounded-xl text-sm font-bold btn-quiet transition">
             <i class="fa-solid fa-scissors mr-1"></i> 仅删除本次（保留之后 ${laterCount} 节）
           </button>
           <button data-scope="all" class="w-full py-2.5 rounded-xl text-sm font-bold bg-rose-500 text-white hover:bg-rose-600 transition">
             <i class="fa-solid fa-trash-can mr-1"></i> 删除本次及之后所有（共 ${laterCount + 1} 节）
           </button>
-          <button data-scope="cancel" class="w-full py-2 text-xs text-slate-400 hover:text-slate-600 transition">取消</button>
+          <button data-scope="cancel" class="w-full py-2 text-xs lm-t3 hover:lm-t2 transition">取消</button>
         </div>
       </div>`;
     ov.addEventListener('click', (e) => {
@@ -2217,7 +1839,7 @@
     const student = students.find((st) => st.id === schedule.studentId);
     const menu = document.createElement('div');
     menu.id = 'scheduleActionMenu';
-    menu.className = 'fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4';
+    menu.className = 'fixed inset-0 lm-scrim backdrop-blur-xs z-50 flex items-center justify-center p-4';
 
     let actionsHtml = '';
     if (status !== SCHEDULE_STATUS.STUDENT_LEAVE) {
@@ -2230,19 +1852,19 @@
           <i class="fa-solid fa-person-walking-arrow-right"></i> 学员请假（退还${getLessonCost(schedule)}节）${status === SCHEDULE_STATUS.COMPLETED ? ' · 改请假' : ''}
         </button>
         ${status === SCHEDULE_STATUS.COMPLETED ? `
-        <button data-act="revert" class="w-full py-3 rounded-xl font-bold text-sm bg-amber-500 text-white hover:bg-amber-600 transition flex items-center justify-center gap-2">
+        <button data-act="revert" class="w-full py-3 rounded-xl font-bold text-sm lm-btn-ink text-white transition flex items-center justify-center gap-2">
           <i class="fa-solid fa-rotate-left"></i> 撤销消课（还原为待上课）
         </button>` : ''}
       `;
     } else {
       actionsHtml += `
-        <button data-act="revert" class="w-full py-3 rounded-xl font-bold text-sm bg-amber-500 text-white hover:bg-amber-600 transition flex items-center justify-center gap-2">
+        <button data-act="revert" class="w-full py-3 rounded-xl font-bold text-sm lm-btn-ink text-white transition flex items-center justify-center gap-2">
           <i class="fa-solid fa-rotate-left"></i> 撤销状态（还原为待上课）
         </button>
       `;
     }
     actionsHtml += `
-      <button data-act="edit" class="w-full py-3 rounded-xl font-bold text-sm bg-slate-100 text-slate-700 hover:bg-slate-200 transition flex items-center justify-center gap-2">
+      <button data-act="edit" class="w-full py-3 rounded-xl font-bold text-sm btn-quiet transition flex items-center justify-center gap-2">
         <i class="fa-solid fa-pen-to-square"></i> 编辑课程信息
       </button>
       <button data-act="delete" class="w-full py-3 rounded-xl font-bold text-sm bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 transition flex items-center justify-center gap-2">
@@ -2253,13 +1875,13 @@
     const statusText = status === SCHEDULE_STATUS.COMPLETED ? '已消课 ✓' : status === SCHEDULE_STATUS.STUDENT_LEAVE ? '学员请假 🏖️' : '待上课';
     menu.innerHTML = `
       <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5 space-y-2.5">
-        <div class="pb-3 border-b border-slate-100">
-          <div class="font-bold text-sm text-slate-800">${schedule.studentName} · ${schedule.subject}</div>
-          <div class="text-[11px] text-slate-400 mt-0.5">${schedule.date} ${schedule.startTime} · ${schedule.durationMinutes}分钟 · 状态：${statusText}</div>
+        <div class="pb-3 border-b lm-hairline">
+          <div class="font-bold text-sm lm-t1">${schedule.studentName} · ${schedule.subject}</div>
+          <div class="text-[11px] lm-t3 mt-0.5">${schedule.date} ${schedule.startTime} · ${schedule.durationMinutes}分钟 · 状态：${statusText}</div>
           ${student && getStudentDebts(student.id).length ? `<div class="text-[10px] text-rose-500 mt-1">⚠ 该学员有欠课：${getStudentDebts(student.id).map(d => d.courseName + ' ' + d.amount + '节').join('、')}</div>` : ''}
         </div>
         ${actionsHtml}
-        <button data-act="close" class="w-full py-2 text-slate-400 text-xs hover:text-slate-600 transition">取消</button>
+        <button data-act="close" class="w-full py-2 lm-t3 text-xs hover:lm-t2 transition">取消</button>
       </div>
     `;
 
@@ -2370,7 +1992,12 @@
     if (stIdEl) stIdEl.value = student.id;
 
     const avEl = document.getElementById('modalStudentAvatar');
-    if (avEl) avEl.textContent = student.name.substring(0, 1);
+    if (avEl) {
+      avEl.textContent = student.name.substring(0, 1);
+      // 头像沿用学员专属配色（琥珀是头像调色板唯一允许出现的琥珀）
+      const avTheme = getThemeBadgeStyle(student.colorTheme || 'amber');
+      avEl.className = `w-8 h-8 rounded-full ${avTheme.bg} ${avTheme.text} flex items-center justify-center font-bold text-xs`;
+    }
 
     const nameEl = document.getElementById('modalStudentName');
     if (nameEl) nameEl.textContent = student.name;
@@ -2386,7 +2013,7 @@
     if (timeEl) timeEl.value = startTimeStr;
 
     const durEl = document.getElementById('selectDuration');
-    if (durEl) durEl.value = '45';
+    if (durEl) durEl.value = '60';
 
     const roomEl = document.getElementById('inputRoom');
     if (roomEl) roomEl.value = '琴房 101';
@@ -2447,7 +2074,12 @@
     if (stIdEl) stIdEl.value = schedule.studentId;
 
     const avEl = document.getElementById('modalStudentAvatar');
-    if (avEl) avEl.textContent = student.name.substring(0, 1);
+    if (avEl) {
+      avEl.textContent = student.name.substring(0, 1);
+      // 头像沿用学员专属配色（琥珀是头像调色板唯一允许出现的琥珀）
+      const avTheme = getThemeBadgeStyle(student.colorTheme || 'amber');
+      avEl.className = `w-8 h-8 rounded-full ${avTheme.bg} ${avTheme.text} flex items-center justify-center font-bold text-xs`;
+    }
 
     const nameEl = document.getElementById('modalStudentName');
     if (nameEl) nameEl.textContent = student.name;
@@ -2528,11 +2160,7 @@
 
     const date = document.getElementById('inputCourseDate').value;
     const startTime = document.getElementById('inputStartTime').value;
-    // 时长校验：必须为 5 的倍数（5~240 分钟），默认 45 = 1 课时
-    let durationMinutes = parseInt(document.getElementById('selectDuration').value, 10);
-    if (!Number.isFinite(durationMinutes) || durationMinutes < 5) durationMinutes = 45;
-    durationMinutes = Math.min(240, Math.round(durationMinutes / 5) * 5);
-    document.getElementById('selectDuration').value = String(durationMinutes);
+    const durationMinutes = parseInt(document.getElementById('selectDuration').value, 10);
     const room = document.getElementById('inputRoom').value.trim();
     const notes = document.getElementById('inputNotes') ? document.getElementById('inputNotes').value.trim() : '';
     const colorTheme = document.querySelector('input[name="colorTheme"]:checked')?.value || 'amber';
@@ -2650,44 +2278,30 @@
     container.innerHTML = '';
 
     if (teachers.length === 0) {
-      container.innerHTML = `<div class="text-slate-400 text-center py-4">暂无教师记录</div>`;
+      container.innerHTML = `<div class="lm-t3 text-center py-4">暂无教师记录</div>`;
       return;
     }
 
     teachers.forEach((t) => {
       const item = document.createElement('div');
-      item.className = 'flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs';
+      item.className = 'flex items-center justify-between p-2.5 lm-section rounded-xl text-xs';
       item.innerHTML = `
         <div class="flex items-center gap-2.5">
-          <div class="w-8 h-8 rounded-full bg-amber-500 text-white font-bold flex items-center justify-center text-xs shadow-2xs">
+          <div class="w-8 h-8 rounded-full bg-[#111111] text-white font-bold flex items-center justify-center text-xs">
             ${t.name.substring(0, 1)}
           </div>
           <div>
-            <div class="font-bold text-slate-800">${t.name}</div>
-            <div class="text-[10px] text-slate-500">主讲: ${t.subject || '全科'}${t.accessPin ? ` · 访问码 <b class="text-amber-700">${t.accessPin}</b>` : ' · 未开通访问'}</div>
+            <div class="font-bold lm-t1">${t.name}</div>
+            <div class="text-[10px] lm-t2">主讲: ${t.subject || '全科'}${t.accessPin ? ` · 访问码 <b class="lm-t1">${t.accessPin}</b>` : ' · 未开通访问'}</div>
           </div>
         </div>
-        <div class="flex items-center gap-1.5">
-          <div class="flex items-center gap-1 shrink-0">
-            <span class="text-slate-400 text-[10px]">¥</span>
-            <input type="number" min="0" step="1" inputmode="decimal" class="teacher-rate-input w-14 px-1.5 py-1 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 outline-none focus:ring-1 focus:ring-amber-400" placeholder="时薪" value="${t.hourlyRate > 0 ? t.hourlyRate : ''}" aria-label="课时单价（元/节）">
-            <span class="text-slate-400 text-[10px]">/节</span>
-          </div>
-          <button class="btn-pin-teacher text-[10px] font-bold px-2 py-1 rounded-lg ${t.accessPin ? 'bg-slate-200 text-slate-600 hover:bg-slate-300' : 'bg-sky-100 text-sky-700 hover:bg-sky-200'} transition" data-id="${t.id}">${t.accessPin ? '换码' : '生成访问码'}</button>
-          <button class="btn-del-teacher text-slate-400 hover:text-rose-600 transition px-2 py-1" title="删除教师" data-id="${t.id}">
+        <div class="flex items-center gap-1">
+          <button class="btn-pin-teacher text-[10px] font-bold px-2 py-1 rounded-lg ${t.accessPin ? 'btn-quiet' : 'bg-sky-100 text-sky-700 hover:bg-sky-200'} transition" data-id="${t.id}">${t.accessPin ? '换码' : '生成访问码'}</button>
+          <button class="btn-del-teacher lm-t3 hover:text-rose-600 transition px-2 py-1" title="删除教师" data-id="${t.id}">
             <i class="fa-solid fa-trash-can"></i>
           </button>
         </div>
       `;
-
-      const rateInput = item.querySelector('.teacher-rate-input');
-      rateInput.addEventListener('change', () => {
-        const v = parseFloat(rateInput.value);
-        t.hourlyRate = Number.isFinite(v) && v > 0 ? v : 0;
-        saveData();
-        renderDashboard();
-        showToast(`${t.name} 课时单价已设为 ${t.hourlyRate > 0 ? '¥' + t.hourlyRate + '/节' : '未设置'}`, 'circle-check');
-      });
 
       item.querySelector('.btn-pin-teacher').addEventListener('click', () => {
         const pin = String(Math.floor(1000 + Math.random() * 9000));
@@ -2797,20 +2411,20 @@
       const row = document.createElement('div');
       row.className = 'course-row flex items-center gap-2';
       row.innerHTML = `
-        <input type="text" class="course-name-input flex-1 min-w-0 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:ring-1 focus:ring-amber-400" placeholder="课程名称（如：钢琴一对一）" value="${c.name || ''}" required>
+        <input type="text" class="course-name-input flex-1 min-w-0 px-2.5 py-1.5 lm-field rounded-lg text-xs font-medium" placeholder="课程名称（如：钢琴一对一）" value="${c.name || ''}" required>
         <div class="flex items-center gap-1 shrink-0">
-          <span class="text-slate-400 text-[10px]">剩</span>
-          <input type="number" class="course-lessons-input w-16 px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-amber-800 outline-none focus:ring-1 focus:ring-amber-400" value="${c.remainingLessons ?? 10}" required>
-          <span class="text-slate-400 text-[10px]">课时</span>
+          <span class="lm-t3 text-[10px]">剩</span>
+          <input type="number" class="course-lessons-input w-16 px-2 py-1.5 lm-field rounded-lg text-xs font-bold lm-t1" value="${c.remainingLessons ?? 10}" required>
+          <span class="lm-t3 text-[10px]">课时</span>
         </div>
         <div class="flex items-center gap-1 shrink-0">
-          <span class="text-slate-400 text-[10px]">¥</span>
-          <input type="number" min="0" step="0.01" inputmode="decimal" class="course-price-input w-16 px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-emerald-700 outline-none focus:ring-1 focus:ring-emerald-400" placeholder="单价" value="${c.unitPrice > 0 ? c.unitPrice : ''}" aria-label="课程单价（元/节）">
-          <span class="text-slate-400 text-[10px]">/节</span>
+          <span class="lm-t3 text-[10px]">¥</span>
+          <input type="number" min="0" step="0.01" inputmode="decimal" class="course-price-input w-16 px-2 py-1.5 border lm-hairline rounded-lg text-xs font-bold text-emerald-700 outline-none focus:ring-1 focus:ring-emerald-400" placeholder="单价" value="${c.unitPrice > 0 ? c.unitPrice : ''}" aria-label="课程单价（元/节）">
+          <span class="lm-t3 text-[10px]">/节</span>
         </div>
         ${
           courses.length > 1
-            ? `<button type="button" class="btn-remove-course-row text-slate-300 hover:text-rose-500 px-1 py-1 transition" title="删除该课程"><i class="fa-solid fa-trash-can"></i></button>`
+            ? `<button type="button" class="btn-remove-course-row lm-t3 hover:text-rose-500 px-1 py-1 transition" title="删除该课程"><i class="fa-solid fa-trash-can"></i></button>`
             : '<div class="w-5"></div>'
         }
       `;
@@ -2831,18 +2445,18 @@
     const row = document.createElement('div');
     row.className = 'course-row flex items-center gap-2 flex-wrap';
     row.innerHTML = `
-      <input type="text" class="course-name-input flex-1 min-w-0 px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:ring-1 focus:ring-amber-400" placeholder="课程名称（如：乐理基础）" required>
+      <input type="text" class="course-name-input flex-1 min-w-0 px-2.5 py-1.5 lm-field rounded-lg text-xs font-medium" placeholder="课程名称（如：乐理基础）" required>
       <div class="flex items-center gap-1 shrink-0">
-        <span class="text-slate-400 text-[10px]">剩</span>
-        <input type="number" class="course-lessons-input w-16 px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-amber-800 outline-none focus:ring-1 focus:ring-amber-400" placeholder="可填负数=欠课" value="10" required>
-        <span class="text-slate-400 text-[10px]">课时</span>
+        <span class="lm-t3 text-[10px]">剩</span>
+        <input type="number" class="course-lessons-input w-16 px-2 py-1.5 lm-field rounded-lg text-xs font-bold lm-t1" placeholder="可填负数=欠课" value="10" required>
+        <span class="lm-t3 text-[10px]">课时</span>
       </div>
       <div class="flex items-center gap-1 shrink-0">
-        <span class="text-slate-400 text-[10px]">¥</span>
-        <input type="number" min="0" step="0.01" inputmode="decimal" class="course-price-input w-16 px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-emerald-700 outline-none focus:ring-1 focus:ring-emerald-400" placeholder="单价" aria-label="课程单价（元/节）">
-        <span class="text-slate-400 text-[10px]">/节</span>
+        <span class="lm-t3 text-[10px]">¥</span>
+        <input type="number" min="0" step="0.01" inputmode="decimal" class="course-price-input w-16 px-2 py-1.5 border lm-hairline rounded-lg text-xs font-bold text-emerald-700 outline-none focus:ring-1 focus:ring-emerald-400" placeholder="单价" aria-label="课程单价（元/节）">
+        <span class="lm-t3 text-[10px]">/节</span>
       </div>
-      <button type="button" class="btn-remove-course-row text-slate-300 hover:text-rose-500 px-1 py-1 transition" title="删除该课程"><i class="fa-solid fa-trash-can"></i></button>
+      <button type="button" class="btn-remove-course-row lm-t3 hover:text-rose-500 px-1 py-1 transition" title="删除该课程"><i class="fa-solid fa-trash-can"></i></button>
     `;
 
     row.querySelector('.btn-remove-course-row').addEventListener('click', () => {
@@ -3106,25 +2720,25 @@
 
     panel.innerHTML = `
       <div class="flex items-center justify-between mb-2">
-        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">本月经营</span>
-        <span class="text-[9px] text-slate-300">${monthPrefix}</span>
+        <span class="text-[10px] font-bold lm-t3 uppercase tracking-wider">本月经营</span>
+        <span class="text-[9px] lm-t3">${monthPrefix}</span>
       </div>
       <div class="grid grid-cols-2 gap-1.5">
-        <div class="bg-amber-50 border border-amber-100 rounded-lg p-2">
-          <div class="text-[9px] text-amber-600/70">本月课消</div>
-          <div class="text-sm font-black text-amber-700">${monthLessons.toFixed(1)} 节</div>
+        <div class="lm-soft rounded-lg p-2">
+          <div class="text-[9px] lm-t3">本月课消</div>
+          <div class="text-sm font-black lm-t1">${monthLessons.toFixed(1)} 节</div>
         </div>
-        <div class="bg-emerald-50 border border-emerald-100 rounded-lg p-2">
-          <div class="text-[9px] text-emerald-600/70">课消价值</div>
-          <div class="text-sm font-black text-emerald-700">¥${monthValue.toFixed(0)}</div>
+        <div class="lm-soft rounded-lg p-2">
+          <div class="text-[9px] lm-t3">课消价值</div>
+          <div class="text-sm font-black lm-t1">¥${monthValue.toFixed(0)}</div>
         </div>
-        <div class="bg-sky-50 border border-sky-100 rounded-lg p-2">
-          <div class="text-[9px] text-sky-600/70">待消存量</div>
-          <div class="text-sm font-black text-sky-700">${totalRemaining.toFixed(1)} 节</div>
+        <div class="lm-soft rounded-lg p-2">
+          <div class="text-[9px] lm-t3">待消存量</div>
+          <div class="text-sm font-black lm-t1">${totalRemaining.toFixed(1)} 节</div>
         </div>
-        <div class="${debtors.length ? 'bg-rose-50 border-rose-100' : 'bg-slate-50 border-slate-100'} border rounded-lg p-2">
-          <div class="text-[9px] ${debtors.length ? 'text-rose-600/70' : 'text-slate-400'}">欠课学员</div>
-          <div class="text-sm font-black ${debtors.length ? 'text-rose-600' : 'text-slate-400'}">${debtors.length} 人</div>
+        <div class="rounded-lg p-2" style="background:${debtors.length ? '#fff1f2' : '#faf7f2'};">
+          <div class="text-[9px] ${debtors.length ? 'text-rose-600' : 'lm-t3'}">欠课学员</div>
+          <div class="text-sm font-black ${debtors.length ? 'text-rose-600' : 'lm-t3'}">${debtors.length} 人</div>
         </div>
       </div>
       ${debtors.length ? `
@@ -3132,7 +2746,7 @@
         ${debtors.map((d) => {
           const st = students.find((s) => s.id === d.studentId);
           return `<div class="flex items-center justify-between text-[10px] bg-rose-50/60 px-2 py-1 rounded-md">
-            <span class="text-slate-600 font-semibold">${st ? st.name : '未知学员'} · ${d.courseName}</span>
+            <span class="lm-t2 font-semibold">${st ? st.name : '未知学员'} · ${d.courseName}</span>
             <span class="text-rose-500 font-bold">欠 ${d.amount} 节</span>
           </div>`;
         }).join('')}
@@ -3158,37 +2772,37 @@
     modal.id = 'rechargeModal';
     modal.setAttribute('role', 'dialog');
     modal.setAttribute('aria-modal', 'true');
-    modal.className = 'fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4';
+    modal.className = 'fixed inset-0 lm-scrim backdrop-blur-xs z-50 flex items-center justify-center p-4';
     modal.innerHTML = `
       <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5 space-y-3" onclick="event.stopPropagation()">
-        <div class="font-bold text-sm text-slate-800 pb-2 border-b border-slate-100">
+        <div class="font-bold text-sm lm-t1 pb-2 border-b lm-hairline">
           <i class="fa-solid fa-circle-plus text-emerald-500"></i>
           为 ${student.name} 充值课时
         </div>
         <div>
-          <label class="block text-[11px] font-semibold text-slate-500 mb-1">课程</label>
-          <select id="rechargeCourseSelect" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-300">
+          <label class="block text-[11px] font-semibold lm-t2 mb-1">课程</label>
+          <select id="rechargeCourseSelect" class="w-full px-3 py-2 border lm-hairline rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-300">
             ${courseOptions}
             <option value="__new__">➕ 新课程包...</option>
           </select>
         </div>
         <div id="rechargeNewNameWrap" class="hidden">
-          <label class="block text-[11px] font-semibold text-slate-500 mb-1">新课程名称</label>
-          <input type="text" id="rechargeNewName" placeholder="如：美术一对一" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-300">
+          <label class="block text-[11px] font-semibold lm-t2 mb-1">新课程名称</label>
+          <input type="text" id="rechargeNewName" placeholder="如：美术一对一" class="w-full px-3 py-2 border lm-hairline rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-300">
         </div>
         <div class="grid grid-cols-2 gap-2">
           <div>
-            <label class="block text-[11px] font-semibold text-slate-500 mb-1">充值节数</label>
-            <input type="number" id="rechargeLessons" min="1" value="10" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300">
+            <label class="block text-[11px] font-semibold lm-t2 mb-1">充值节数</label>
+            <input type="number" id="rechargeLessons" min="1" value="10" class="w-full px-3 py-2 border lm-hairline rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300">
           </div>
           <div>
-            <label class="block text-[11px] font-semibold text-slate-500 mb-1">单价 (元/节)</label>
-            <input type="number" id="rechargePrice" min="0" step="0.01" inputmode="decimal" value="${firstCourse && firstCourse.unitPrice > 0 ? firstCourse.unitPrice : ''}" placeholder="如 200" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300">
+            <label class="block text-[11px] font-semibold lm-t2 mb-1">单价 (元/节)</label>
+            <input type="number" id="rechargePrice" min="0" step="0.01" inputmode="decimal" value="${firstCourse && firstCourse.unitPrice > 0 ? firstCourse.unitPrice : ''}" placeholder="如 200" class="w-full px-3 py-2 border lm-hairline rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300">
           </div>
         </div>
-        <div class="text-[10px] text-slate-400">💡 若该课程有欠课，充值会自动抵扣</div>
+        <div class="text-[10px] lm-t3">💡 若该课程有欠课，充值会自动抵扣</div>
         <div class="flex gap-2 pt-1">
-          <button id="rechargeCancel" class="flex-1 py-2.5 rounded-xl text-slate-600 bg-slate-100 font-bold text-xs">取消</button>
+          <button id="rechargeCancel" class="flex-1 py-2.5 rounded-xl btn-quiet font-bold text-xs">取消</button>
           <button id="rechargeConfirm" class="flex-1 py-2.5 rounded-xl bg-emerald-500 text-white font-bold text-xs hover:bg-emerald-600">确认充值</button>
         </div>
       </div>
@@ -3271,7 +2885,7 @@
 
     if (toast && toastMsg && toastIcon) {
       toastMsg.textContent = msg;
-      toastIcon.className = `fa-solid fa-${icon} text-amber-400`;
+      toastIcon.className = `fa-solid fa-${icon} text-emerald-300`;
 
       toast.classList.remove('translate-y-10', 'opacity-0', 'pointer-events-none');
       toast.classList.add('translate-y-0', 'opacity-100');

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LessonMate - 智能教务排课系统</title>
-  <meta name="theme-color" content="#fafaf9">
+  <meta name="theme-color" content="#fdfbf8">
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
   <script>
     // 手机屏自动跳转至专属手机版 (mobile.html)
@@ -14,85 +14,89 @@
   </script>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- QRCode.js 图库 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <!-- Custom CSS -->
   <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/intercom-tokens.css">
   <link rel="stylesheet" href="css/styles.css">
+  <!-- 电脑端 Intercom 主题（奶油渐变/软陶卡/Fin橙主按钮），与手机端同一套语言 -->
   <link rel="stylesheet" href="css/desktop-theme.css">
   <!-- GSAP 动效 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
   <script src="js/anim.js"></script>
 </head>
-<body class="text-slate-800 font-sans h-screen flex flex-col overflow-hidden select-none" style="background: var(--surface-page);">
+<body class="lm-body font-sans h-screen flex flex-col overflow-hidden select-none">
 
   <!-- 顶栏 Header (自适应桌面 & 手机 App 导航) -->
-  <header class="bg-white/95 backdrop-blur-md border-b border-amber-100 px-3 sm:px-5 py-2 flex items-center justify-between shadow-2xs z-20 shrink-0">
+  <header id="mainHeader" class="lm-header px-3 sm:px-5 py-2 flex items-center justify-between z-20 shrink-0">
     <!-- Logo 与 标题 -->
     <div class="flex items-center space-x-2">
-      <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-500 to-orange-400 flex items-center justify-center text-white shadow-xs shrink-0">
+      <div class="lm-logo-mark w-8 h-8 flex items-center justify-center text-white shrink-0">
         <i class="fa-solid fa-calendar-days text-sm sm:text-base"></i>
       </div>
-      <h1 class="text-sm sm:text-base font-bold text-slate-800 tracking-tight">LessonMate <span class="hidden sm:inline text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-md font-semibold align-middle">工作台</span></h1>
+      <h1 class="text-sm sm:text-base font-bold tracking-tight" style="color: var(--lm-ink);">LessonMate <span class="hidden sm:inline text-[10px] bg-[#f1efe9] px-1.5 py-0.5 rounded-md font-semibold align-middle" style="color: var(--lm-ink-2);">工作台</span></h1>
     </div>
 
     <!-- 中间：周次切换控制 & 老师筛选 -->
     <div class="flex items-center space-x-2 sm:space-x-3 overflow-x-auto max-w-full">
-      <div class="flex items-center space-x-1 sm:space-x-1.5 bg-slate-100/80 p-0.5 rounded-lg border border-slate-200/60 shrink-0">
-        <button id="btnPrevWeek" class="px-2 py-1 rounded-md text-slate-600 hover:bg-white hover:shadow-2xs transition text-xs font-medium flex items-center gap-1">
+      <div class="lm-seg flex items-center space-x-1 sm:space-x-1.5 p-0.5 shrink-0">
+        <button id="btnPrevWeek" class="lm-seg-btn px-2 py-1 text-xs font-medium flex items-center gap-1">
           <i class="fa-solid fa-chevron-left text-[10px]"></i> <span class="hidden sm:inline">上周</span>
         </button>
-        <button id="btnToday" class="px-2.5 py-1 rounded-md bg-amber-500 text-white shadow-2xs hover:bg-amber-600 transition text-xs font-semibold">
+        <button id="btnToday" class="lm-seg-btn is-on px-2.5 py-1 text-xs font-semibold">
           今天
         </button>
-        <button id="btnNextWeek" class="px-2 py-1 rounded-md text-slate-600 hover:bg-white hover:shadow-2xs transition text-xs font-medium flex items-center gap-1">
+        <button id="btnNextWeek" class="lm-seg-btn px-2 py-1 text-xs font-medium flex items-center gap-1">
           <span class="hidden sm:inline">下周</span> <i class="fa-solid fa-chevron-right text-[10px]"></i>
         </button>
-        <span id="currentWeekRange" class="px-1.5 text-xs sm:text-sm font-bold text-slate-700 min-w-[130px] sm:min-w-[180px] text-center truncate">
+        <span id="currentWeekRange" class="px-1.5 text-xs sm:text-sm font-bold min-w-[130px] sm:min-w-[180px] text-center truncate" style="color: var(--lm-ink);">
           2026年9月1日 - 9月7日
         </span>
       </div>
 
       <!-- 老师筛选下拉框 -->
-      <div class="flex items-center space-x-1 bg-amber-50/80 border border-amber-200/80 px-2 py-1 rounded-lg text-xs font-semibold text-amber-900 shadow-2xs shrink-0">
-        <i class="fa-solid fa-chalkboard-user text-amber-600"></i>
+      <div class="lm-seg flex items-center space-x-1 px-2 py-1 text-xs font-semibold shrink-0" style="color: var(--lm-ink-2);">
+        <i class="fa-solid fa-chalkboard-user"></i>
         <span class="hidden sm:inline">老师:</span>
-        <select id="filterTeacherSelect" aria-label="筛选老师" class="bg-white border border-amber-200 rounded-md px-1.5 py-0.5 text-xs font-bold text-slate-800 outline-none focus:ring-1 focus:ring-amber-400">
+        <select id="filterTeacherSelect" aria-label="筛选老师" class="lm-field px-1.5 py-0.5 text-xs font-bold">
           <option value="all">全校老师 (全部)</option>
           <!-- 动态注入老师选项 -->
         </select>
       </div>
 
       <!-- 手机端 视图切换 (3日 / 7日) -->
-      <div class="flex md:hidden items-center bg-slate-100 p-0.5 rounded-lg text-[11px] font-bold">
-        <button id="btnMobileView3Day" class="mobile-view-btn active px-2 py-0.5 rounded-md bg-amber-500 text-white transition">3日</button>
-        <button id="btnMobileView7Day" class="mobile-view-btn px-2 py-0.5 rounded-md text-slate-600 transition">7日</button>
+      <div class="lm-seg flex md:hidden items-center p-0.5 text-[11px] font-bold">
+        <button id="btnMobileView3Day" class="mobile-view-btn active px-2 py-0.5 rounded-md transition">3日</button>
+        <button id="btnMobileView7Day" class="mobile-view-btn px-2 py-0.5 rounded-md transition" style="color: var(--lm-ink-2);">7日</button>
       </div>
     </div>
 
     <!-- 桌面端操作按钮 (手机端自动沉降至底栏或菜单) -->
     <div class="hidden md:flex items-center space-x-2 shrink-0">
       <!-- 快捷统计 -->
-      <div class="hidden xl:flex items-center space-x-2.5 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-100 text-xs shrink-0">
+      <div class="lm-chip hidden xl:flex items-center space-x-2.5 px-2.5 py-1 text-xs shrink-0" style="color: var(--lm-ink-2);">
         <div class="flex items-center gap-1">
-          <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-          <span class="text-slate-500">本周:</span>
-          <span id="statWeeklyCourses" class="font-bold text-amber-700">0 节</span>
+          <span class="lm-dot lm-dot-fin"></span>
+          <span>本周:</span>
+          <span id="statWeeklyCourses" class="font-bold" style="color: var(--lm-ink);">0 节</span>
         </div>
         <div class="flex items-center gap-1">
-          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-          <span class="text-slate-500">时长:</span>
-          <span id="statWeeklyHours" class="font-bold text-emerald-700">0 小时</span>
+          <span class="lm-dot" style="background:#059669;"></span>
+          <span>时长:</span>
+          <span id="statWeeklyHours" class="font-bold" style="color:#059669;">0 小时</span>
         </div>
       </div>
 
-      <button id="btnNewStudent" class="px-3 py-1 bg-slate-800 text-white rounded-lg text-xs font-semibold hover:bg-slate-700 transition flex items-center gap-1 shadow-2xs shrink-0">
+      <button id="btnNewStudent" class="lm-btn-dark px-3 py-1 text-xs font-semibold transition flex items-center gap-1 shrink-0">
         <i class="fa-solid fa-user-plus text-xs"></i> 新建学员
       </button>
     </div>
 
     <!-- 手机端 菜单入口按钮 -->
-    <button id="btnOpenMobileMenu" aria-label="更多教务工具" class="md:hidden w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition">
+    <button id="btnOpenMobileMenu" aria-label="更多教务工具" class="md:hidden w-8 h-8 rounded-lg bg-[#f1efe9] hover:bg-[#e7e4dc] flex items-center justify-center transition" style="color: var(--lm-ink-2);">
       <i class="fa-solid fa-ellipsis-vertical text-sm"></i>
     </button>
   </header>
@@ -101,105 +105,44 @@
   <div class="flex flex-1 overflow-hidden relative">
 
     <!-- 左侧 主导航栏（桌面端图标条 / 手机端隐藏） -->
-    <nav id="mainSideNav" class="hidden md:flex flex-col items-center w-14 bg-slate-900 text-white py-3 gap-1.5 shrink-0 z-20">
-      <button class="nav-page-btn flex flex-col items-center justify-center w-11 py-2 rounded-xl text-[9px] font-bold gap-0.5 transition text-slate-400 hover:text-white hover:bg-slate-800" data-page="dashboard" title="看板">
-        <i class="fa-solid fa-chart-line text-base fn-dashboard"></i><span>看板</span>
-      </button>
-      <button class="nav-page-btn active flex flex-col items-center justify-center w-11 py-2 rounded-xl text-[9px] font-bold gap-0.5 transition" data-page="schedule" title="课表">
+    <nav id="mainSideNav" class="lm-rail hidden md:flex flex-col items-center py-3 gap-1.5 shrink-0 z-20">
+      <button class="nav-page-btn lm-rail-btn active flex flex-col items-center justify-center py-2 rounded-xl text-[9px] font-bold gap-0.5" data-page="schedule" title="课表">
         <i class="fa-solid fa-calendar-week text-base fn-schedule is-active"></i><span>课表</span>
       </button>
-      <button class="nav-page-btn flex flex-col items-center justify-center w-11 py-2 rounded-xl text-[9px] font-bold gap-0.5 transition text-slate-400 hover:text-white hover:bg-slate-800" data-page="students" title="学员">
+      <button class="nav-page-btn lm-rail-btn flex flex-col items-center justify-center py-2 rounded-xl text-[9px] font-bold gap-0.5" data-page="students" title="学员">
         <i class="fa-solid fa-users text-base fn-students"></i><span>学员</span>
       </button>
-      <button class="nav-page-btn flex flex-col items-center justify-center w-11 py-2 rounded-xl text-[9px] font-bold gap-0.5 transition text-slate-400 hover:text-white hover:bg-slate-800 relative" data-page="finance" title="财务">
+      <button class="nav-page-btn lm-rail-btn flex flex-col items-center justify-center py-2 rounded-xl text-[9px] font-bold gap-0.5 relative" data-page="finance" title="财务">
         <i class="fa-solid fa-coins text-base fn-finance"></i><span>财务</span>
-        <span id="navDebtBadge" class="hidden absolute top-1 right-1.5 w-2 h-2 rounded-full bg-rose-500"></span>
+        <span id="navDebtBadge" class="hidden absolute top-1 right-1.5 w-2 h-2 rounded-full" style="background: var(--lm-pink);"></span>
       </button>
-      <button class="nav-page-btn flex flex-col items-center justify-center w-11 py-2 rounded-xl text-[9px] font-bold gap-0.5 transition text-slate-400 hover:text-white hover:bg-slate-800" data-page="settings" title="设置">
+      <button class="nav-page-btn lm-rail-btn flex flex-col items-center justify-center py-2 rounded-xl text-[9px] font-bold gap-0.5" data-page="settings" title="设置">
         <i class="fa-solid fa-gear text-base fn-settings"></i><span>设置</span>
       </button>
       <div class="flex-1"></div>
 
-      <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-500 to-orange-400 flex items-center justify-center text-white shadow-xs shrink-0 mb-1">
+      <div class="lm-logo-mark w-8 h-8 flex items-center justify-center text-white shrink-0 mb-1">
         <i class="fa-solid fa-mobile-screen text-sm"></i>
       </div>
     </nav>
-
-    <!-- ============ 分页：校务看板 (新增) ============ -->
-    <section id="pageDashboard" class="flex-1 overflow-y-auto custom-scrollbar bg-slate-50 hidden p-4 md:p-6">
-      <div class="max-w-6xl mx-auto space-y-5">
-        <div class="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <h2 class="text-lg font-black text-slate-800 flex items-center gap-2"><i class="fa-solid fa-chart-line text-amber-500"></i> 校务看板</h2>
-            <div id="dashDateLabel" class="text-[11px] text-slate-400 font-semibold mt-0.5"></div>
-          </div>
-          <button id="btnDashNewSchedule" class="px-4 py-2.5 bg-slate-800 text-white rounded-full text-xs font-bold hover:bg-slate-700 transition flex items-center gap-1.5">
-            <i class="fa-solid fa-plus text-xs"></i> 新增排课
-          </button>
-        </div>
-        <div id="dashKpiRow" class="grid grid-cols-2 lg:grid-cols-4 gap-4"><!-- KPI 卡动态渲染 --></div>
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div class="lg:col-span-2 bg-white border border-amber-100 rounded-2xl overflow-hidden">
-            <div class="px-5 pt-4 pb-3 flex items-center justify-between">
-              <div class="text-[15px] font-black text-slate-800">今日时间轴</div>
-              <span id="dashPendingBadge" class="hidden text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700"></span>
-            </div>
-            <div id="dashTodayList"><!-- 今日课程动态渲染 --></div>
-          </div>
-          <div class="bg-white border border-amber-100 rounded-2xl overflow-hidden self-start">
-            <div class="px-5 pt-4 pb-3 flex items-center justify-between">
-              <div class="text-[15px] font-black text-slate-800">课时预警</div>
-              <span class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-rose-50 text-rose-600">≤2 节</span>
-            </div>
-            <div id="dashLowList"></div>
-            <div class="px-5 py-3">
-              <button id="btnDashGotoLow" class="w-full text-[12px] font-bold py-2.5 rounded-full bg-slate-100 text-slate-700 hover:bg-slate-200 transition">查看全部预警学员 →</button>
-            </div>
-          </div>
-        </div>
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div class="lg:col-span-2 bg-white border border-amber-100 rounded-2xl p-5">
-            <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
-              <div class="flex items-center gap-2.5">
-                <div class="text-[15px] font-black text-slate-800">课消趋势</div>
-                <div id="dashWeekTabs" class="flex items-center gap-1 bg-slate-100 p-0.5 rounded-full">
-                  <button class="dash-week-tab text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-800 text-white" data-week="cur">本周消课</button>
-                  <button class="dash-week-tab text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-500" data-week="prev">上周消课</button>
-                </div>
-              </div>
-              <div id="dashWeekSummary" class="text-[11px] font-semibold text-slate-400"></div>
-            </div>
-            <div id="dashWeekBars" class="flex items-end gap-3 h-32 px-2"></div>
-          </div>
-          <div class="bg-white border border-amber-100 rounded-2xl overflow-hidden self-start">
-            <div class="px-5 pt-4 pb-3 flex items-center justify-between">
-              <div class="text-[15px] font-black text-slate-800">本月老师课时</div>
-              <span class="text-[11px] font-semibold text-slate-400">按消课计</span>
-            </div>
-            <div id="dashTeacherStats"></div>
-          </div>
-        </div>
-        <div class="h-2"></div>
-      </div>
-    </section>
 
     <!-- ============ 分页：课表 (默认) ============ -->
     <section id="pageSchedule" class="flex-1 flex overflow-hidden">
 
     <!-- 左侧：待排课学员侧边栏（点击"批量排课"按钮后弹出） -->
-    <div id="batchSidebarBackdrop" class="hidden absolute inset-0 bg-slate-900/30 z-20"></div>
-    <aside id="sidebarStudent" class="absolute left-14 top-0 bottom-0 z-30 w-72 bg-white border-r border-amber-100 flex-col shadow-2xl hidden">
+    <div id="batchSidebarBackdrop" class="hidden absolute inset-0 lm-scrim-soft z-20"></div>
+    <aside id="sidebarStudent" class="absolute left-[60px] top-0 bottom-0 z-30 w-72 flex-col hidden">
 
       <!-- 侧边栏标题 & 搜索框 -->
-      <div class="p-3 border-b border-slate-100 space-y-2 bg-slate-50/50">
+      <div class="p-3 space-y-2">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-1.5">
-            <i class="fa-solid fa-users text-amber-500 text-xs"></i>
-            <h2 class="font-bold text-slate-800 text-xs">待排课学生列表</h2>
+            <i class="fa-solid fa-users text-xs" style="color: var(--lm-ink-2);"></i>
+            <h2 class="font-bold text-xs" style="color: var(--lm-ink);">待排课学生列表</h2>
           </div>
           <div class="flex items-center gap-1">
-            <span id="studentCountBadge" class="bg-amber-100 text-amber-800 text-[11px] px-1.5 py-0.2 rounded-full font-semibold">0 人</span>
-            <button id="btnCloseBatchSidebar" aria-label="关闭" class="w-5 h-5 rounded text-slate-400 hover:text-rose-500 hover:bg-slate-200/60 transition flex items-center justify-center" title="关闭">
+            <span id="studentCountBadge" class="text-[11px] px-1.5 py-0.2 rounded-full font-semibold" style="background:#f1efe9;color:var(--lm-ink-2);">0 人</span>
+            <button id="btnCloseBatchSidebar" aria-label="关闭" class="w-5 h-5 rounded transition flex items-center justify-center hover:bg-[#f1efe9]" style="color: var(--lm-ink-3);" title="关闭">
               <i class="fa-solid fa-xmark text-[10px]"></i>
             </button>
           </div>
@@ -207,20 +150,20 @@
 
         <!-- 搜索框 -->
         <div class="relative">
-          <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2 text-slate-400 text-[10px]"></i>
-          <input type="text" id="searchStudentInput" aria-label="搜索学生" placeholder="搜索姓名/科目…" class="w-full pl-7 pr-2.5 py-1 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-amber-400 transition">
+          <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2 text-[10px]" style="color: var(--lm-ink-3);"></i>
+          <input type="text" id="searchStudentInput" aria-label="搜索学生" placeholder="搜索姓名/科目…" class="lm-field w-full pl-7 pr-2.5 py-1 text-xs">
         </div>
 
         <!-- 分类筛选 -->
         <div class="flex items-center space-x-1 text-xs">
-          <button class="filter-student-btn active px-2 py-0.5 rounded text-[11px] bg-amber-500 text-white font-medium transition" data-filter="unscheduled">待排课</button>
-          <button class="filter-student-btn px-2 py-0.5 rounded text-[11px] text-slate-600 hover:bg-slate-200/60 transition" data-filter="low">预警(≤2)</button>
-          <button class="filter-student-btn px-2 py-0.5 rounded text-[11px] text-slate-600 hover:bg-slate-200/60 transition" data-filter="scheduled">本周已排</button>
-          <button class="filter-student-btn px-2 py-0.5 rounded text-[11px] text-slate-600 hover:bg-slate-200/60 transition" data-filter="all">全部</button>
-          <select id="studentTeacherFilter" aria-label="按老师筛选" class="ml-auto bg-white border border-slate-200 rounded px-1 py-0.5 text-[11px] font-medium text-slate-700 outline-none focus:ring-1 focus:ring-amber-400 max-w-[90px]">
+          <button class="filter-student-btn active px-2 py-0.5 rounded text-[11px] font-medium" data-filter="unscheduled">待排课</button>
+          <button class="filter-student-btn px-2 py-0.5 rounded text-[11px]" data-filter="low">预警(≤2)</button>
+          <button class="filter-student-btn px-2 py-0.5 rounded text-[11px]" data-filter="scheduled">本周已排</button>
+          <button class="filter-student-btn px-2 py-0.5 rounded text-[11px]" data-filter="all">全部</button>
+          <select id="studentTeacherFilter" aria-label="按老师筛选" class="lm-field ml-auto px-1 py-0.5 text-[11px] font-medium max-w-[90px]">
             <option value="all">全部老师</option>
           </select>
-          <select id="studentCourseFilter" aria-label="按课程筛选" class="bg-white border border-slate-200 rounded px-1 py-0.5 text-[11px] font-medium text-slate-700 outline-none focus:ring-1 focus:ring-amber-400 max-w-[90px]">
+          <select id="studentCourseFilter" aria-label="按课程筛选" class="lm-field px-1 py-0.5 text-[11px] font-medium max-w-[90px]">
             <option value="all">全部课程</option>
           </select>
         </div>
@@ -232,27 +175,27 @@
       </div>
 
       <!-- 财务看板（移植自 Teacher-manager：本月课消/课消价值/待消存量/欠课名单） -->
-      <div id="financePanel" class="border-t border-slate-100 p-3 bg-slate-50/60 shrink-0 max-h-72 overflow-y-auto custom-scrollbar">
+      <div id="financePanel" class="p-3 shrink-0 max-h-72 overflow-y-auto custom-scrollbar" style="border-top:1px solid var(--lm-line);background:rgba(250,247,242,.7);">
         <!-- 由 updateFinancePanel() 动态渲染 -->
       </div>
     </aside>
 
     <!-- 右侧：周日历视图 Main Calendar View -->
-    <main class="flex-1 bg-slate-50 flex flex-col overflow-hidden relative">
+    <main class="flex-1 flex flex-col overflow-hidden relative">
 
-      <!-- 批量排课按钮（弹出待排课学员列表） -->
-      <button id="btnBatchSchedule" class="absolute top-3 left-3 z-30 bg-slate-800 hover:bg-slate-700 text-white px-3.5 py-1.5 rounded-xl shadow-lg font-bold text-xs flex items-center gap-1.5 transition">
-        <i class="fa-solid fa-calendar-plus text-amber-400 text-xs"></i> 批量排课
+      <!-- 批量排课按钮（弹出待排课学员列表）—— 全站唯一 Fin 橙主按钮 -->
+      <button id="btnBatchSchedule" class="absolute top-3 left-3 z-30 hover:brightness-95 text-white px-3.5 py-1.5 font-bold text-xs flex items-center gap-1.5 transition">
+        <i class="fa-solid fa-calendar-plus text-xs"></i> 批量排课
       </button>
 
       <!-- 日历头部：星期 标题行 -->
-      <div class="bg-white border-b border-slate-200 flex items-center shadow-2xs z-10 overflow-x-auto">
+      <div class="flex items-center z-10 overflow-x-auto">
         <!-- 时间轴对齐空白列 -->
-        <div class="w-12 sm:w-16 shrink-0 py-2.5 text-center text-xs text-slate-400 font-semibold border-r border-slate-100">
+        <div class="w-12 sm:w-16 shrink-0 py-2.5 text-center text-xs font-semibold" style="color: var(--lm-ink-3);">
           时间
         </div>
         <!-- 动态 标题列 -->
-        <div id="calendarHeaderDays" class="grid grid-cols-7 flex-1 divide-x divide-slate-100 min-w-[320px]">
+        <div id="calendarHeaderDays" class="grid grid-cols-7 flex-1 divide-x min-w-[320px]" style="--tw-divide-opacity:1;border-color:var(--lm-line);">
           <!-- 动态渲染 7天/3天 header -->
         </div>
       </div>
@@ -262,7 +205,7 @@
         <div class="flex min-h-[832px] relative">
 
           <!-- 08:00 - 21:00 时间刻度轴 -->
-          <div class="w-12 sm:w-16 shrink-0 bg-slate-50/80 border-r border-slate-200 text-xs text-slate-400 font-mono flex flex-col justify-between py-2 select-none">
+          <div class="w-12 sm:w-16 shrink-0 text-xs font-mono flex flex-col justify-between py-2 select-none" style="border-right:1px solid var(--lm-line);">
             <div class="time-slot-label">08:00</div>
             <div class="time-slot-label">09:00</div>
             <div class="time-slot-label">10:00</div>
@@ -280,12 +223,12 @@
           </div>
 
           <!-- 日历列网格容器 -->
-          <div id="calendarGridColumns" class="grid grid-cols-7 flex-1 divide-x divide-slate-200/80 relative min-w-[320px]">
+          <div id="calendarGridColumns" class="grid grid-cols-7 flex-1 divide-x relative min-w-[320px]">
             <!-- 动态渲染 Day Column -->
           </div>
 
           <!-- 时间网格水平线 -->
-          <div class="absolute inset-0 left-12 sm:left-16 pointer-events-none grid grid-rows-13 divide-y divide-slate-200/40">
+          <div class="absolute inset-0 left-12 sm:left-16 pointer-events-none grid grid-rows-13 divide-y" style="--tw-divide-opacity:1;border-color:var(--lm-line);">
             <div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
           </div>
 
@@ -297,11 +240,11 @@
     </section><!-- /pageSchedule -->
 
     <!-- ============ 分页：学员 ============ -->
-    <section id="pageStudents" class="flex-1 overflow-y-auto custom-scrollbar bg-slate-50 hidden p-4 md:p-6">
+    <section id="pageStudents" class="flex-1 overflow-y-auto custom-scrollbar hidden p-4 md:p-6">
       <div class="max-w-3xl mx-auto space-y-4">
         <div class="flex items-center justify-between">
-          <h2 class="text-lg font-black text-slate-800 flex items-center gap-2"><i class="fa-solid fa-users text-amber-500"></i> 学员管理</h2>
-          <button id="btnPageNewStudent" class="px-3 py-2 bg-slate-800 text-white rounded-xl text-xs font-bold hover:bg-slate-700 transition flex items-center gap-1.5">
+          <h2 class="lm-page-title text-lg flex items-center gap-2"><i class="fa-solid fa-users"></i> 学员管理</h2>
+          <button id="btnPageNewStudent" class="lm-btn-dark px-3 py-2 text-xs font-bold transition flex items-center gap-1.5">
             <i class="fa-solid fa-user-plus text-xs"></i> 新建学员
           </button>
         </div>
@@ -312,9 +255,9 @@
     </section>
 
     <!-- ============ 分页：财务 ============ -->
-    <section id="pageFinance" class="flex-1 overflow-y-auto custom-scrollbar bg-slate-50 hidden p-4 md:p-6">
+    <section id="pageFinance" class="flex-1 overflow-y-auto custom-scrollbar hidden p-4 md:p-6">
       <div class="max-w-3xl mx-auto space-y-4">
-        <h2 class="text-lg font-black text-slate-800 flex items-center gap-2"><i class="fa-solid fa-coins text-amber-500"></i> 财务经营</h2>
+        <h2 class="lm-page-title text-lg flex items-center gap-2"><i class="fa-solid fa-coins"></i> 财务经营</h2>
         <div id="pageFinanceContent" class="space-y-4">
           <!-- 动态渲染：本月经营 + 收入明细 + 欠课名单 -->
         </div>
@@ -322,29 +265,33 @@
     </section>
 
     <!-- ============ 分页：设置 ============ -->
-    <section id="pageSettings" class="flex-1 overflow-y-auto custom-scrollbar bg-slate-50 hidden p-4 md:p-6">
+    <section id="pageSettings" class="flex-1 overflow-y-auto custom-scrollbar hidden p-4 md:p-6">
       <div class="max-w-3xl mx-auto space-y-4">
-        <h2 class="text-lg font-black text-slate-800 flex items-center gap-2"><i class="fa-solid fa-gear text-amber-500"></i> 设置与工具</h2>
+        <h2 class="lm-page-title text-lg flex items-center gap-2"><i class="fa-solid fa-gear"></i> 设置与工具</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <button id="btnPageCloudSync" class="p-4 bg-white border border-slate-200 rounded-2xl text-left hover:border-amber-300 hover:shadow-sm transition">
-            <div class="font-bold text-sm text-slate-800 flex items-center gap-2"><i class="fa-solid fa-cloud-arrow-up text-amber-600"></i> 实时云同步</div>
-            <div class="text-[11px] text-slate-400 mt-1">设置机构专属同步码，多设备实时互通</div>
+          <button id="btnPageCloudSync" class="lm-tile p-4 text-left">
+            <div class="lm-tile-title font-bold text-sm flex items-center gap-2" style="color: var(--lm-ink);"><i class="fa-solid fa-cloud-arrow-up"></i> 实时云同步</div>
+            <div class="text-[11px] mt-1" style="color: var(--lm-ink-3);">设置机构专属同步码，多设备实时互通</div>
           </button>
-          <button id="btnPageManageTeachers" class="p-4 bg-white border border-slate-200 rounded-2xl text-left hover:border-amber-300 hover:shadow-sm transition">
-            <div class="font-bold text-sm text-slate-800 flex items-center gap-2"><i class="fa-solid fa-chalkboard-user text-amber-600"></i> 教师管理</div>
-            <div class="text-[11px] text-slate-400 mt-1">添加或编辑任课老师</div>
+          <button id="btnPageQrSync" class="lm-tile p-4 text-left">
+            <div class="lm-tile-title font-bold text-sm flex items-center gap-2" style="color: var(--lm-ink);"><i class="fa-solid fa-qrcode"></i> 扫码同步</div>
+            <div class="text-[11px] mt-1" style="color: var(--lm-ink-3);">手机扫一扫，1秒把电脑排课同步到手机</div>
           </button>
-          <button id="btnPageImport" class="p-4 bg-white border border-slate-200 rounded-2xl text-left hover:border-amber-300 hover:shadow-sm transition">
-            <div class="font-bold text-sm text-slate-800 flex items-center gap-2"><i class="fa-solid fa-file-import text-amber-600"></i> 导入数据</div>
-            <div class="text-[11px] text-slate-400 mt-1">导入 JS/JSON 课表数据文件或文本</div>
+          <button id="btnPageManageTeachers" class="lm-tile p-4 text-left">
+            <div class="lm-tile-title font-bold text-sm flex items-center gap-2" style="color: var(--lm-ink);"><i class="fa-solid fa-chalkboard-user"></i> 教师管理</div>
+            <div class="text-[11px] mt-1" style="color: var(--lm-ink-3);">添加或编辑任课老师</div>
           </button>
-          <button id="btnPageExport" class="p-4 bg-white border border-slate-200 rounded-2xl text-left hover:border-amber-300 hover:shadow-sm transition">
-            <div class="font-bold text-sm text-slate-800 flex items-center gap-2"><i class="fa-solid fa-download text-amber-600"></i> 导出数据</div>
-            <div class="text-[11px] text-slate-400 mt-1">备份全部学员、课表与财务数据</div>
+          <button id="btnPageImport" class="lm-tile p-4 text-left">
+            <div class="lm-tile-title font-bold text-sm flex items-center gap-2" style="color: var(--lm-ink);"><i class="fa-solid fa-file-import"></i> 导入数据</div>
+            <div class="text-[11px] mt-1" style="color: var(--lm-ink-3);">导入 JS/JSON 课表数据文件或文本</div>
           </button>
-          <button id="btnPageClearAll" class="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-left hover:border-rose-300 transition">
-            <div class="font-bold text-sm text-rose-700 flex items-center gap-2"><i class="fa-solid fa-trash-can text-rose-600"></i> 清空数据</div>
-            <div class="text-[11px] text-rose-400 mt-1">清空全部学员与课程，重新开始</div>
+          <button id="btnPageExport" class="lm-tile p-4 text-left">
+            <div class="lm-tile-title font-bold text-sm flex items-center gap-2" style="color: var(--lm-ink);"><i class="fa-solid fa-download"></i> 导出数据</div>
+            <div class="text-[11px] mt-1" style="color: var(--lm-ink-3);">备份全部学员、课表与财务数据</div>
+          </button>
+          <button id="btnPageClearAll" class="lm-tile lm-tile-danger p-4 text-left">
+            <div class="lm-tile-title font-bold text-sm flex items-center gap-2"><i class="fa-solid fa-trash-can"></i> 清空数据</div>
+            <div class="text-[11px] mt-1" style="color:#e58097;">清空全部学员与课程，重新开始</div>
           </button>
         </div>
       </div>
@@ -354,50 +301,50 @@
 
   <!-- 手机端专属 底部浮动快捷操作栏 -->
   <div id="mobileBottomNav" class="md:hidden bg-white/95 backdrop-blur-md border-t border-slate-200 px-2 py-2 flex items-center justify-around z-30 shadow-lg">
-    <button id="mnavSchedule" class="mnav-btn flex flex-col items-center text-amber-600 font-bold text-[10px] gap-0.5 px-1" data-page="schedule">
+    <button id="mnavSchedule" class="mnav-btn flex flex-col items-center font-bold text-[10px] gap-0.5 px-1" data-page="schedule">
       <i class="fa-solid fa-calendar-week text-sm"></i>
       <span>课表</span>
     </button>
-    <button id="btnMobileOpenStudents" class="mnav-btn flex flex-col items-center text-slate-700 font-semibold text-[10px] gap-0.5 px-1" data-page="students">
+    <button id="btnMobileOpenStudents" class="mnav-btn flex flex-col items-center lm-t2 font-semibold text-[10px] gap-0.5 px-1" data-page="students">
       <i class="fa-solid fa-users text-sm"></i>
       <span>学员</span>
     </button>
-    <button id="mnavFinance" class="mnav-btn flex flex-col items-center text-slate-700 font-semibold text-[10px] gap-0.5 px-1 relative" data-page="finance">
-      <i class="fa-solid fa-coins text-sm text-amber-500"></i>
+    <button id="mnavFinance" class="mnav-btn flex flex-col items-center lm-t2 font-semibold text-[10px] gap-0.5 px-1 relative" data-page="finance">
+      <i class="fa-solid fa-coins text-sm"></i>
       <span>财务</span>
       <span id="mnavDebtBadge" class="hidden absolute top-0 right-1 w-2 h-2 rounded-full bg-rose-500"></span>
     </button>
-    <button id="btnMobileNewStudent" class="flex flex-col items-center text-slate-700 font-semibold text-[11px] gap-0.5">
-      <i class="fa-solid fa-user-plus text-sm text-slate-800"></i>
+    <button id="btnMobileNewStudent" class="flex flex-col items-center lm-t2 font-semibold text-[11px] gap-0.5">
+      <i class="fa-solid fa-user-plus text-sm lm-t1"></i>
       <span>新建学员</span>
     </button>
-    <button id="mnavSettings" class="mnav-btn flex flex-col items-center text-slate-700 font-semibold text-[10px] gap-0.5 px-1" data-page="settings">
-      <i class="fa-solid fa-gear text-sm text-slate-600"></i>
+    <button id="mnavSettings" class="mnav-btn flex flex-col items-center lm-t2 font-semibold text-[10px] gap-0.5 px-1" data-page="settings">
+      <i class="fa-solid fa-gear text-sm lm-t2"></i>
       <span>设置</span>
     </button>
   </div>
 
   <!-- 手机端菜单 弹窗 Sheet -->
-  <div id="modalMobileMenu" role="dialog" aria-modal="true" aria-label="更多教务工具" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-end justify-center z-50 hidden transition-opacity">
-    <div class="bg-white rounded-t-3xl shadow-2xl border-t border-amber-200 w-full p-6 space-y-4 text-xs transform transition-all scale-100 modal-box">
-      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-        <h3 class="font-bold text-base text-slate-800">更多教务工具</h3>
-        <button id="btnCloseMobileMenu" aria-label="关闭" class="text-slate-400 hover:text-slate-700 transition">
+  <div id="modalMobileMenu" role="dialog" aria-modal="true" aria-label="更多教务工具" class="fixed inset-0 lm-scrim backdrop-blur-xs flex items-end justify-center z-50 hidden transition-opacity">
+    <div class="lm-modal rounded-t-3xl rounded-b-none w-full p-6 space-y-4 text-xs transform transition-all scale-100 modal-box">
+      <div class="flex items-center justify-between pb-3 border-b lm-hairline">
+        <h3 class="font-bold text-base lm-t1">更多教务工具</h3>
+        <button id="btnCloseMobileMenu" aria-label="关闭" class="lm-t3 hover:lm-t2 transition">
           <i class="fa-solid fa-xmark text-lg"></i>
         </button>
       </div>
 
       <div class="grid grid-cols-2 gap-3 text-xs font-semibold">
-        <button id="btnMobileManageTeachers" class="p-3 bg-amber-50 border border-amber-200/80 text-amber-900 rounded-2xl flex items-center gap-2">
-          <i class="fa-solid fa-chalkboard-user text-amber-600 text-base"></i>
+        <button id="btnMobileManageTeachers" class="p-3 btn-quiet rounded-2xl flex items-center gap-2">
+          <i class="fa-solid fa-chalkboard-user text-base"></i>
           <span>教师管理</span>
         </button>
-        <button id="btnMobileImport" class="p-3 bg-slate-50 border border-slate-200/80 text-slate-800 rounded-2xl flex items-center gap-2">
-          <i class="fa-solid fa-file-import text-amber-500 text-base"></i>
+        <button id="btnMobileImport" class="p-3 lm-section lm-t1 rounded-2xl flex items-center gap-2">
+          <i class="fa-solid fa-file-import text-base"></i>
           <span>导入课表</span>
         </button>
-        <button id="btnMobileExport" class="p-3 bg-slate-50 border border-slate-200/80 text-slate-800 rounded-2xl flex items-center gap-2">
-          <i class="fa-solid fa-download text-slate-600 text-base"></i>
+        <button id="btnMobileExport" class="p-3 lm-section lm-t1 rounded-2xl flex items-center gap-2">
+          <i class="fa-solid fa-download lm-t2 text-base"></i>
           <span>导出课表</span>
         </button>
         <button id="btnMobileReset" class="p-3 bg-rose-50 border border-rose-200/80 text-rose-700 rounded-2xl flex items-center gap-2">
@@ -409,14 +356,14 @@
   </div>
 
   <!-- 排课 Modal 弹窗 -->
-  <div id="modalSchedule" role="dialog" aria-modal="true" aria-labelledby="modalScheduleTitle" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center sm:items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
-    <div class="bg-white rounded-2xl sm:rounded-2xl shadow-2xl border border-slate-100 w-full sm:w-[480px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
-      <div class="bg-gradient-to-r from-amber-500 to-orange-400 px-5 py-3.5 text-white flex items-center justify-between">
+  <div id="modalSchedule" role="dialog" aria-modal="true" aria-labelledby="modalScheduleTitle" class="fixed inset-0 lm-scrim backdrop-blur-xs flex items-center sm:items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
+    <div class="lm-modal w-full sm:w-[480px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
+      <div class="lm-modal-head px-5 py-3.5 flex items-center justify-between">
         <div class="flex items-center gap-2">
           <i class="fa-solid fa-calendar-plus text-base"></i>
           <h3 id="modalScheduleTitle" class="font-bold text-sm sm:text-base">安排新课程</h3>
         </div>
-        <button id="btnCloseScheduleModal" aria-label="关闭" class="text-white/80 hover:text-white transition">
+        <button id="btnCloseScheduleModal" aria-label="关闭" class="lm-modal-close transition">
           <i class="fa-solid fa-xmark text-lg"></i>
         </button>
       </div>
@@ -425,55 +372,57 @@
         <input type="hidden" id="inputScheduleId">
         <input type="hidden" id="inputStudentId">
 
-        <div class="bg-amber-50/70 border border-amber-100 rounded-xl p-2.5 flex items-center justify-between">
+        <div class="lm-section rounded-xl p-2.5 flex items-center justify-between">
           <div class="flex items-center gap-2.5">
-            <div id="modalStudentAvatar" class="w-8 h-8 rounded-full bg-amber-500 text-white flex items-center justify-center font-bold text-xs">
+            <div id="modalStudentAvatar" class="w-8 h-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center font-bold text-xs">
               张
             </div>
             <div>
-              <div id="modalStudentName" class="font-bold text-xs sm:text-sm text-slate-800">张伟</div>
-              <div id="modalStudentMeta" class="text-slate-500 text-[11px]">钢琴 | 剩余 8 课时</div>
+              <div id="modalStudentName" class="font-bold text-xs sm:text-sm" style="color: var(--lm-ink);">张伟</div>
+              <div id="modalStudentMeta" class="text-[11px]" style="color: var(--lm-ink-2);">钢琴 | 剩余 8 课时</div>
             </div>
           </div>
-          <span class="bg-amber-200/60 text-amber-900 text-[11px] font-semibold px-2 py-0.5 rounded-md">待排课</span>
+          <span class="lm-tag lm-tag-done">待排课</span>
         </div>
 
         <div class="grid grid-cols-2 gap-2.5">
           <div>
-            <label class="block font-medium text-slate-700 mb-1">上课日期</label>
-            <input type="date" id="inputCourseDate" required class="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-amber-400 outline-none">
+            <label class="block lm-label mb-1">上课日期</label>
+            <input type="date" id="inputCourseDate" required class="w-full px-2.5 py-1.5 lm-field rounded-lg">
           </div>
           <div>
-            <label class="block font-medium text-slate-700 mb-1">开始时间</label>
-            <input type="time" id="inputStartTime" required step="300" class="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-amber-400 outline-none">
+            <label class="block lm-label mb-1">开始时间</label>
+            <input type="time" id="inputStartTime" required step="900" class="w-full px-2.5 py-1.5 lm-field rounded-lg">
           </div>
         </div>
 
         <div class="grid grid-cols-2 gap-2.5">
           <div>
-            <label class="block font-medium text-slate-700 mb-1">本次上课课程 <span class="text-rose-500">*</span></label>
-            <select id="selectStudentCourse" required class="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-amber-400 outline-none bg-white font-semibold text-slate-800">
+            <label class="block lm-label mb-1">本次上课课程 <span class="text-rose-500">*</span></label>
+            <select id="selectStudentCourse" required class="w-full px-2.5 py-1.5 lm-field rounded-lg bg-white font-semibold lm-t1">
             </select>
           </div>
           <div>
-            <label class="block font-medium text-slate-700 mb-1">课程时长</label>
-            <div class="flex items-center gap-2">
-              <input type="number" id="selectDuration" min="5" max="240" step="5" value="45" inputmode="numeric" required class="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-amber-400 outline-none bg-white font-semibold text-slate-800">
-              <span class="text-xs text-slate-400 font-semibold shrink-0">分钟</span>
-            </div>
-            <div id="desktopDurationHint" class="text-[10px] text-slate-400 mt-0.5">5 分钟为单位 · 45 分钟 = 1 课时</div>
+            <label class="block lm-label mb-1">课程时长</label>
+            <select id="selectDuration" class="w-full px-2.5 py-1.5 lm-field rounded-lg bg-white">
+              <option value="30">30 分钟 (0.5课时)</option>
+              <option value="45">45 分钟 (0.75课时)</option>
+              <option value="60" selected>60 分钟 (1课时)</option>
+              <option value="90">90 分钟 (1.5课时)</option>
+              <option value="120">120 分钟 (2课时)</option>
+            </select>
           </div>
         </div>
 
         <div class="grid grid-cols-2 gap-2.5">
           <div>
-            <label class="block font-medium text-slate-700 mb-1">主讲老师 <span class="text-rose-500">*</span></label>
-            <select id="selectTeacher" required class="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-amber-400 outline-none bg-white font-semibold text-slate-800">
+            <label class="block lm-label mb-1">主讲老师 <span class="text-rose-500">*</span></label>
+            <select id="selectTeacher" required class="w-full px-2.5 py-1.5 lm-field rounded-lg bg-white font-semibold lm-t1">
             </select>
           </div>
           <div>
-            <label class="block font-medium text-slate-700 mb-1">共上/助教老师 <span class="text-slate-400 font-normal">(选填)</span></label>
-            <select id="selectAssistantTeacher" class="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-amber-400 outline-none bg-white text-slate-800">
+            <label class="block lm-label mb-1">共上/助教老师 <span class="lm-t3 font-normal">(选填)</span></label>
+            <select id="selectAssistantTeacher" class="w-full px-2.5 py-1.5 lm-field rounded-lg bg-white lm-t1">
               <option value="">无 (仅单师上课)</option>
             </select>
           </div>
@@ -481,8 +430,8 @@
 
         <div class="grid grid-cols-2 gap-2.5">
           <div>
-            <label class="block font-medium text-slate-700 mb-1">上课课室/教室 <span class="text-rose-500">*</span></label>
-            <input type="text" id="inputRoom" list="roomOptions" placeholder="如：琴房 101" required class="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-amber-400 outline-none font-semibold text-slate-800">
+            <label class="block lm-label mb-1">上课课室/教室 <span class="text-rose-500">*</span></label>
+            <input type="text" id="inputRoom" list="roomOptions" placeholder="如：琴房 101" required class="w-full px-2.5 py-1.5 lm-field rounded-lg font-semibold lm-t1">
             <datalist id="roomOptions">
               <option value="琴房 101"></option>
               <option value="琴房 102"></option>
@@ -493,7 +442,7 @@
             </datalist>
           </div>
           <div>
-            <label class="block font-medium text-slate-700 mb-1">标识卡片颜色</label>
+            <label class="block lm-label mb-1">标识卡片颜色</label>
             <div class="flex items-center space-x-2 pt-1">
               <label class="cursor-pointer"><input type="radio" name="colorTheme" value="amber" checked aria-label="卡片颜色：琥珀" class="sr-only peer"><span class="w-5 h-5 rounded-full bg-amber-400 inline-block peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-amber-600 transition"></span></label>
               <label class="cursor-pointer"><input type="radio" name="colorTheme" value="emerald" aria-label="卡片颜色：薄荷绿" class="sr-only peer"><span class="w-5 h-5 rounded-full bg-emerald-400 inline-block peer-checked:ring-2 peer-checked:ring-offset-1 peer-checked:ring-emerald-600 transition"></span></label>
@@ -505,38 +454,38 @@
         </div>
 
         <!-- 重复排课（仅新增时显示） -->
-        <div id="repeatOptionsBlock" class="bg-sky-50/70 border border-sky-100 rounded-xl p-2.5 space-y-2">
+        <div id="repeatOptionsBlock" class="lm-section rounded-xl p-2.5 space-y-2">
           <div class="grid grid-cols-2 gap-2.5">
             <div>
-              <label class="block font-medium text-slate-700 mb-1"><i class="fa-solid fa-repeat text-sky-500 mr-1"></i>重复排课</label>
-              <select id="selectRepeatRule" class="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-sky-400 outline-none bg-white">
+              <label class="block lm-label mb-1"><i class="fa-solid fa-repeat mr-1"></i>重复排课</label>
+              <select id="selectRepeatRule" class="w-full px-2.5 py-1.5 lm-field rounded-lg bg-white">
                 <option value="none" selected>不重复 (仅本次)</option>
                 <option value="weekly">每周同一时间</option>
                 <option value="biweekly">隔周同一时间</option>
               </select>
             </div>
             <div id="repeatEndDateWrap" class="hidden">
-              <label class="block font-medium text-slate-700 mb-1">重复到</label>
-              <input type="date" id="inputRepeatEndDate" class="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-sky-400 outline-none">
+              <label class="block lm-label mb-1">重复到</label>
+              <input type="date" id="inputRepeatEndDate" class="w-full px-2.5 py-1.5 lm-field rounded-lg">
             </div>
           </div>
-          <div id="repeatHint" class="text-[10px] text-sky-600/80 hidden">💡 将按以上时间重复生成排课，冲突的日期自动跳过</div>
+          <div id="repeatHint" class="text-[10px] hidden" style="color:var(--lm-ink-3);">💡 将按以上时间重复生成排课，冲突的日期自动跳过</div>
         </div>
 
         <div>
-          <label class="block font-medium text-slate-700 mb-1">排课备注 (选填)</label>
-          <textarea id="inputNotes" rows="2" placeholder="填写备课笔记…" class="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-amber-400 outline-none resize-none"></textarea>
+          <label class="block lm-label mb-1">排课备注 (选填)</label>
+          <textarea id="inputNotes" rows="2" placeholder="填写备课笔记…" class="w-full px-2.5 py-1.5 lm-field rounded-lg resize-none"></textarea>
         </div>
 
-        <div class="flex items-center justify-between pt-2 border-t border-slate-100">
-          <button type="button" id="btnDeleteSchedule" class="px-3 py-1.5 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl font-semibold transition hidden">
+        <div class="flex items-center justify-between pt-2 border-t lm-hairline">
+          <button type="button" id="btnDeleteSchedule" class="btn-danger-soft px-3 py-1.5 rounded-xl font-semibold transition hidden">
             <i class="fa-solid fa-trash-can mr-1"></i> 删除
           </button>
           <div class="flex items-center space-x-2 ml-auto">
-            <button type="button" id="btnCancelScheduleModal" class="px-3.5 py-1.5 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl font-medium transition">
+            <button type="button" id="btnCancelScheduleModal" class="btn-quiet px-3.5 py-1.5 rounded-xl font-medium transition">
               取消
             </button>
-            <button type="submit" class="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-semibold shadow-xs transition">
+            <button type="submit" class="lm-btn-ink px-4 py-1.5 rounded-xl font-semibold transition">
               保存排课
             </button>
           </div>
@@ -546,14 +495,14 @@
   </div>
 
   <!-- 学员详情 Modal 弹窗 -->
-  <div id="modalStudentDetail" role="dialog" aria-modal="true" aria-labelledby="studentDetailTitle" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
-    <div class="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full sm:w-[520px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
-      <div class="bg-slate-800 px-5 py-3.5 text-white flex items-center justify-between sticky top-0 z-10">
+  <div id="modalStudentDetail" role="dialog" aria-modal="true" aria-labelledby="studentDetailTitle" class="fixed inset-0 lm-scrim backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
+    <div class="lm-modal w-full sm:w-[520px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
+      <div class="lm-modal-head px-5 py-3.5 flex items-center justify-between sticky top-0 z-10">
         <div class="flex items-center gap-2">
           <i class="fa-solid fa-user text-base"></i>
           <h3 id="studentDetailTitle" class="font-bold text-sm sm:text-base">学员详情</h3>
         </div>
-        <button id="btnCloseStudentDetail" aria-label="关闭" class="text-white/80 hover:text-white transition">
+        <button id="btnCloseStudentDetail" aria-label="关闭" class="lm-modal-close transition">
           <i class="fa-solid fa-xmark text-lg"></i>
         </button>
       </div>
@@ -564,14 +513,14 @@
   </div>
 
   <!-- 新建/编辑学生 Modal 弹窗 -->
-  <div id="modalStudent" role="dialog" aria-modal="true" aria-labelledby="modalStudentTitle" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
-    <div class="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full sm:w-[420px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
-      <div class="bg-slate-800 px-5 py-3.5 text-white flex items-center justify-between">
+  <div id="modalStudent" role="dialog" aria-modal="true" aria-labelledby="modalStudentTitle" class="fixed inset-0 lm-scrim backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
+    <div class="lm-modal w-full sm:w-[420px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
+      <div class="lm-modal-head px-5 py-3.5 flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <i class="fa-solid fa-user-plus text-amber-400"></i>
+          <i class="fa-solid fa-user-plus"></i>
           <h3 id="modalStudentTitle" class="font-bold text-sm sm:text-base">添加新学生</h3>
         </div>
-        <button id="btnCloseStudentModal" aria-label="关闭" class="text-slate-400 hover:text-white transition">
+        <button id="btnCloseStudentModal" aria-label="关闭" class="lm-modal-close transition">
           <i class="fa-solid fa-xmark text-lg"></i>
         </button>
       </div>
@@ -580,18 +529,18 @@
         <input type="hidden" id="editStudentId">
 
         <div>
-          <label class="block font-medium text-slate-700 mb-1">学生姓名 <span class="text-rose-500">*</span></label>
-          <input type="text" id="studentNameInput" required placeholder="如：李小明" class="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-amber-400 outline-none">
+          <label class="block lm-label mb-1">学生姓名 <span class="text-rose-500">*</span></label>
+          <input type="text" id="studentNameInput" required placeholder="如：李小明" class="w-full px-2.5 py-1.5 lm-field rounded-lg">
         </div>
 
         <div class="grid grid-cols-2 gap-2.5">
           <div>
-            <label class="block font-medium text-slate-700 mb-1">联系电话</label>
-            <input type="tel" id="studentPhoneInput" placeholder="138****0000" class="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-amber-400 outline-none">
+            <label class="block lm-label mb-1">联系电话</label>
+            <input type="tel" id="studentPhoneInput" placeholder="138****0000" class="w-full px-2.5 py-1.5 lm-field rounded-lg">
           </div>
           <div>
-            <label class="block font-medium text-slate-700 mb-1">卡片专属颜色</label>
-            <select id="studentColorSelect" class="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-amber-400 outline-none bg-white">
+            <label class="block lm-label mb-1">卡片专属颜色</label>
+            <select id="studentColorSelect" class="w-full px-2.5 py-1.5 lm-field rounded-lg bg-white">
               <option value="amber">暖阳橙</option>
               <option value="emerald">薄荷绿</option>
               <option value="sky">天空蓝</option>
@@ -601,10 +550,10 @@
           </div>
         </div>
 
-        <div class="bg-slate-50 border border-slate-200/80 p-3 rounded-xl space-y-2">
+        <div class="lm-section p-3 rounded-xl space-y-2">
           <div class="flex items-center justify-between">
-            <label class="block font-bold text-slate-700 text-xs">学员报读课程及剩余课时</label>
-            <button type="button" id="btnAddStudentCourseRow" class="text-amber-600 hover:text-amber-700 font-bold text-[11px] flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+            <label class="block font-bold text-xs" style="color:var(--lm-ink);">学员报读课程及剩余课时</label>
+            <button type="button" id="btnAddStudentCourseRow" class="lm-btn-ink font-bold text-[11px] flex items-center gap-1 px-2 py-0.5 rounded-md">
               <i class="fa-solid fa-plus text-[10px]"></i> 添加课程
             </button>
           </div>
@@ -612,15 +561,15 @@
           </div>
         </div>
 
-        <div class="flex items-center justify-between pt-2 border-t border-slate-100">
-          <button type="button" id="btnDeleteStudent" class="px-3 py-1.5 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl font-semibold transition hidden">
+        <div class="flex items-center justify-between pt-2 border-t lm-hairline">
+          <button type="button" id="btnDeleteStudent" class="btn-danger-soft px-3 py-1.5 rounded-xl font-semibold transition hidden">
             删除
           </button>
           <div class="flex items-center space-x-2 ml-auto">
-            <button type="button" id="btnCancelStudentModal" class="px-3.5 py-1.5 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl font-medium transition">
+            <button type="button" id="btnCancelStudentModal" class="btn-quiet px-3.5 py-1.5 rounded-xl font-medium transition">
               取消
             </button>
-            <button type="submit" class="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-semibold transition">
+            <button type="submit" class="lm-btn-ink px-4 py-1.5 rounded-xl font-semibold transition">
               保存学生
             </button>
           </div>
@@ -630,33 +579,33 @@
   </div>
 
   <!-- 教师管理 Modal 弹窗 -->
-  <div id="modalTeacher" role="dialog" aria-modal="true" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
-    <div class="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full sm:w-[450px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
-      <div class="bg-gradient-to-r from-amber-600 to-amber-500 px-5 py-3.5 text-white flex items-center justify-between">
+  <div id="modalTeacher" role="dialog" aria-modal="true" class="fixed inset-0 lm-scrim backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
+    <div class="lm-modal w-full sm:w-[450px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
+      <div class="lm-modal-head px-5 py-3.5 flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <i class="fa-solid fa-chalkboard-user text-amber-200"></i>
+          <i class="fa-solid fa-chalkboard-user"></i>
           <h3 class="font-bold text-sm sm:text-base">机构教师管理</h3>
         </div>
-        <button id="btnCloseTeacherModal" aria-label="关闭" class="text-white/80 hover:text-white transition">
+        <button id="btnCloseTeacherModal" aria-label="关闭" class="lm-modal-close transition">
           <i class="fa-solid fa-xmark text-lg"></i>
         </button>
       </div>
 
       <div class="p-5 space-y-3.5 text-xs">
         <div>
-          <label class="block font-bold text-slate-700 mb-2">已添加的老师列表</label>
+          <label class="block font-bold mb-2" style="color:var(--lm-ink);">已添加的老师列表</label>
           <div id="teacherListContainer" class="space-y-2 max-h-48 overflow-y-auto custom-scrollbar p-1">
           </div>
         </div>
 
-        <form id="formAddTeacher" autocomplete="off" class="border-t border-slate-100 pt-3 space-y-2.5">
-          <label class="block font-bold text-slate-700">添加新任课老师</label>
+        <form id="formAddTeacher" autocomplete="off" class="border-t lm-hairline pt-3 space-y-2.5">
+          <label class="block font-bold" style="color:var(--lm-ink);">添加新任课老师</label>
           <div class="grid grid-cols-2 gap-2">
-            <input type="text" id="teacherNameInput" required placeholder="老师姓名" class="px-2.5 py-1.5 border border-slate-200 rounded-lg outline-none">
-            <input type="text" id="teacherSubjectInput" placeholder="主讲科目" class="px-2.5 py-1.5 border border-slate-200 rounded-lg outline-none">
+            <input type="text" id="teacherNameInput" required placeholder="老师姓名" class="lm-field px-2.5 py-1.5 rounded-lg">
+            <input type="text" id="teacherSubjectInput" placeholder="主讲科目" class="lm-field px-2.5 py-1.5 rounded-lg">
           </div>
           <div class="flex justify-end">
-            <button type="submit" class="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl transition">
+            <button type="submit" class="lm-btn-ink px-3.5 py-1.5 font-semibold rounded-xl transition">
               <i class="fa-solid fa-plus text-xs mr-1"></i> 添加老师
             </button>
           </div>
@@ -666,102 +615,129 @@
   </div>
 
   <!-- 导入课表数据 Modal 弹窗 -->
-  <div id="modalImport" role="dialog" aria-modal="true" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
-    <div class="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full sm:w-[480px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
-      <div class="bg-slate-800 px-5 py-3.5 text-white flex items-center justify-between">
+  <div id="modalImport" role="dialog" aria-modal="true" class="fixed inset-0 lm-scrim backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
+    <div class="lm-modal w-full sm:w-[480px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
+      <div class="lm-modal-head px-5 py-3.5 flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <i class="fa-solid fa-file-import text-amber-400 text-base"></i>
+          <i class="fa-solid fa-file-import text-base"></i>
           <h3 class="font-bold text-sm sm:text-base">导入课表数据 (JSON / JS)</h3>
         </div>
-        <button id="btnCloseImportModal" aria-label="关闭" class="text-slate-400 hover:text-white transition">
+        <button id="btnCloseImportModal" aria-label="关闭" class="lm-modal-close transition">
           <i class="fa-solid fa-xmark text-lg"></i>
         </button>
       </div>
 
       <div class="p-5 space-y-3.5 text-xs">
-        <div class="bg-amber-50/80 border border-amber-200/80 p-2.5 rounded-xl flex items-center justify-between">
-          <span class="font-bold text-slate-700">导入模式:</span>
+        <div class="lm-section p-2.5 rounded-xl flex items-center justify-between">
+          <span class="font-bold" style="color:var(--lm-ink);">导入模式:</span>
           <div class="flex items-center space-x-3">
             <label class="inline-flex items-center gap-1 cursor-pointer">
-              <input type="radio" name="importMode" value="overwrite" checked class="accent-amber-500">
-              <span class="font-medium text-slate-700">覆盖当前</span>
+              <input type="radio" name="importMode" value="overwrite" checked class="accent-[#111111]">
+              <span class="font-medium" style="color:var(--lm-ink-2);">覆盖当前</span>
             </label>
             <label class="inline-flex items-center gap-1 cursor-pointer">
-              <input type="radio" name="importMode" value="merge" class="accent-amber-500">
-              <span class="font-medium text-slate-700">增量合并</span>
+              <input type="radio" name="importMode" value="merge" class="accent-[#111111]">
+              <span class="font-medium" style="color:var(--lm-ink-2);">增量合并</span>
             </label>
           </div>
         </div>
 
         <div>
-          <label class="block font-bold text-slate-700 mb-1">方式一：选择本地文件上传</label>
+          <label class="block font-bold mb-1" style="color:var(--lm-ink);">方式一：选择本地文件上传</label>
           <div class="flex items-center gap-2">
-            <button type="button" id="btnSelectImportFile" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl border border-slate-200 transition flex items-center gap-1 shrink-0">
-              <i class="fa-solid fa-folder-open text-amber-500"></i> 选择文件...
+            <button type="button" id="btnSelectImportFile" class="btn-quiet px-3 py-1.5 font-semibold rounded-xl transition flex items-center gap-1 shrink-0">
+              <i class="fa-solid fa-folder-open"></i> 选择文件...
             </button>
             <input type="file" id="importFileInput" accept=".json,.js,.txt" class="hidden">
-            <span id="importFileName" class="text-slate-400 truncate flex-1 text-[11px]">未选择文件</span>
+            <span id="importFileName" class="lm-t3 truncate flex-1 text-[11px]">未选择文件</span>
           </div>
         </div>
 
         <div>
-          <label class="block font-bold text-slate-700 mb-1">方式二：直接粘贴 JSON / JS 数据</label>
-          <textarea id="importTextarea" rows="4" placeholder='支持粘贴导出的数据对象' class="w-full px-2.5 py-1.5 border border-slate-200 rounded-xl focus:ring-1 focus:ring-amber-400 outline-none font-mono text-[11px] resize-none"></textarea>
+          <label class="block font-bold mb-1" style="color:var(--lm-ink);">方式二：直接粘贴 JSON / JS 数据</label>
+          <textarea id="importTextarea" rows="4" placeholder='支持粘贴导出的数据对象' class="lm-field w-full px-2.5 py-1.5 rounded-xl font-mono text-[11px] resize-none"></textarea>
         </div>
 
-        <div class="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
-          <button type="button" id="btnCancelImportModal" class="px-3.5 py-1.5 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl font-medium transition">
+        <div class="flex items-center justify-end space-x-2 pt-2 border-t lm-hairline">
+          <button type="button" id="btnCancelImportModal" class="btn-quiet px-3.5 py-1.5 rounded-xl font-medium transition">
             取消
           </button>
-          <button type="button" id="btnConfirmImport" class="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-xl transition shadow-xs">
-            <i class="fa-solid fa-file-import mr-1 text-amber-400"></i> 开始导入
+          <button type="button" id="btnConfirmImport" class="lm-btn-ink px-4 py-1.5 font-semibold rounded-xl transition">
+            <i class="fa-solid fa-file-import mr-1"></i> 开始导入
           </button>
         </div>
       </div>
     </div>
   </div>
 
+  <!-- 二维码扫码极速同步 Modal 弹窗 -->
+  <div id="modalQrSync" role="dialog" aria-modal="true" class="fixed inset-0 lm-scrim backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
+    <div class="lm-modal w-full sm:w-[380px] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box text-center p-6 space-y-4">
+      <div class="flex items-center justify-between pb-2 border-b lm-hairline">
+        <div class="flex items-center gap-2 font-bold lm-t1 text-sm">
+          <i class="fa-solid fa-qrcode text-lg"></i>
+          <span>手机扫码 1 秒同步课表</span>
+        </div>
+        <button id="btnCloseQrModal" aria-label="关闭" class="lm-modal-close transition">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="text-xs lm-t2 leading-relaxed">
+        请使用手机相机、微信或浏览器扫一扫，手机端将<strong>100% 自动同步载入</strong>当前电脑上的全部排课！
+      </div>
+
+      <div class="flex justify-center py-2">
+        <div id="qrcodeContainer" class="p-3 bg-white border-2 rounded-2xl shadow-md inline-block" style="border-color:var(--lm-ink);"></div>
+      </div>
+
+      <div class="lm-note text-[11px] font-semibold py-1.5 px-3 rounded-xl">
+        ✨ 扫码 100% 极速秒级直连同步
+      </div>
+    </div>
+  </div>
+
   <!-- 云端实时同步设置 Modal 弹窗 -->
-  <div id="modalSyncKey" role="dialog" aria-modal="true" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
-    <div class="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full sm:w-[420px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
-      <div class="bg-amber-500 px-5 py-3.5 text-white flex items-center justify-between">
+  <div id="modalSyncKey" role="dialog" aria-modal="true" class="fixed inset-0 lm-scrim backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
+    <div class="lm-modal w-full sm:w-[420px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
+      <div class="lm-modal-head px-5 py-3.5 flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <i class="fa-solid fa-cloud-arrow-up text-amber-100 text-lg"></i>
+          <i class="fa-solid fa-cloud-arrow-up text-lg"></i>
           <h3 class="font-bold text-sm sm:text-base">云端跨设备实时同步设置</h3>
         </div>
-        <button id="btnCloseSyncModal" aria-label="关闭" class="text-amber-100 hover:text-white transition">
+        <button id="btnCloseSyncModal" aria-label="关闭" class="lm-modal-close transition">
           <i class="fa-solid fa-xmark text-lg"></i>
         </button>
       </div>
 
       <div class="p-5 space-y-4 text-xs">
-        <div class="bg-amber-50 border border-amber-200/80 p-3 rounded-xl text-amber-900 leading-relaxed">
-          <i class="fa-solid fa-lightbulb text-amber-600 mr-1"></i>
+        <div class="lm-note p-3 rounded-xl leading-relaxed">
+          <i class="fa-solid fa-lightbulb mr-1"></i>
           可通过<strong>极速剪贴板代码同步（100%成功）</strong>或<strong>机构云同步码</strong>完成多端课表连通。
         </div>
 
-        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200/80 space-y-2">
-          <label class="block font-bold text-slate-800">⚡ 方式一：极速同步码（微信/剪贴板 100% 成功）</label>
+        <div class="lm-section p-3 rounded-xl space-y-2">
+          <label class="block font-bold" style="color:var(--lm-ink);">⚡ 方式一：极速同步码（微信/剪贴板 100% 成功）</label>
           <div class="flex items-center gap-2">
-            <button type="button" id="btnCopyQuickSyncCode" class="flex-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl shadow-xs transition flex items-center justify-center gap-1">
+            <button type="button" id="btnCopyQuickSyncCode" class="lm-btn-ink flex-1 px-3 py-1.5 font-bold rounded-xl transition flex items-center justify-center gap-1">
               <i class="fa-solid fa-copy"></i> 复制当前排课代码
             </button>
-            <button type="button" id="btnPasteQuickSyncCode" class="flex-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl shadow-xs transition flex items-center justify-center gap-1">
+            <button type="button" id="btnPasteQuickSyncCode" class="lm-btn-ink flex-1 px-3 py-1.5 font-bold rounded-xl transition flex items-center justify-center gap-1">
               <i class="fa-solid fa-paste"></i> 粘贴同步码更新
             </button>
           </div>
         </div>
 
         <div class="space-y-2 pt-1">
-          <label class="block font-bold text-slate-800">☁️ 方式二：机构专属云同步码（实时轮询）</label>
-          <input type="text" id="inputSyncKey" required placeholder="如：my_school_2026" class="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-amber-400 font-bold text-slate-800">
+          <label class="block font-bold" style="color:var(--lm-ink);">☁️ 方式二：机构专属云同步码（实时轮询）</label>
+          <input type="text" id="inputSyncKey" required placeholder="如：my_school_2026" class="lm-field w-full px-3 py-2 rounded-xl font-bold">
         </div>
 
-        <div class="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
-          <button type="button" id="btnCancelSyncModal" class="px-3.5 py-1.5 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl font-medium">
+        <div class="flex items-center justify-end space-x-2 pt-2 border-t lm-hairline">
+          <button type="button" id="btnCancelSyncModal" class="btn-quiet px-3.5 py-1.5 rounded-xl font-medium">
             取消
           </button>
-          <button type="button" id="btnSaveSyncKey" class="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold shadow-xs transition">
+          <button type="button" id="btnSaveSyncKey" class="lm-btn-ink px-4 py-1.5 rounded-xl font-bold transition">
             保存云同步码
           </button>
         </div>
@@ -770,10 +746,10 @@
   </div>
 
   <!-- 移动端学员抽屉遮罩背景 -->
-  <div id="sidebarBackdrop" class="fixed inset-0 bg-slate-900/40 backdrop-blur-2xs z-20 hidden transition-opacity"></div>
+  <div id="sidebarBackdrop" class="fixed inset-0 lm-scrim backdrop-blur-2xs z-20 hidden transition-opacity"></div>
 
   <!-- 移动端/触摸设备 点击点击排课浮动指示条 -->
-  <div id="mobileTapScheduleBanner" class="fixed bottom-14 sm:bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/95 text-white px-3.5 py-2 rounded-2xl shadow-2xl z-40 hidden flex items-center gap-2.5 text-xs font-semibold backdrop-blur-md border border-slate-700 animate-bounce">
+  <div id="mobileTapScheduleBanner" class="fixed bottom-14 sm:bottom-6 left-1/2 -translate-x-1/2 lm-scrim-strong text-white px-3.5 py-2 rounded-2xl shadow-2xl z-40 hidden flex items-center gap-2.5 text-xs font-semibold backdrop-blur-md border border-slate-700 animate-bounce">
     <div class="flex items-center gap-1.5">
       <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
       <span>已选中 <strong id="tapStudentName" class="text-amber-400 font-bold">张伟</strong>，点击日历格排课</span>
@@ -782,8 +758,8 @@
   </div>
 
   <!-- 提示 Toast 通知 -->
-  <div id="toast" role="status" aria-live="polite" class="fixed bottom-14 sm:bottom-6 right-4 sm:right-6 bg-slate-800 text-white px-3.5 py-2 rounded-xl shadow-xl text-xs font-medium flex items-center space-x-2 z-50 transform transition-all translate-y-10 opacity-0 pointer-events-none">
-    <i id="toastIcon" class="fa-solid fa-circle-check text-emerald-400"></i>
+  <div id="toast" role="status" aria-live="polite" class="fixed bottom-14 sm:bottom-6 right-4 sm:right-6 text-white px-3.5 py-2 shadow-xl text-xs font-medium flex items-center space-x-2 z-50 transform transition-all translate-y-10 opacity-0 pointer-events-none">
+    <i id="toastIcon" class="fa-solid fa-circle-check" style="color:#5eead4;"></i>
     <span id="toastMsg">操作成功</span>
   </div>
 

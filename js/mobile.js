@@ -23,6 +23,12 @@
   let selectedTeacherFilter = 'all';
   let mobileStartDate = getToday(); // 默认从今天开始显示 3 日日历（周末也能直接看到今天）
 
+  // 随机卡片颜色主题（app.js 里有同名函数，但手机端不加载 app.js，需本地实现）
+  const MOBILE_COLOR_THEMES = ['amber', 'emerald', 'sky', 'purple', 'rose'];
+  function getRandomColorTheme() {
+    return MOBILE_COLOR_THEMES[Math.floor(Math.random() * MOBILE_COLOR_THEMES.length)];
+  }
+
   // ============ 老师访问会话（PIN 登录，管理员不受限） ============
   // teacherSession = null 表示管理员；否则 { teacherId, name }
   // 会话持久化到 localStorage，换设备/清缓存需重输 PIN
@@ -1064,7 +1070,7 @@
         id: 't_' + Date.now(),
         name,
         subject: subEl.value.trim() || '通用科目',
-        colorTheme: getRandomColorTheme ? getRandomColorTheme() : 'amber',
+        colorTheme: getRandomColorTheme(),
       });
       saveData();
       nameEl.value = ''; subEl.value = '';

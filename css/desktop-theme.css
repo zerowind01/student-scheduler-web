@@ -1,107 +1,357 @@
 /* ==========================================================================
-   LessonMate 电脑端 · Intercom 管理台主题 v1.0
-   与手机端 mobile-theme.css 同一设计语言：
-   奶油渐变底 · 软陶白卡（多层柔影去灰框）· 炭黑 #111 主色 · Fin 橙 #ff5600 主按钮
-   以 CSS 变量 + 覆盖层实现，不改 index.html 结构与 app.js 逻辑
+   LessonMate 电脑端 · Intercom 编辑风主题 v1.0
+   与手机端同一套视觉语言：奶油渐变底 · 软陶白卡 · 炭黑主色 · Fin 橙主按钮
+   --------------------------------------------------------------------------
+   色值与通用原子类来自 css/intercom-tokens.css（本文件不重复定义色值）。
+   ⚠️ 禁用琥珀色（amber）—— 唯一例外：学员头像调色板（.event-amber / 头像徽章）
+   ⚠️ Fin 橙 #ff5600 只用于课表页唯一主按钮（#btnBatchSchedule）
+   ⚠️ 本文件只对 index.html 生效，不影响手机端
    ========================================================================== */
 
-:root {
-  --dt-canvas-top: #fdfbf8;
-  --dt-canvas-mid: #f7f2ea;
-  --dt-canvas-bot: #eadfc8;
-  --dt-ink: #111111;
-  --dt-ink-2: #626260;
-  --dt-ink-3: #9c9fa5;
-  --dt-fin: #ff5600;
-  --dt-card-shadow: 0 8px 22px rgba(120, 100, 70, 0.10), 0 2px 5px rgba(120, 100, 70, 0.06);
-  --dt-card-shadow-sm: 0 4px 14px rgba(120, 100, 70, 0.08), 0 1px 3px rgba(120, 100, 70, 0.05);
+/* ---- 1. 画布与正文墨色 ---- */
+body.lm-body {
+  color: var(--lm-ink);
+  background: linear-gradient(180deg, var(--lm-canvas-top), var(--lm-canvas-mid) 45%, var(--lm-canvas-bot) 100%);
 }
 
-/* ---- 页面底：奶油亮渐变 ---- */
-body {
-  background: linear-gradient(180deg, var(--dt-canvas-top) 0%, var(--dt-canvas-mid) 45%, var(--dt-canvas-bot) 100%) !important;
-  background-attachment: fixed !important;
+/* 主区/分页默认透明，让奶油渐变透出来 */
+#pageSchedule,
+#pageStudents,
+#pageFinance,
+#pageSettings,
+#pageSchedule > main {
+  background: transparent;
 }
 
-/* ---- 顶栏：融入画布 ---- */
-header {
-  background: rgba(253, 251, 248, 0.85) !important;
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border-bottom: 1px solid rgba(17, 17, 17, 0.06) !important;
+/* ---- 2. 顶栏：玻璃 + 发丝线 ---- */
+#mainHeader.lm-header {
+  box-shadow: none;
 }
 
-/* ---- 左侧图标导航：深色岛台化（炭黑 + 圆角悬浮） ---- */
-#mainSideNav {
-  background: rgba(17, 17, 17, 0.96) !important;
-  margin: 10px 0 10px 10px !important;
-  border-radius: 22px !important;
-  box-shadow: 0 10px 28px rgba(17, 17, 17, 0.28), 0 2px 6px rgba(17, 17, 17, 0.12) !important;
+/* Logo 方块：炭黑替代琥珀渐变 */
+.lm-logo-mark {
+  background: var(--lm-ink) !important;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(17, 17, 17, 0.22);
 }
 
-/* ---- 分页底：透明化让画布透出 ---- */
-#pageStudents, #pageFinance, #pageSettings, #pageDashboard {
-  background: transparent !important;
-}
-
-/* ---- 全站白卡 → 软陶卡（多层柔影 + 去灰边框） ---- */
-#pageStudents .bg-white,
-#pageFinance .bg-white,
-#pageSettings .bg-white,
-#pageDashboard .bg-white,
-.modal-box {
-  background: #fff !important;
-  border-color: transparent !important;
-  box-shadow: var(--dt-card-shadow) !important;
-  border-radius: 20px !important;
-}
-
-/* 弹窗容器弱化边框 */
-#modalSyncKey > div, #modalQrSync > div, #modalStudentDetail > div, #modalTeacher > div,
-#modalSchedule > div, #modalStudent > div, #modalImport > div, #modalRecharge > div {
-  border-color: transparent !important;
-  box-shadow: 0 18px 44px rgba(17, 17, 17, 0.22), 0 4px 12px rgba(120, 100, 70, 0.10) !important;
-}
-
-/* ---- 主按钮统一：炭黑 / Fin 橙 ---- */
-#btnPageNewStudent, #btnNewStudent, #btnDashNewSchedule {
-  background: var(--dt-ink) !important;
-  border-radius: 999px !important;
-}
-#btnPageNewStudent:hover, #btnNewStudent:hover, #btnDashNewSchedule:hover {
-  background: #2a2a2a !important;
-}
-
-/* 消课按钮（emerald 主操作）保留绿色但圆角胶囊化 */
-.dash-checkin-btn { border-radius: 999px !important; }
-
-/* ---- 设置页卡片 hover：橙色光晕替代琥珀 ---- */
-#pageSettings .bg-white:hover {
-  box-shadow: var(--dt-card-shadow), 0 0 0 1.5px rgba(255, 86, 0, 0.25) !important;
-}
-
-/* ---- 表格/列表行分隔线淡化 ---- */
-#pageStudents .border-slate-100, #pageFinance .border-slate-100, #pageDashboard .border-slate-100 {
-  border-color: #f4f0e8 !important;
-}
-
-/* ---- 侧栏激活色统一 Fin 橙（覆盖 JS 加的 amber 高亮） ---- */
-#mainSideNav .nav-page-btn.active {
-  background: var(--dt-fin) !important;
-}
-#mainSideNav .bg-amber-500\/90 {
-  background: var(--dt-fin) !important;
-}
-
-/* ---- 手机底部导航（index 内嵌手机布局）：同步岛台风 ---- */
-#mobileBottomNav {
-  background: rgba(253, 251, 248, 0.92) !important;
-  border-top: 1px solid rgba(17, 17, 17, 0.06) !important;
-}
-
-/* ---- 滚动条弱化 ---- */
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(17, 17, 17, 0.12);
+/* 顶栏里的胶囊控件（周次切换 / 老师筛选 / 统计） */
+.lm-seg {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--lm-line);
   border-radius: 999px;
+  box-shadow: var(--lm-pill-shadow);
 }
-.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.lm-seg-btn {
+  color: var(--lm-ink-2);
+  border-radius: 999px;
+  font-weight: 500;
+  transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.lm-seg-btn:hover {
+  background: #fff;
+  color: var(--lm-ink);
+}
+/* 「今天」= 当前段唯一实心态，用炭黑而非琥珀 */
+.lm-seg-btn.is-on,
+.mobile-view-btn.active {
+  background: var(--lm-ink) !important;
+  color: #fff !important;
+  box-shadow: 0 3px 10px rgba(17, 17, 17, 0.22);
+}
+
+/* 下拉框 / 输入框：白底 + 发丝线 + 焦点炭黑环 */
+.lm-field {
+  background: #fff;
+  border: 1px solid var(--lm-line-strong);
+  border-radius: 10px;
+  color: var(--lm-ink);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.lm-field:focus {
+  border-color: var(--lm-ink);
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.10);
+}
+/* 去掉 Tailwind 残留的琥珀 focus 环 */
+.lm-field:focus,
+#searchStudentInput:focus,
+#studentTeacherFilter:focus,
+#studentCourseFilter:focus {
+  --tw-ring-color: rgba(17, 17, 17, 0.35);
+}
+
+/* 顶栏统计小胶囊 */
+.lm-chip {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--lm-line);
+  border-radius: 999px;
+  box-shadow: var(--lm-pill-shadow);
+}
+.lm-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  display: inline-block;
+}
+.lm-dot-fin { background: var(--lm-fin); }
+.lm-dot-ink { background: var(--lm-ink); }
+.lm-dot-pink { background: var(--lm-pink); }
+
+/* ---- 3. 左侧功能轨道：浅色软陶，激活态白胶囊 ---- */
+.lm-rail {
+  background: rgba(255, 253, 249, 0.55) !important;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-right: 1px solid var(--lm-line);
+  width: 60px;
+}
+.lm-rail-btn {
+  width: 46px;
+  border-radius: 14px;
+  color: var(--lm-ink-3);
+  transition: background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+}
+.lm-rail-btn:hover {
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--lm-ink-2);
+}
+.lm-rail-btn.active {
+  background: #fff !important;
+  color: var(--lm-ink) !important;
+  box-shadow: 0 5px 16px rgba(120, 100, 70, 0.18), 0 1px 4px rgba(120, 100, 70, 0.10);
+}
+/* 功能区图标色（课表=Fin橙 / 学员=绿 / 财务=粉 / 设置=蓝），禁用琥珀 */
+.lm-rail-btn .fn-schedule,
+.lm-rail-btn.active .fn-schedule { color: var(--lm-fin); }
+.lm-rail-btn .fn-students,
+.lm-rail-btn.active .fn-students { color: #059669; }
+.lm-rail-btn .fn-finance,
+.lm-rail-btn.active .fn-finance { color: var(--lm-pink); }
+.lm-rail-btn .fn-settings,
+.lm-rail-btn.active .fn-settings { color: #0284c7; }
+.lm-rail-btn:not(.active) i.fa-solid { opacity: 0.55; }
+
+/* 手机端（窄屏）底部导航：激活态炭黑，不用琥珀 */
+.mnav-btn.active,
+#mnavSchedule.text-amber-600 {
+  color: var(--lm-ink) !important;
+}
+
+/* ---- 4. 待排课学员侧边栏 ---- */
+#sidebarStudent {
+  background: var(--surface-card, #fff);
+  border-right: 1px solid var(--lm-line) !important;
+  box-shadow: 0 18px 44px -12px rgba(120, 100, 70, 0.26);
+}
+#sidebarStudent > .border-b {
+  border-bottom: 1px solid var(--lm-line) !important;
+}
+/* 学员筛选按钮 */
+.filter-student-btn {
+  color: var(--lm-ink-2);
+  border-radius: 8px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.filter-student-btn:hover {
+  background: rgba(17, 17, 17, 0.05);
+  color: var(--lm-ink);
+}
+.filter-student-btn.active {
+  background: var(--lm-ink) !important;
+  color: #fff !important;
+}
+/* 选中学员卡片：炭黑描边环替代琥珀环 */
+.student-card.lm-picked {
+  box-shadow: 0 0 0 2px var(--lm-ink) !important;
+  border-color: var(--lm-ink) !important;
+}
+
+/* ---- 5. 课表页 ---- */
+/* 主按钮：全站唯一 Fin 橙 */
+#btnBatchSchedule {
+  background: var(--lm-fin) !important;
+  color: #fff;
+  border-radius: 999px;
+  box-shadow: 0 12px 28px -8px rgba(255, 86, 0, 0.5), 0 2px 6px rgba(255, 86, 0, 0.25);
+}
+#btnBatchSchedule i { color: #fff !important; }
+
+/* 日历：网格线改暖灰，去冷灰与琥珀 */
+#calendarHeaderDays {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--lm-line);
+}
+.calendar-day-column {
+  background-image: linear-gradient(to bottom, transparent 63px, rgba(17, 17, 17, 0.06) 64px) !important;
+}
+.calendar-day-column::before {
+  background-image: linear-gradient(to bottom, transparent 31px, rgba(17, 17, 17, 0.03) 32px) !important;
+}
+#calendarGridColumns {
+  --tw-divide-opacity: 1;
+  border-color: rgba(17, 17, 17, 0.06);
+}
+#calendarGridColumns > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgba(17, 17, 17, 0.06) !important;
+}
+.time-slot-label { color: var(--lm-ink-3); }
+
+/* 今天列头：炭黑胶囊（与手机端 .lm-today-col 一致） */
+.today-column-header {
+  background: var(--lm-ink) !important;
+  color: #fff !important;
+  border-bottom: none !important;
+  border-radius: 14px;
+}
+.today-column-header .lm-t1,
+.today-column-header .lm-t2,
+.today-column-header .lm-t3 {
+  color: rgba(255, 255, 255, 0.72) !important;
+}
+.today-badge {
+  background: #fff !important;
+  color: var(--lm-ink) !important;
+  box-shadow: 0 2px 6px rgba(17, 17, 17, 0.25);
+}
+
+/* 拖拽：去琥珀，改用 Fin 橙淡染（仅课表页） */
+.calendar-day-column.drag-over {
+  background-color: rgba(255, 86, 0, 0.06) !important;
+}
+.drag-preview-slot {
+  background: rgba(255, 86, 0, 0.10) !important;
+  border: 2px dashed var(--lm-fin) !important;
+  border-radius: 14px;
+  color: #9a3412 !important;
+  box-shadow: 0 4px 12px -2px rgba(255, 86, 0, 0.25) !important;
+}
+.student-card:hover {
+  border-color: rgba(17, 17, 17, 0.22) !important;
+  box-shadow: 0 8px 20px -3px rgba(120, 100, 70, 0.16), 0 2px 6px -2px rgba(0, 0, 0, 0.04) !important;
+}
+.student-card.dragging {
+  border: 2px dashed rgba(17, 17, 17, 0.35) !important;
+}
+
+/* ---- 6. 学员 / 财务 / 设置 分页 ---- */
+.lm-page-title {
+  color: var(--lm-ink);
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+.lm-page-title i { color: var(--lm-ink-2); }
+/* 统计小卡：去琥珀底与琥珀数字 */
+.lm-stat-card {
+  background: var(--surface-card, #fff);
+  border: none;
+  border-radius: 18px;
+  box-shadow: var(--lm-card-shadow);
+}
+/* 设置页功能磁贴 */
+.lm-tile {
+  background: var(--surface-card, #fff);
+  border: 1px solid var(--lm-line) !important;
+  border-radius: 18px;
+  box-shadow: var(--lm-card-shadow);
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease;
+}
+.lm-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--lm-card-shadow-lg);
+  border-color: var(--lm-line-strong) !important;
+}
+.lm-tile i { color: var(--lm-ink-2); }
+.lm-tile-danger {
+  background: #fff1f2;
+  border-color: #fecdd3 !important;
+}
+.lm-tile-danger i, .lm-tile-danger .lm-tile-title { color: var(--lm-pink); }
+
+/* ---- 7. 弹窗：白卡 + 发丝线标题栏 ---- */
+.lm-modal {
+  background: var(--surface-card, #fff);
+  border: 1px solid var(--lm-line) !important;
+  border-radius: 20px;
+  box-shadow: 0 28px 70px -18px rgba(17, 17, 17, 0.28);
+  overflow: hidden;
+}
+.lm-modal-head {
+  background: var(--surface-card, #fff);
+  border-bottom: 1px solid var(--lm-line);
+  color: var(--lm-ink);
+}
+.lm-modal-head .lm-modal-close { color: var(--lm-ink-3); }
+.lm-modal-head .lm-modal-close:hover { color: var(--lm-ink); }
+.lm-modal-head i { color: var(--lm-ink-2); }
+/* 表单标签 */
+.lm-label { color: var(--lm-ink-2); font-weight: 500; }
+.lm-section {
+  background: #faf7f2;
+  border: 1px solid var(--lm-line) !important;
+  border-radius: 14px;
+}
+.lm-note {
+  background: #faf7f2;
+  border: 1px solid var(--lm-line) !important;
+  border-radius: 14px;
+  color: var(--lm-ink-2);
+}
+/* 危险操作 */
+.btn-danger-soft {
+  background: var(--sem-danger-soft, #fff1f2);
+  color: var(--lm-pink);
+}
+.btn-danger-soft:hover { background: #ffe4e6; }
+/* 中性次级按钮 */
+.btn-quiet {
+  background: #f1efe9;
+  color: var(--lm-ink-2);
+}
+.btn-quiet:hover { background: #e7e4dc; }
+
+/* ---- 8. Toast 与触控提示条：炭黑 ---- */
+#toast {
+  background: var(--lm-ink) !important;
+  color: #fff;
+  border-radius: 14px;
+}
+#mobileTapScheduleBanner {
+  background: rgba(17, 17, 17, 0.95) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+#mobileTapScheduleBanner #tapStudentName { color: #fff !important; }
+#mobileTapScheduleBanner .bg-amber-400 { background: var(--lm-fin) !important; }
+
+/* ---- 8.5 文字层级 / 发丝线 / 遮罩：统一墨色，替掉散落的 slate ---- */
+.lm-t1 { color: var(--lm-ink) !important; }
+.lm-t2 { color: var(--lm-ink-2) !important; }
+.lm-t3 { color: var(--lm-ink-3) !important; }
+.lm-warn { color: var(--lm-orange) !important; }
+.lm-soft { background: #faf7f2 !important; }
+.lm-soft-2 { background: #f2eee6 !important; }
+.lm-hairline { border-color: var(--lm-line) !important; }
+.lm-scrim { background: rgba(28, 25, 23, 0.42) !important; }
+.lm-scrim-soft { background: rgba(28, 25, 23, 0.28) !important; }
+.lm-scrim-strong { background: rgba(17, 17, 17, 0.95) !important; }
+
+/* 去掉 Tailwind 的 divide-{color} 后，子项边框色会回落到 currentColor（近黑），
+   这里统一补回发丝线色；!important 用于压过 Tailwind CDN 运行时注入的样式 */
+[class*="divide-x"] > :not([hidden]) ~ :not([hidden]),
+[class*="divide-y"] > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--lm-line) !important;
+}
+
+/* ---- 9. 滚动条：暖灰 ---- */
+.custom-scrollbar::-webkit-scrollbar-track { background: rgba(120, 100, 70, 0.06); }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(120, 100, 70, 0.28); }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(120, 100, 70, 0.45); }
+
+/* ---- 10. 窄屏（<768px）兜底：电脑端被强制访问时同样走奶油底 ---- */
+@media (max-width: 767px) {
+  body.lm-body {
+    background: linear-gradient(180deg, var(--lm-canvas-top), var(--lm-canvas-mid) 60%, var(--lm-canvas-bot) 100%);
+  }
+}

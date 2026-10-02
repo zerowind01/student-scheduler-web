@@ -1,0 +1,149 @@
+/* ==========================================================================
+   LessonMate · Intercom 编辑风共享设计变量与原子类（电脑端 + 手机端共用）
+   --------------------------------------------------------------------------
+   奶油渐变底 · 软陶白卡 · 炭黑主色 · Fin 橙唯一主按钮
+   ⚠️ 禁用琥珀色（amber）—— 唯一例外：学员头像调色板按人配色（.event-amber）
+   本文件是两端主题的唯一色值来源，改色请改这里，不要在端内另写色值。
+   ========================================================================== */
+
+:root {
+  /* 画布：奶油亮渐变 */
+  --lm-canvas-top: #fdfbf8;
+  --lm-canvas-mid: #f7f2ea;
+  --lm-canvas-bot: #f1eade;
+
+  /* 墨色阶 */
+  --lm-ink: #111111;
+  --lm-ink-2: #626260;
+  --lm-ink-3: #9c9fa5;
+
+  /* 强调与状态色 */
+  --lm-fin: #ff5600;      /* Fin 橙：唯一主按钮色（仅课表页） */
+  --lm-pink: #ff2067;     /* 欠费 / 欠课 */
+  --lm-orange: #fe4c02;   /* 待续费 */
+
+  /* 发丝线 */
+  --lm-line: rgba(17, 17, 17, 0.07);
+  --lm-line-strong: rgba(17, 17, 17, 0.12);
+
+  /* 软陶阴影：暖调多层柔影，不用纯黑 */
+  --lm-card-shadow: 0 8px 22px rgba(120, 100, 70, 0.11), 0 2px 5px rgba(120, 100, 70, 0.06);
+  --lm-card-shadow-lg: 0 10px 28px rgba(120, 100, 70, 0.13), 0 2px 6px rgba(120, 100, 70, 0.07);
+  --lm-pill-shadow: 0 4px 12px rgba(120, 100, 70, 0.10), 0 1px 3px rgba(120, 100, 70, 0.06);
+}
+
+/* ---- 软陶白卡：无细边框，靠多层柔影塑形 ---- */
+.lm-card {
+  background: var(--surface-card, #fff);
+  border: none;
+  border-radius: 20px;
+  box-shadow: var(--lm-card-shadow);
+}
+
+/* ---- 顶栏：融入画布，无重底色 ---- */
+.lm-header {
+  background: rgba(253, 251, 248, 0.85);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--lm-line);
+}
+
+/* ---- 胶囊容器（筛选器 / 统计 / 输入框外壳） ---- */
+.lm-pill {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--lm-line);
+  border-radius: 999px;
+  box-shadow: var(--lm-pill-shadow);
+}
+
+/* ---- 次级按钮：白玻璃胶囊 ---- */
+.lm-btn-ghost {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--lm-line);
+  border-radius: 999px;
+  color: var(--lm-ink-2);
+  box-shadow: 0 3px 10px rgba(120, 100, 70, 0.10);
+}
+
+/* ---- 炭黑按钮 ---- */
+.lm-btn-dark {
+  background: var(--lm-ink);
+  color: #fff;
+  border-radius: 999px;
+  box-shadow: 0 6px 16px rgba(17, 17, 17, 0.25);
+}
+
+/* ---- 状态标签（高 26 胶囊） ---- */
+.lm-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  flex: none;
+}
+.lm-tag-done { background: #f1ece3; color: #4a4a48; }
+.lm-tag-todo { background: var(--lm-ink); color: #fff; }
+.lm-tag-leave { background: #ffe9ec; color: #d5304f; }
+
+/* ---- 主按钮：Fin 橙（全站唯一橙色，仅课表页主操作） ---- */
+.lm-btn-fin {
+  background: var(--lm-fin);
+  color: #fff;
+  border-radius: 999px;
+  font-weight: 500;
+  box-shadow: 0 12px 28px -8px rgba(255, 86, 0, 0.5), 0 2px 6px rgba(255, 86, 0, 0.25);
+}
+.lm-btn-fin:active { filter: brightness(0.94); }
+
+/* ---- 主按钮：炭黑（其余页面的主操作） ---- */
+.lm-btn-ink {
+  background: var(--lm-ink);
+  color: #fff;
+  border-radius: 14px;
+  font-weight: 600;
+}
+.lm-btn-ink:active { filter: brightness(1.35); }
+
+/* ---- 标题与数字排版 ---- */
+.lm-hi {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.6px;
+  color: var(--lm-ink);
+  line-height: 1.2;
+}
+.lm-sub {
+  font-size: 12.5px;
+  color: var(--lm-ink-2);
+  margin-top: 3px;
+}
+.lm-eyebrow {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--lm-ink-3);
+  margin-bottom: 8px;
+}
+.lm-bignum {
+  font-size: 46px;
+  font-weight: 600;
+  letter-spacing: -1.4px;
+  line-height: 1.05;
+  color: var(--lm-ink);
+  font-variant-numeric: tabular-nums;
+}
+.lm-bignum small {
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--lm-ink-2);
+  margin-left: 6px;
+}
+.lm-stat-v {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+  font-variant-numeric: tabular-nums;
+}

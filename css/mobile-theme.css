@@ -2,19 +2,10 @@
    LessonMate 手机端 · Intercom 编辑风主题 v2.0
    奶油渐变底 · 软陶白卡 · 炭黑主色 · Fin橙唯一主按钮 · 毛玻璃岛台导航
    规范：状态栏62 · 标题30/600 · 卡片圆角20/内边距20 · 标签28 · 主按钮48
+   --------------------------------------------------------------------------
+   色值与通用原子类（.lm-card / .lm-tag / .lm-btn-* 等）统一放在
+   css/intercom-tokens.css，本文件只保留手机端专属结构样式。
    ========================================================================== */
-
-:root {
-  --lm-canvas-top: #fdfbf8;
-  --lm-canvas-mid: #f7f2ea;
-  --lm-canvas-bot: #eadfc8;
-  --lm-ink: #111111;
-  --lm-ink-2: #626260;
-  --lm-ink-3: #9c9fa5;
-  --lm-fin: #ff5600;
-  --lm-card-shadow: 0 8px 22px rgba(120, 100, 70, 0.11), 0 2px 5px rgba(120, 100, 70, 0.06);
-  --lm-card-shadow-lg: 0 10px 28px rgba(120, 100, 70, 0.13), 0 2px 6px rgba(120, 100, 70, 0.07);
-}
 
 /* ---- 页面底：奶油亮渐变（mobile.html 专属，index 不受影响） ----
    通过 body[datapage] 或专用 id 前缀选择器限定：mobile.html 的根视图都以 view* 开头，
@@ -23,61 +14,19 @@ body:has(#viewHome) {
   background: linear-gradient(180deg, var(--lm-canvas-top), var(--lm-canvas-mid) 45%, var(--lm-canvas-bot) 100%) !important;
 }
 
-/* ---- 软陶白卡（替代 bg-white + border 组合） ---- */
-.lm-card {
-  background: var(--surface-card, #fff);
-  border: none;
-  border-radius: 20px;
-  box-shadow: var(--lm-card-shadow);
-}
-
-/* ---- 顶栏：融入画布，无重底色 ---- */
-.lm-header {
-  background: rgba(253, 251, 248, 0.85);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border-bottom: 1px solid rgba(17, 17, 17, 0.06);
-}
-.lm-pill {
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(17, 17, 17, 0.06);
-  border-radius: 999px;
-  box-shadow: 0 4px 12px rgba(120, 100, 70, 0.10), 0 1px 3px rgba(120, 100, 70, 0.06);
-}
-
 /* ---- 日期导航条（课表视图顶部） ---- */
 .lm-datebar {
   background: transparent;
   border-bottom: none;
   box-shadow: none;
 }
-.lm-btn-ghost {
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(17, 17, 17, 0.06);
-  border-radius: 999px;
-  color: var(--lm-ink-2);
-  box-shadow: 0 3px 10px rgba(120, 100, 70, 0.10);
-}
-.lm-btn-dark {
-  background: var(--lm-ink);
-  color: #fff;
-  border-radius: 999px;
-  box-shadow: 0 6px 16px rgba(17, 17, 17, 0.25);
-}
 
 /* ---- 岛台导航：悬浮胶囊 + 毛玻璃 ---- */
-/* 无 backdrop-filter 支持时（部分安卓/微信内核）提高不透明度保证可读与岛台感 */
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .lm-island {
-    background: rgba(255, 253, 249, 0.94);
-    box-shadow: 0 14px 34px -10px rgba(120, 100, 70, 0.30), 0 2px 8px rgba(120, 100, 70, 0.12), inset 0 1px 0 rgba(255,255,255,.9);
-  }
-}
 .lm-island {
   position: fixed;
   left: 16px;
   right: 16px;
-  bottom: env(safe-area-inset-bottom, 0px);
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   height: 62px;
   background: rgba(255, 253, 249, 0.42);
   backdrop-filter: blur(26px) saturate(180%);
@@ -110,43 +59,14 @@ body:has(#viewHome) {
 }
 /* 内容避让：主区底部给岛台留空间 */
 body:has(.lm-island) main {
-  padding-bottom: 0;
+  padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
 }
-
-/* 岛台浮在内容上：各视图滚动容器留少量底部内边距，最后一行可滚到岛台背后 */
-body:has(.lm-island) #viewHome > div,
-body:has(.lm-island) #viewSchedule #mobileCalendarScroll,
-body:has(.lm-island) #viewStudents #mobileStudentContainer,
-body:has(.lm-island) #viewFinance > div,
-body:has(.lm-island) #viewSettings > div {
-  padding-bottom: 80px;
-}
-/* 课表视图：不做奶油渐变，保持白色底 */
-body:has(.lm-island) #viewSchedule {
-  background: #fff !important;
-}
-body:has(#viewSchedule:not(.hidden)) #mobileDateBar {
-  background: #fff;
-}
-
 /* Toast 抬高到岛台上方 */
 body:has(.lm-island) .toast-safe-bottom {
   bottom: calc(88px + env(safe-area-inset-bottom, 0px));
 }
 
 /* ---- 首页标题栏（规范 105 区） ---- */
-.lm-hi {
-  font-size: 26px;
-  font-weight: 600;
-  letter-spacing: -0.6px;
-  color: var(--lm-ink);
-  line-height: 1.2;
-}
-.lm-sub {
-  font-size: 12.5px;
-  color: var(--lm-ink-2);
-  margin-top: 3px;
-}
 .lm-titlebar {
   padding: 6px 2px 2px;
 }
@@ -154,88 +74,6 @@ body:has(.lm-island) .toast-safe-bottom {
   padding: 20px;
   box-shadow: var(--lm-card-shadow-lg);
 }
-.lm-eyebrow {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--lm-ink-3);
-  margin-bottom: 8px;
-}
-.lm-bignum {
-  font-size: 46px;
-  font-weight: 600;
-  letter-spacing: -1.4px;
-  line-height: 1.05;
-  color: var(--lm-ink);
-  font-variant-numeric: tabular-nums;
-}
-.lm-bignum small {
-  font-size: 14px;
-  font-weight: 400;
-  letter-spacing: 0;
-  color: var(--lm-ink-2);
-  margin-left: 6px;
-}
-.lm-stat-v {
-  font-size: 24px;
-  font-weight: 600;
-  letter-spacing: -0.4px;
-  font-variant-numeric: tabular-nums;
-}
-
-/* ---- 状态标签（高28 胶囊） ---- */
-.lm-tag {
-  display: inline-flex;
-  align-items: center;
-  height: 26px;
-  padding: 0 12px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 500;
-  flex: none;
-}
-.lm-tag-done { background: #f1ece3; color: #4a4a48; }
-.lm-tag-todo { background: var(--lm-ink); color: #fff; }
-.lm-tag-leave { background: #ffe9ec; color: #d5304f; }
-/* 筛选行横向滚动隐藏滚动条 */
-.lm-no-scrollbar::-webkit-scrollbar { display: none; }
-/* 正在上课：橙；待消课：黄（可点） */
-.lm-tag-live { background: #ff5600; color: #fff; }
-.lm-tag-due { background: #f5b800; color: #3d2e00; cursor: pointer; }
-/* 今日课程卡加大后，胶囊同步放大 */
-#mobileHomeToday .lm-tag { font-size: 12.5px; padding: 5px 12px; }
-
-/* ---- 主按钮：Fin 橙 高48（唯一橙色） ---- */
-.lm-btn-fin {
-  background: var(--lm-fin);
-  color: #fff;
-  border-radius: 999px;
-  font-weight: 500;
-  box-shadow: 0 12px 28px -8px rgba(255, 86, 0, 0.5), 0 2px 6px rgba(255, 86, 0, 0.25);
-}
-.lm-btn-fin:active { filter: brightness(0.94); }
-/* 次级主按钮：炭黑 */
-.lm-btn-ink {
-  background: var(--lm-ink);
-  color: #fff;
-  border-radius: 14px;
-  font-weight: 600;
-}
-.lm-btn-ink:active { filter: brightness(1.35); }
-/* 黑色胶囊下拉框：与筛选按钮统一风格 */
-select.lm-select-ink {
-  -webkit-appearance: none;
-  appearance: none;
-  background-color: var(--lm-ink);
-  color: #fff;
-  font-weight: 700;
-  border: 0;
-  border-radius: 999px;
-  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='white' stroke-width='1.8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  padding-right: 26px;
-}
-select.lm-select-ink option { color: #111; background: #fff; }
 
 /* ---- 日历列：今天高亮改炭黑胶囊 ---- */
 .lm-today-col {
