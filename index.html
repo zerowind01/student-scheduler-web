@@ -5,7 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LessonMate - 智能教务排课系统</title>
   <meta name="theme-color" content="#fdfbf8">
-  <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+  <link rel="icon" type="image/png" href="/icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="apple-mobile-web-app-title" content="LessonMate">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <script>
     // 手机屏自动跳转至专属手机版 (mobile.html)
     if (window.innerWidth < 768 && !location.search.includes('desktop=1')) {
@@ -791,5 +796,11 @@
 
   <!-- JavaScript 代码 -->
   <script src="js/app.js"></script>
+  <script>
+    // PWA：注册 Service Worker（file:// 打开时跳过）
+    if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+      window.addEventListener('load', function () { navigator.serviceWorker.register('/sw.js').catch(function () {}); });
+    }
+  </script>
 </body>
 </html>
