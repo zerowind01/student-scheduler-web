@@ -1824,6 +1824,11 @@
     if (schedule.room) tooltipParts.push(`课室:${schedule.room}`);
     card.setAttribute('title', tooltipParts.join(' · '));
 
+    // 冲突拆分：课室冲突跟在科目徽章旁边，其余（老师/学员撞课）仍独占一行
+    const conflictReasons = hasConflict ? conflictInfo.reasons : [];
+    const roomConflict = conflictReasons.includes('课室冲突');
+    const otherReasons = conflictReasons.filter((r) => r !== '课室冲突');
+
     // 状态角标 + 视觉弱化（与桌面端一致）
     let statusBadge = '';
     if (schedule.status === SCHEDULE_STATUS.COMPLETED) {
@@ -1848,12 +1853,19 @@
         </div>
         <div class="leading-none flex items-center gap-1 flex-wrap truncate shrink-0 -mt-[2px]">
           <span class="text-[11px] font-bold px-1.5 py-0.5 bg-white/80 lm-t1 rounded-md border border-black/5 shadow-2xs truncate">${schedule.subject || schedule.courseName || '课程'}</span>
+          ${
+            roomConflict
+              ? `<span class="text-[9px] font-bold text-rose-700 bg-rose-100/95 border border-rose-300 px-1 py-0.2 rounded shrink-0 shadow-2xs flex items-center gap-0.5" title="课室冲突">
+                   <i class="fa-solid fa-triangle-exclamation text-rose-500 animate-pulse text-[8px]"></i>课室冲突
+                 </span>`
+              : ''
+          }
         </div>
         ${
-          hasConflict
-            ? `<div class="text-[9px] font-bold text-rose-700 bg-rose-100/95 border border-rose-300 px-1 py-0.2 rounded truncate flex items-center gap-0.5 shadow-2xs shrink-0 mt-0.5" title="${conflictInfo.reasons.join(' | ')}">
+          otherReasons.length
+            ? `<div class="text-[9px] font-bold text-rose-700 bg-rose-100/95 border border-rose-300 px-1 py-0.2 rounded truncate flex items-center gap-0.5 shadow-2xs shrink-0 mt-0.5" title="${otherReasons.join(' | ')}">
                 <i class="fa-solid fa-triangle-exclamation text-rose-500 animate-pulse shrink-0 text-[8px]"></i>
-                <span class="truncate leading-normal">${conflictInfo.reasons.join('; ')}</span>
+                <span class="truncate leading-normal">${otherReasons.join('; ')}</span>
                </div>`
             : ''
         }
