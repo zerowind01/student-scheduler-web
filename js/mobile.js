@@ -1817,9 +1817,12 @@
     const endMin = endMins % 60;
     const endTimeStr = `${String(endHour).padStart(2, '0')}:${String(endMin).padStart(2, '0')}`;
 
-    let teacherText = schedule.teacherName ? `👩‍🏫${schedule.teacherName}` : '';
-    if (schedule.assistantTeacherName) teacherText += `&${schedule.assistantTeacherName}`;
-    const roomText = schedule.room ? `📍${schedule.room}` : '';
+    // 方格上不再显示老师（窄列空间有限），老师/课室信息改为放进 title 与详情弹窗
+    const tooltipParts = [schedule.studentName, schedule.subject || schedule.courseName || '课程', `${schedule.startTime}-${endTimeStr}`];
+    const teacherLine = [schedule.teacherName, schedule.assistantTeacherName].filter(Boolean).join('&');
+    if (teacherLine) tooltipParts.push(`老师:${teacherLine}`);
+    if (schedule.room) tooltipParts.push(`课室:${schedule.room}`);
+    card.setAttribute('title', tooltipParts.join(' · '));
 
     // 状态角标 + 视觉弱化（与桌面端一致）
     let statusBadge = '';
@@ -1845,7 +1848,6 @@
         </div>
         <div class="leading-none flex items-center gap-1 flex-wrap truncate shrink-0 -mt-[2px]">
           <span class="text-[11px] font-bold px-1.5 py-0.5 bg-white/80 lm-t1 rounded-md border border-black/5 shadow-2xs truncate">${schedule.subject || schedule.courseName || '课程'}</span>
-          ${teacherText ? `<span class="opacity-85 text-[10.5px] font-semibold truncate">${teacherText}</span>` : ''}
         </div>
         ${
           hasConflict
