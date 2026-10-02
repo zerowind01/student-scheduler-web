@@ -1027,6 +1027,8 @@
     });
     safeBind('btnPageQrSync', 'click', openQrSyncModal);
     safeBind('btnPageManageTeachers', 'click', openTeacherModal);
+    safeBind('btnPageIcsCalendar', 'click', openIcsModal);
+    safeBind('btnCloseIcsModal', 'click', () => hideModal('modalIcsCalendar'));
     safeBind('btnPageImport', 'click', () => {
       const el = document.getElementById('btnImport');
       if (el) el.click();
@@ -1036,6 +1038,42 @@
       const el = document.getElementById('btnClearAllData');
       if (el) el.click();
     });
+  }
+
+  // 上课提醒：ICS 日历订阅链接（每位老师一条专属链接，手机日历订阅后可设提前15分钟提醒）
+  function buildIcsLink(teacherId) {
+    const base = location.origin && location.origin.startsWith('http') ? location.origin : 'https://lesson-mate.pages.dev';
+    return `${base}/api/ics?key=${encodeURIComponent(schoolSyncKey)}&teacher=${encodeURIComponent(teacherId)}`;
+  }
+
+  function openIcsModal() {
+    const box = document.getElementById('icsTeacherList');
+    if (!box) return;
+    if (teachers.length === 0) {
+      box.innerHTML = '<div class="text-center py-6 lm-t3">还没有老师，先到「教师管理」添加</div>';
+    } else {
+      box.innerHTML = teachers.map((t) => `
+        <div class="lm-section p-3 rounded-xl flex items-center justify-between gap-2">
+          <div class="min-w-0">
+            <div class="font-bold" style="color:var(--lm-ink);">${t.name}${t.subject ? ' · ' + t.subject : ''}</div>
+            <div class="text-[10px] truncate lm-t3">${buildIcsLink(t.id)}</div>
+          </div>
+          <button type="button" data-ics-copy="${t.id}" class="lm-btn-ink shrink-0 px-3 py-1.5 font-bold rounded-xl transition"><i class="fa-solid fa-copy"></i> 复制链接</button>
+        </div>`).join('');
+      box.querySelectorAll('[data-ics-copy]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const t = teachers.find((x) => x.id === btn.getAttribute('data-ics-copy'));
+          if (!t) return;
+          const link = buildIcsLink(t.id);
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(link).then(() => showToast(`已复制 ${t.name} 的订阅链接`)).catch(() => prompt('长按复制：', link));
+          } else {
+            prompt('长按复制：', link);
+          }
+        });
+      });
+    }
+    showModal('modalIcsCalendar');
   }
 
   function updateDebtBadges() {

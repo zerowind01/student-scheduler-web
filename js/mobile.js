@@ -1010,6 +1010,48 @@
       renderMobileTeacherManager();
       showModal('modalMobileTeachers');
     });
+    // 上课提醒：ICS 日历订阅链接（每位老师一条专属链接）
+    safeBind('msetIcsCalendar', 'click', () => {
+      const buildLink = (id) => {
+        const base = location.origin && location.origin.startsWith('http') ? location.origin : 'https://lesson-mate.pages.dev';
+        return `${base}/api/ics?key=${encodeURIComponent(schoolSyncKey)}&teacher=${encodeURIComponent(id)}`;
+      };
+      const ov = document.createElement('div');
+      ov.className = 'fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-[70] flex items-end justify-center';
+      const items = teachers.map((t) => `
+        <div class="flex items-center justify-between gap-2 bg-[#faf6ef] rounded-2xl px-3 py-2.5">
+          <div class="min-w-0">
+            <div class="font-bold text-xs text-slate-800 truncate">${t.name}${t.subject ? ' · ' + t.subject : ''}</div>
+            <div class="text-[9.5px] text-slate-400 truncate">${buildLink(t.id)}</div>
+          </div>
+          <button data-ics-copy="${t.id}" class="shrink-0 px-3 py-2 lm-btn-fin text-[11px] rounded-xl">复制链接</button>
+        </div>`).join('');
+      ov.innerHTML = `
+        <div class="bg-white w-full rounded-t-3xl p-5 space-y-2.5 max-h-[85dvh] overflow-y-auto" style="padding-bottom: calc(2rem + env(safe-area-inset-bottom))">
+          <div class="font-bold text-sm text-slate-800 pb-2 border-b border-slate-100">上课提醒 · 日历订阅</div>
+          <div class="text-[10px] text-slate-400 leading-relaxed">复制老师链接 → iPhone 设置 → 日历 → 账户 → 其他 → 添加订阅日历 → 粘贴。再把该日历默认提醒设为"提前15分钟"，每节课自动提醒。</div>
+          ${teachers.length === 0 ? '<div class="text-center text-slate-400 py-5 text-xs">还没有老师，先到「教师管理」添加</div>' : items}
+          <button data-role="close" class="w-full py-2 text-xs text-slate-400">关闭</button>
+        </div>`;
+      ov.addEventListener('click', (e) => {
+        if (e.target === ov) { ov.remove(); return; }
+        const copyBtn = e.target.closest('[data-ics-copy]');
+        if (copyBtn) {
+          const t = teachers.find((x) => x.id === copyBtn.getAttribute('data-ics-copy'));
+          if (!t) return;
+          const link = buildLink(t.id);
+          const done = () => showToast(`已复制 ${t.name} 的订阅链接`);
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(link).then(done).catch(() => prompt('长按复制：', link));
+          } else {
+            prompt('长按复制：', link);
+          }
+          return;
+        }
+        if (e.target.closest('[data-role="close"]')) ov.remove();
+      });
+      document.body.appendChild(ov);
+    });
     // 账号身份切换：管理员 ↔ 老师视角（弹选择抽屉）
     safeBind('msetIdentity', 'click', () => {
       const ov = document.createElement('div');

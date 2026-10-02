@@ -281,6 +281,10 @@
             <div class="lm-tile-title font-bold text-sm flex items-center gap-2" style="color: var(--lm-ink);"><i class="fa-solid fa-chalkboard-user"></i> 教师管理</div>
             <div class="text-[11px] mt-1" style="color: var(--lm-ink-3);">添加或编辑任课老师</div>
           </button>
+          <button id="btnPageIcsCalendar" class="lm-tile p-4 text-left">
+            <div class="lm-tile-title font-bold text-sm flex items-center gap-2" style="color: var(--lm-ink);"><i class="fa-solid fa-bell"></i> 上课提醒订阅</div>
+            <div class="text-[11px] mt-1" style="color: var(--lm-ink-3);">复制老师专属链接，iPhone 日历订阅后每节课提前 15 分钟提醒</div>
+          </button>
           <button id="btnPageImport" class="lm-tile p-4 text-left">
             <div class="lm-tile-title font-bold text-sm flex items-center gap-2" style="color: var(--lm-ink);"><i class="fa-solid fa-file-import"></i> 导入数据</div>
             <div class="text-[11px] mt-1" style="color: var(--lm-ink-3);">导入 JS/JSON 课表数据文件或文本</div>
@@ -693,6 +697,28 @@
 
       <div class="lm-note text-[11px] font-semibold py-1.5 px-3 rounded-xl">
         ✨ 扫码 100% 极速秒级直连同步
+      </div>
+    </div>
+  </div>
+
+  <!-- 上课提醒日历订阅 Modal 弹窗 -->
+  <div id="modalIcsCalendar" role="dialog" aria-modal="true" class="fixed inset-0 lm-scrim backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
+    <div class="lm-modal w-full sm:w-[480px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
+      <div class="lm-modal-head px-5 py-3.5 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-bell text-lg"></i>
+          <h3 class="font-bold text-sm sm:text-base">上课提醒 · 日历订阅</h3>
+        </div>
+        <button id="btnCloseIcsModal" aria-label="关闭" class="lm-modal-close transition">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+      <div class="p-5 space-y-3 text-xs">
+        <div class="lm-note p-3 rounded-xl leading-relaxed">
+          <i class="fa-solid fa-lightbulb mr-1"></i>
+          复制老师的专属链接，在 iPhone <strong>设置 → 日历 → 账户 → 添加账户 → 其他 → 添加订阅日历</strong> 粘贴即可。订阅后把该日历的默认提醒设为"提前15分钟"，每节课自动提醒，课表改动自动更新。
+        </div>
+        <div id="icsTeacherList" class="space-y-2"></div>
       </div>
     </div>
   </div>
