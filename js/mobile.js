@@ -1889,8 +1889,9 @@
             const reasonsB = [];
 
             if (a.room && b.room && a.room.trim() === b.room.trim()) {
-              reasonsA.push(`课室[${a.room}]占用`);
-              reasonsB.push(`课室[${b.room}]占用`);
+              // 只提示冲突类型，不再带课室名（卡片空间有限，避免文案被截断）
+              reasonsA.push(`课室冲突`);
+              reasonsB.push(`课室冲突`);
             }
 
             const teachersA = [a.teacherId, a.assistantTeacherId].filter(Boolean);

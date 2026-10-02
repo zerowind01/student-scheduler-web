@@ -2005,8 +2005,9 @@
             const reasonsB = [];
 
             if (a.room && b.room && a.room.trim() === b.room.trim()) {
-              reasonsA.push(`课室[${a.room}]占用`);
-              reasonsB.push(`课室[${b.room}]占用`);
+              // 只提示冲突类型，不再带课室名（与手机端文案保持一致）
+              reasonsA.push(`课室冲突`);
+              reasonsB.push(`课室冲突`);
             }
 
             const teachersInA = [
