@@ -1008,6 +1008,62 @@
       renderMobile3DayView();
     });
 
+    // ============ 课表日历：左右滑动切换 3 日窗口 ============
+    // 判定规则：横向位移 > 48px，且明显大于纵向位移（避免与竖向滚动冲突）
+    (function setupCalendarSwipe() {
+      const view = document.getElementById('viewSchedule');
+      if (!view) return;
+      const THRESHOLD = 48;
+      let sx = 0, sy = 0, st = 0, swiping = false, justSwiped = false;
+
+      view.addEventListener('touchstart', (e) => {
+        if (e.touches.length > 1) { swiping = false; return; }
+        sx = e.touches[0].clientX;
+        sy = e.touches[0].clientY;
+        st = Date.now();
+        swiping = false;
+      }, { passive: true });
+
+      view.addEventListener('touchmove', (e) => {
+        if (e.touches.length > 1) return;
+        const dx = e.touches[0].clientX - sx;
+        const dy = e.touches[0].clientY - sy;
+        // 一旦判定为横向手势就锁定，避免滑动过程中反复判定
+        if (!swiping && Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(dy)) swiping = true;
+      }, { passive: true });
+
+      view.addEventListener('touchend', (e) => {
+        if (!swiping) return;
+        swiping = false;
+        const dx = e.changedTouches[0].clientX - sx;
+        const dy = e.changedTouches[0].clientY - sy;
+        if (Date.now() - st > 900) return;                     // 慢速拖动不算滑动
+        if (Math.abs(dx) < THRESHOLD || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+
+        const dir = dx < 0 ? 1 : -1;                            // 左滑看后面，右滑看前面
+        mobileStartDate = addDays(mobileStartDate, dir * 3);
+        justSwiped = true;
+        renderMobile3DayView();
+
+        // 轻微位移反馈：新窗口从滑动方向滑入
+        const scroller = document.getElementById('mobileCalendarScroll');
+        if (scroller && typeof window.gsap !== 'undefined') {
+          try {
+            window.gsap.fromTo(scroller, { x: dir * 28, opacity: 0.6 },
+              { x: 0, opacity: 1, duration: 0.26, ease: 'power2.out' });
+          } catch (_) { /* 动画失败不影响翻页 */ }
+        }
+      }, { passive: true });
+
+      // 滑动结束后吞掉紧接着的那次 click，避免误触发"点空白新建排课"
+      view.addEventListener('click', (e) => {
+        if (!justSwiped) return;
+        justSwiped = false;
+        e.stopPropagation();
+        e.preventDefault();
+      }, true);
+    })();
+
     safeBind('mobileTeacherSelect', 'change', (e) => {
       selectedTeacherFilter = e.target.value;
       renderMobile3DayView();
