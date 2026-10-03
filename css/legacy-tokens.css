@@ -78,6 +78,22 @@
   border: 1px solid var(--lm-line);
 }
 
+/* ---- 课表卡片：纯白底 + 中性细边，不再按学员主题填彩色 ----
+   覆盖 styles.css 里 .event-amber / .event-emerald / … 的渐变与有色边框，
+   仅作用于电脑端（本文件只有 index.html 加载），手机端配色不受影响。
+   状态色（消课绿、请假红、冲突红边）属语义提示，予以保留。 */
+.schedule-event-card {
+  background: #ffffff !important;
+  border-top: 1px solid #e2e8f0 !important;
+  border-right: 1px solid #e2e8f0 !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  border-left: 3px solid #cbd5e1 !important;
+  color: #1e293b !important;
+}
+.schedule-event-card.has-conflict {
+  border-right: 3px solid #ef4444 !important;
+}
+
 /* ---- 学员卡选中态（批量排课拖拽时） ---- */
 .student-card.lm-picked {
   border-color: #1e293b !important;

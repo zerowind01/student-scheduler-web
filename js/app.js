@@ -1807,13 +1807,13 @@
           <span class="truncate text-slate-900 ${nameFontSize} flex-1 tracking-normal font-sans">${schedule.studentName}</span>
           ${
             !isSideBySide
-              ? `<span class="${timeFontSize} opacity-80 shrink-0 bg-white/75 px-1 py-0.2 rounded border border-black/5">${schedule.startTime}-${endTimeStr}</span>`
+              ? `<span class="${timeFontSize} shrink-0 bg-slate-50 px-1 py-0.2 rounded border border-slate-200 lm-t2">${schedule.startTime}</span>`
               : ''
           }
         </div>
 
         <div class="leading-none flex items-center gap-1 flex-wrap truncate shrink-0 -mt-[2px]">
-          <span class="${badgeFontSize} px-1.5 py-0.5 bg-white/80 lm-t1 rounded-md border border-black/5 shadow-2xs truncate">${schedule.subject}</span>
+          <span class="${badgeFontSize} px-1.5 py-0.5 bg-slate-100 lm-t1 rounded-md border border-slate-200 truncate">${schedule.subject}</span>
           ${teacherText ? `<span class="opacity-85 ${textFontSize} truncate">${teacherText}</span>` : ''}
           ${roomText ? `<span class="opacity-85 ${textFontSize} truncate">${roomText}</span>` : ''}
         </div>
