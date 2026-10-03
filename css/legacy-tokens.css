@@ -1,0 +1,85 @@
+/* ==========================================================================
+   LessonMate 电脑端 · 冷白 slate 兼容层（V1 原生配色）
+   --------------------------------------------------------------------------
+   背景：桌面首页回到改动之前的「扁平冷白」结构（index.html 用 Tailwind
+   slate 原子类，页面底 slate-50、卡片纯白 + slate-200 细边、主按钮深灰）。
+   但 js/app.js 在运行期会动态生成学员卡 / 财务统计卡 / 弹窗等节点，其中用到
+   一批 lm-* 语义类与 --lm-* 变量（原先由 Intercom 主题层提供）。
+   本文件用 V1 同色系 slate 重新定义它们，只为 index.html 加载，不影响手机端。
+   ========================================================================== */
+
+:root {
+  --lm-canvas-top: #ffffff;
+  --lm-canvas-mid: #f8fafc;
+  --lm-canvas-bot: #f1f5f9;
+
+  --lm-ink: #1e293b;        /* slate-800 主文字 */
+  --lm-ink-2: #64748b;      /* slate-500 次文字 */
+  --lm-ink-3: #94a3b8;      /* slate-400 弱文字 */
+
+  --lm-fin: #f59e0b;        /* amber-500 点缀 */
+  --lm-orange: #d97706;     /* amber-600 待续费 */
+  --lm-pink: #e11d48;       /* rose-600  欠课 / 危险 */
+
+  --lm-line: #e2e8f0;       /* slate-200 发丝线 */
+  --lm-line-strong: #cbd5e1;/* slate-300 */
+
+  --lm-card-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --lm-card-shadow-lg: 0 8px 22px rgba(15, 23, 42, 0.10), 0 2px 5px rgba(15, 23, 42, 0.06);
+  --lm-pill-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+/* ---- 文字层级 ---- */
+.lm-t1 { color: var(--lm-ink) !important; }
+.lm-t2 { color: var(--lm-ink-2) !important; }
+.lm-t3 { color: var(--lm-ink-3) !important; }
+.lm-warn { color: var(--lm-orange) !important; }
+
+/* ---- 面 ---- */
+.lm-soft { background: #f8fafc !important; }
+.lm-soft-2 { background: #f1f5f9 !important; }
+.lm-hairline { border-color: var(--lm-line) !important; }
+.lm-scrim { background: rgba(15, 23, 42, 0.45) !important; }
+.lm-scrim-soft { background: rgba(15, 23, 42, 0.28) !important; }
+.lm-scrim-strong { background: rgba(15, 23, 42, 0.95) !important; }
+
+/* ---- 表单控件：白底 + 发丝线 ---- */
+.lm-field {
+  background: #fff;
+  border: 1px solid var(--lm-line-strong);
+  border-radius: 0.75rem;
+  color: var(--lm-ink);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.lm-field:focus {
+  border-color: var(--lm-ink);
+  box-shadow: 0 0 0 3px rgba(30, 41, 59, 0.10);
+}
+
+/* ---- 深灰主按钮（沿用 V1 的 slate-800） ---- */
+.lm-btn-ink {
+  background: #1e293b;
+  color: #fff;
+}
+.lm-btn-ink:hover {
+  background: #334155;
+}
+
+/* ---- 统计卡 / 分区块：纯白卡片 + 细边 ---- */
+.lm-stat-card {
+  background: #fff;
+  border: 1px solid var(--lm-line);
+  border-radius: 1rem;
+  box-shadow: var(--lm-card-shadow);
+}
+.lm-section {
+  background: #f8fafc;
+  border: 1px solid var(--lm-line);
+}
+
+/* ---- 学员卡选中态（批量排课拖拽时） ---- */
+.student-card.lm-picked {
+  border-color: #1e293b !important;
+  box-shadow: 0 0 0 2px rgba(30, 41, 59, 0.85) !important;
+}
