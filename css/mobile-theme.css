@@ -10,6 +10,12 @@
 /* ---- 页面底：奶油亮渐变（mobile.html 专属，index 不受影响） ----
    通过 body[datapage] 或专用 id 前缀选择器限定：mobile.html 的根视图都以 view* 开头，
    这里直接用 body:has(#viewHome) 的兜底 + mobile-bottom-nav 判定 */
+/* 提亮画布渐变（覆盖 intercom-tokens.css 的旧值，底部不再偏米褐） */
+:root {
+  --lm-canvas-top: #fefdfb;
+  --lm-canvas-mid: #fcfaf6;
+  --lm-canvas-bot: #faf7f1;
+}
 body:has(#viewHome) {
   background: linear-gradient(180deg, var(--lm-canvas-top), var(--lm-canvas-mid) 45%, var(--lm-canvas-bot) 100%) !important;
 }
@@ -28,12 +34,12 @@ body:has(#viewHome) {
   right: 16px;
   bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   height: 62px;
-  background: rgba(255, 253, 249, 0.42);
+  background: rgba(255, 255, 255, 0.45);
   backdrop-filter: blur(26px) saturate(180%);
   -webkit-backdrop-filter: blur(26px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.8);
   border-radius: 999px;
-  box-shadow: 0 14px 34px -10px rgba(120, 100, 70, 0.28), 0 2px 8px rgba(120, 100, 70, 0.10);
+  box-shadow: 0 12px 30px -12px rgba(15, 23, 42, 0.16), 0 2px 6px rgba(15, 23, 42, 0.06);
   z-index: 40;
   display: flex;
   align-items: center;
@@ -55,7 +61,7 @@ body:has(#viewHome) {
 /* 选中高亮胶囊：JS 已给激活 tab 切换 font-bold，直接借力 */
 .lm-island .nav-tab.font-bold {
   background: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 5px 16px rgba(120, 100, 70, 0.18), 0 1px 4px rgba(120, 100, 70, 0.10);
+  box-shadow: 0 5px 16px rgba(15, 23, 42, 0.10), 0 1px 4px rgba(15, 23, 42, 0.06);
 }
 /* 内容避让：主区底部给岛台留空间 */
 body:has(.lm-island) main {
