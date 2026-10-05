@@ -10,11 +10,12 @@
 /* ---- 页面底：奶油亮渐变（mobile.html 专属，index 不受影响） ----
    通过 body[datapage] 或专用 id 前缀选择器限定：mobile.html 的根视图都以 view* 开头，
    这里直接用 body:has(#viewHome) 的兜底 + mobile-bottom-nav 判定 */
-/* 画布纯白（手机端）：任何暖调都会在岛台周围显出色带，纯白后岛台毛玻璃即视觉透明 */
+/* 画布恢复暖调奶油浅渐变：全宽色带已通过"去掉 main 底部避让"根除，
+   底色不再需要被迫转为纯白。有 content 时透出的是内容色，空白时才露底。 */
 :root {
-  --lm-canvas-top: #ffffff;
-  --lm-canvas-mid: #ffffff;
-  --lm-canvas-bot: #fefefe;
+  --lm-canvas-top: #fefdfb;
+  --lm-canvas-mid: #fcfaf6;
+  --lm-canvas-bot: #faf7f1;
 }
 body:has(#viewHome) {
   background: linear-gradient(180deg, var(--lm-canvas-top), var(--lm-canvas-mid) 45%, var(--lm-canvas-bot) 100%) !important;
@@ -34,9 +35,9 @@ body:has(#viewHome) {
   right: 16px;
   bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   height: 62px;
-  background: rgba(255, 255, 255, 0.55);
-  backdrop-filter: blur(26px) saturate(180%);
-  -webkit-backdrop-filter: blur(26px) saturate(180%);
+  background: rgba(255, 255, 255, 0.38);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
   border: 1px solid rgba(255, 255, 255, 0.8);
   border-radius: 999px;
   box-shadow: 0 12px 30px -12px rgba(15, 23, 42, 0.16), 0 2px 6px rgba(15, 23, 42, 0.06);
@@ -63,9 +64,14 @@ body:has(#viewHome) {
   background: rgba(255, 255, 255, 0.95);
   box-shadow: 0 5px 16px rgba(15, 23, 42, 0.10), 0 1px 4px rgba(15, 23, 42, 0.06);
 }
-/* 内容避让：主区底部给岛台留空间 */
+/* 内容避让：不再在 main 上挖一整条全宽色带（那会被看成"长方形"）。
+   改为——内容延伸到屏幕最底部，从岛台后面滚过去（毛玻璃透出底下列表）；
+   只在滚动容器末尾留余量，保证最后一条能翻到岛台上方。 */
 body:has(.lm-island) main {
-  padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: 0 !important;
+}
+body:has(.lm-island) main .overflow-y-auto {
+  padding-bottom: calc(74px + env(safe-area-inset-bottom, 0px)) !important;
 }
 /* Toast 抬高到岛台上方 */
 body:has(.lm-island) .toast-safe-bottom {
