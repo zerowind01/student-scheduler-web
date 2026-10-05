@@ -10,11 +10,11 @@
 /* ---- 页面底：奶油亮渐变（mobile.html 专属，index 不受影响） ----
    通过 body[datapage] 或专用 id 前缀选择器限定：mobile.html 的根视图都以 view* 开头，
    这里直接用 body:has(#viewHome) 的兜底 + mobile-bottom-nav 判定 */
-/* 画布改为近纯白中性（奶油底会在岛台周围显出一块米黄，改中性后岛台显透明） */
+/* 画布纯白（手机端）：任何暖调都会在岛台周围显出色带，纯白后岛台毛玻璃即视觉透明 */
 :root {
   --lm-canvas-top: #ffffff;
-  --lm-canvas-mid: #fdfdfc;
-  --lm-canvas-bot: #fbfbfa;
+  --lm-canvas-mid: #ffffff;
+  --lm-canvas-bot: #fefefe;
 }
 body:has(#viewHome) {
   background: linear-gradient(180deg, var(--lm-canvas-top), var(--lm-canvas-mid) 45%, var(--lm-canvas-bot) 100%) !important;
