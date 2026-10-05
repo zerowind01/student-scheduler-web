@@ -686,6 +686,9 @@
       return;
     }
 
+    // 快照必须在任何数据变更前拍（下面会改课时、写流水、可能转欠课）
+    pushUndo(`消课 ${sch.studentName}`);
+
     const student = students.find((st) => st.id === sch.studentId);
     const deducted = getLessonCost(sch);
     let payment = 0;
@@ -711,7 +714,8 @@
     recordCheckInLog(sch, deducted, payment, finalRemarks);
     saveData();
     refreshView();
-    showToast(`✅ 已消课：${sch.studentName} · ${sch.subject}（${deducted}节）`, 'circle-check');
+    offerUndo(`✅ 已消课：${sch.studentName} · ${sch.subject}（${deducted}节）`, 'circle-check', `消课 ${sch.studentName}`);
+    if (window.uiAnim) window.uiAnim.flashSchedule(sch.id);
   }
 
   // 学员请假（不限课程时间，已消课的也可改为请假）
@@ -723,6 +727,9 @@
       showToast('该课程已是请假状态', 'circle-info');
       return;
     }
+    pushUndo(`请假 ${sch.studentName}`);
+    let leaveMsg = '';
+
     if (sch.status === SCHEDULE_STATUS.COMPLETED) {
       // 已消课 → 改为请假：删除消课流水（回滚财务）+ 退还消课时扣掉的课时
       checkInLogs = checkInLogs.filter((l) => l.scheduleId !== sch.id);
@@ -732,20 +739,24 @@
         const course = (student.courses || []).find((c) => c.id === sch.courseId || c.name === sch.subject);
         if (course) course.remainingLessons += deducted;
       }
-      showToast(`🏖️ 已消课的课程改为请假，退还 ${deducted} 节课时`, 'circle-check');
+      leaveMsg = `🏖️ 已消课的课程改为请假，退还 ${deducted} 节课时`;
     } else {
-      showToast(`🏖️ 已为 ${sch.studentName} 办理请假`, 'circle-check');
+      leaveMsg = `🏖️ 已为 ${sch.studentName} 办理请假`;
     }
 
     sch.status = SCHEDULE_STATUS.STUDENT_LEAVE;
     saveData();
     refreshView();
+    offerUndo(leaveMsg, 'circle-check', `请假 ${sch.studentName}`);
+    if (window.uiAnim) window.uiAnim.flashSchedule(sch.id);
   }
 
   // 撤销状态（completed/student_leave → scheduled）
   function revertScheduleStatus(scheduleId) {
     const sch = schedules.find((s) => s.id === scheduleId);
     if (!sch || sch.status === SCHEDULE_STATUS.SCHEDULED) return;
+
+    pushUndo(`还原 ${sch.studentName} 的课`);
 
     if (sch.status === SCHEDULE_STATUS.COMPLETED) {
       // 撤销消课：删流水 + 退还消课扣掉的课时
@@ -762,7 +773,8 @@
     sch.status = SCHEDULE_STATUS.SCHEDULED;
     saveData();
     refreshView();
-    showToast('已撤销状态，还原为待上课', 'rotate-left');
+    offerUndo('已撤销状态，还原为待上课', 'rotate-left', `还原 ${sch.studentName} 的课`);
+    if (window.uiAnim) window.uiAnim.flashSchedule(sch.id);
   }
 
   // 删除排课时同步清理流水
@@ -818,20 +830,30 @@
   // 3. 安全防崩溃事件监听配置
   // ==========================================
   function setupEventListeners() {
+    // 翻周方向感：dirX = -1 上一周 / 1 下一周 / 0 回今天
+    function weekSlide(dirX) {
+      if (!window.uiAnim || calendarViewMode === 'month') return;
+      const body = document.getElementById('calendarBodyScroll');
+      if (body) window.uiAnim.viewIn(body, dirX);
+    }
+
     safeBind('btnPrevWeek', 'click', () => {
       currentWeekStart = addDays(currentWeekStart, -7);
       refreshView();
+      weekSlide(-1);
     });
 
     safeBind('btnNextWeek', 'click', () => {
       currentWeekStart = addDays(currentWeekStart, 7);
       refreshView();
+      weekSlide(1);
     });
 
     safeBind('btnToday', 'click', () => {
       currentWeekStart = getMonday(new Date());
       if (calendarViewMode === 'month') currentMonth = new Date();
       refreshView();
+      weekSlide(0);
     });
 
     // 月历总览切换
@@ -1062,7 +1084,18 @@
       btnMonth.classList.toggle('shadow-2xs', isMonth);
       btnMonth.classList.toggle('text-amber-600', isMonth);
     }
-    if (isMonth) renderMonthView();
+    if (isMonth) {
+      renderMonthView();
+      if (window.uiAnim) {
+        window.uiAnim.viewIn(monthWrap);
+        const grid = document.getElementById('monthViewGrid');
+        if (grid) window.uiAnim.cardsStagger(grid, '#monthViewGrid > *');
+      }
+    } else if (window.uiAnim) {
+      // 从月视图切回周视图时给周视图一个轻量进场，避免硬切
+      const weekBody = document.getElementById('calendarBodyScroll');
+      if (weekBody) window.uiAnim.viewIn(weekBody);
+    }
   }
 
   function renderMonthView() {
@@ -1895,6 +1928,12 @@
 
       gridContainer.appendChild(dayColumn);
     }
+
+    // 动效：新渲染的课卡轻微错峰进场（含数量限流，见 anim.js）
+    if (window.uiAnim) {
+      window.uiAnim.cardsStagger(gridContainer, '.schedule-event-card');
+      window.uiAnim.emitRendered();
+    }
   }
 
   function removeDragPreviewSlot(container) {
@@ -2031,9 +2070,11 @@
     const laterCount = later.length;
 
     const doDelete = (ids, msg) => {
+      // 删除是不可逆感最强的操作，撤销优先级最高
+      pushUndo('删除排课', sch.id);
       ids.forEach((id) => handleDeleteScheduleWithCleanup(id));
       refreshView();
-      showToast(msg, 'trash-can');
+      offerUndo(msg, 'trash-can', '删除排课');
       if (onDone) onDone();
     };
 
@@ -2533,6 +2574,8 @@
 
     const updatedConflicts = detectScheduleConflicts();
     const currentSchId = schId || schedules[schedules.length - 1].id;
+    // 保存后高亮刚改/刚建的那一节，让改动有落点
+    if (window.uiAnim) window.uiAnim.flashSchedule(currentSchId);
     if (updatedConflicts.has(currentSchId)) {
       const info = updatedConflicts.get(currentSchId);
       setTimeout(() => {
@@ -2829,12 +2872,15 @@
     if (!editId) return;
 
     if (confirm('确定要删除该学员吗？该学员的所有课程记录及历史排课会被同步清理。')) {
+      const victim = students.find((s) => s.id === editId);
+      pushUndo(`删除学员 ${victim ? victim.name : ''}`);
       students = students.filter((s) => s.id !== editId);
       schedules = schedules.filter((sch) => sch.studentId !== editId);
+      // 注意：这里不动 checkInLogs / debts —— 历史财务流水按原语义保留
       saveData();
       closeStudentModal();
       refreshView();
-      showToast('已删除学员记录', 'trash');
+      offerUndo('已删除学员记录', 'trash', `删除学员 ${victim ? victim.name : ''}`);
     }
   }
 
@@ -2962,6 +3008,68 @@
   // ==========================================
   // 15. 统计 & 工具函数
   // ==========================================
+  // ==========================================
+  // 撤销（Undo）：操作前整体快照，Toast 内 5 秒窗口一键回滚
+  // 快照必须覆盖 4 个会被写入的集合 —— 漏掉 checkInLogs / debts
+  // 会让回滚留下脏流水（财务对不上），这是本项目的高危点。
+  // ==========================================
+  let undoState = null;
+  let undoTimer = null;
+
+  function pushUndo(label, flashId) {
+    undoState = {
+      students: JSON.parse(JSON.stringify(students)),
+      schedules: JSON.parse(JSON.stringify(schedules)),
+      checkInLogs: JSON.parse(JSON.stringify(checkInLogs)),
+      debts: JSON.parse(JSON.stringify(debts)),
+      label: label || '上一次操作',
+      flashId: flashId || '',
+    };
+  }
+
+  function clearUndo() {
+    undoState = null;
+    if (undoTimer) { clearTimeout(undoTimer); undoTimer = null; }
+  }
+
+  function runUndo() {
+    if (!undoState) return;
+    const label = undoState.label;
+    const flashId = undoState.flashId;
+    students = undoState.students;
+    schedules = undoState.schedules;
+    checkInLogs = undoState.checkInLogs;
+    debts = undoState.debts;
+    clearUndo();
+    saveData();
+    refreshView();
+    showToast(`↩️ 已撤销：${label}`, 'rotate-left');
+    // 撤销后把恢复的那节课高亮一下，让「回到哪儿了」看得见
+    if (window.uiAnim && flashId) window.uiAnim.flashSchedule(flashId);
+  }
+
+  // 提示 + 撤销入口。调用前必须已经在数据变更前执行过 pushUndo(label)
+  function offerUndo(msg, icon, label) {
+    if (!undoState) { showToast(msg, icon); return; }
+    if (label) undoState.label = label;
+    showToast(msg, icon, '撤销', () => runUndo());
+    // 5 秒后撤销按钮随 Toast 一起消失，快照同时作废
+    if (undoTimer) clearTimeout(undoTimer);
+    undoTimer = setTimeout(clearUndo, 5200);
+  }
+
+  // 统计数字滚动：把上一次的值存在 data-lm-val，下次更新时从旧值滚到新值
+  function setStatNumber(el, value, suffix, decimals = 0) {
+    if (!el) return;
+    const prev = parseFloat(el.dataset.lmVal || '');
+    el.dataset.lmVal = String(value);
+    if (!window.uiAnim || Number.isNaN(prev) || prev === value) {
+      el.textContent = (decimals ? value.toFixed(decimals) : Math.round(value)) + suffix;
+      return;
+    }
+    window.uiAnim.number(el, prev, value, decimals, suffix);
+  }
+
   function updateStats() {
     const weekEnd = addDays(currentWeekStart, 6);
     let currentWeekSchedules = schedules.filter((s) => {
@@ -2978,10 +3086,10 @@
     const totalHours = (totalMinutes / 60).toFixed(1);
 
     const cEl = document.getElementById('statWeeklyCourses');
-    if (cEl) cEl.textContent = `${totalCourses} 节`;
+    if (cEl) setStatNumber(cEl, totalCourses, ' 节');
 
     const hEl = document.getElementById('statWeeklyHours');
-    if (hEl) hEl.textContent = `${totalHours} 小时`;
+    if (hEl) setStatNumber(hEl, parseFloat(totalHours), ' 小时', 1);
 
     updateFinancePanel();
   }
@@ -3167,7 +3275,18 @@
     }
   }
 
-  function showToast(msg, icon = 'circle-check') {
+  function hideToast() {
+    const toast = document.getElementById('toast');
+    if (!toast) return;
+    toast.classList.add('translate-y-10', 'opacity-0', 'pointer-events-none');
+    toast.classList.remove('translate-y-0', 'opacity-100');
+    const actionBtn = document.getElementById('toastAction');
+    if (actionBtn) { actionBtn.style.display = 'none'; actionBtn.onclick = null; }
+  }
+
+  let toastTimer = null;
+
+  function showToast(msg, icon = 'circle-check', actionLabel = '', onAction = null) {
     const toast = document.getElementById('toast');
     const toastMsg = document.getElementById('toastMsg');
     const toastIcon = document.getElementById('toastIcon');
@@ -3176,14 +3295,30 @@
       toastMsg.textContent = msg;
       toastIcon.className = `fa-solid fa-${icon} text-emerald-300`;
 
+      // 撤销按钮：按需动态挂载，不用时隐藏（避免误触上一次的回调）
+      let actionBtn = document.getElementById('toastAction');
+      if (actionLabel && typeof onAction === 'function') {
+        if (!actionBtn) {
+          actionBtn = document.createElement('button');
+          actionBtn.id = 'toastAction';
+          actionBtn.type = 'button';
+          toast.appendChild(actionBtn);
+        }
+        actionBtn.textContent = actionLabel;
+        actionBtn.style.display = '';
+        actionBtn.onclick = () => { hideToast(); onAction(); };
+      } else if (actionBtn) {
+        actionBtn.style.display = 'none';
+        actionBtn.onclick = null;
+      }
+
       toast.classList.remove('translate-y-10', 'opacity-0', 'pointer-events-none');
       toast.classList.add('translate-y-0', 'opacity-100');
       if (window.uiAnim) window.uiAnim.toastIn(toast);
 
-      setTimeout(() => {
-        toast.classList.add('translate-y-10', 'opacity-0', 'pointer-events-none');
-        toast.classList.remove('translate-y-0', 'opacity-100');
-      }, 2800);
+      // 关键：新 Toast 必须清掉上一条的定时器，否则会提前把这条关掉
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(hideToast, actionLabel ? 5000 : 2800);
     }
   }
 

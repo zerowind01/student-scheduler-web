@@ -527,6 +527,8 @@
       if (course) {
         if (course.unitPrice > 0) payment = deducted * course.unitPrice;
         // 消课时扣除课时（App 语义：排课不扣，消课才扣）
+        // 快照必须在任何数据变更前拍（下面会改课时、写流水、可能转欠课）
+        pushUndo(`消课 ${sch.studentName}`, sch.id);
         course.remainingLessons -= deducted;
         // 扣成负数（超上）→ 转正式欠课账
         if (course.remainingLessons < 0) {
@@ -541,7 +543,8 @@
     saveData();
     renderMobile3DayView();
     renderMobileStudents();
-    showToast(`✅ 已消课：${sch.studentName} · ${sch.subject || sch.courseName || ''}（${deducted}节）`);
+    offerUndo(`✅ 已消课：${sch.studentName} · ${sch.subject || sch.courseName || ''}（${deducted}节）`, `消课 ${sch.studentName}`);
+    if (window.uiAnim) window.uiAnim.flashSchedule(sch.id);
   }
 
   // 学员请假（不限课程时间，已消课的也可改为请假）
@@ -553,6 +556,9 @@
       showToast('该课程已是请假状态');
       return;
     }
+    pushUndo(`请假 ${sch.studentName}`, sch.id);
+    let leaveMsg = '';
+
     if (sch.status === SCHEDULE_STATUS.COMPLETED) {
       // 已消课 → 改为请假：删除消课流水（回滚财务）+ 退还消课时扣掉的课时
       checkInLogs = checkInLogs.filter((l) => l.scheduleId !== sch.id);
@@ -562,20 +568,24 @@
         const course = (student.courses || []).find((c) => c.id === sch.courseId || c.name === sch.subject || c.name === sch.courseName);
         if (course) course.remainingLessons += deducted;
       }
-      showToast(`🏖️ 已消课的课程改为请假，退还 ${deducted} 节课时`);
+      leaveMsg = `🏖️ 已消课的课程改为请假，退还 ${deducted} 节课时`;
     } else {
-      showToast('🏖️ 已为 ' + sch.studentName + ' 办理请假');
+      leaveMsg = '🏖️ 已为 ' + sch.studentName + ' 办理请假';
     }
 
     sch.status = SCHEDULE_STATUS.STUDENT_LEAVE;
     saveData();
     renderMobile3DayView();
     renderMobileStudents();
+    offerUndo(leaveMsg, `请假 ${sch.studentName}`);
+    if (window.uiAnim) window.uiAnim.flashSchedule(sch.id);
   }
 
   function revertScheduleStatus(scheduleId) {
     const sch = schedules.find((s) => s.id === scheduleId);
     if (!sch || sch.status === SCHEDULE_STATUS.SCHEDULED) return;
+
+    pushUndo(`还原 ${sch.studentName} 的课`, sch.id);
 
     if (sch.status === SCHEDULE_STATUS.COMPLETED) {
       // 撤销消课：删流水 + 退还消课扣掉的课时
@@ -593,7 +603,8 @@
     saveData();
     renderMobile3DayView();
     renderMobileStudents();
-    showToast('已撤销状态，还原为待上课');
+    offerUndo('已撤销状态，还原为待上课', `还原 ${sch.studentName} 的课`);
+    if (window.uiAnim) window.uiAnim.flashSchedule(sch.id);
   }
 
   function loadData() {
@@ -1841,6 +1852,7 @@
     const themeClass = `event-${schedule.colorTheme || 'amber'}`;
     const hasConflict = !!conflictInfo;
     card.className = `schedule-event-card ${themeClass} ${hasConflict ? 'has-conflict' : ''}`;
+    card.setAttribute('data-schedule-id', schedule.id);
 
     const [h, m] = schedule.startTime.split(':').map(Number);
     const startMins = (h - 8) * 60 + m;
@@ -2033,6 +2045,13 @@
       cSel.innerHTML = '<option value="all">全部课程</option>' +
         names.map((n) => `<option value="${n}">${n}</option>`).join('');
       if ([...cSel.options].some((o) => o.value === prev)) cSel.value = prev;
+    }
+
+    // 动效：3 日视图课卡错峰进场（含数量限流）
+    if (window.uiAnim) {
+      const gridHost = document.getElementById('mobileGridColumns');
+      if (gridHost) window.uiAnim.cardsStagger(gridHost, '.schedule-event-card');
+      window.uiAnim.emitRendered();
     }
   }
 
@@ -2431,6 +2450,9 @@
     saveData();
     closeMobileScheduleModal();
     renderMobile3DayView();
+    // 保存后高亮刚改/刚建的那一节，让改动有落点
+    const mobileSavedId = schId || (schedules.length ? schedules[schedules.length - 1].id : '');
+    if (window.uiAnim && mobileSavedId) window.uiAnim.flashSchedule(mobileSavedId);
   }
 
   // 删除课程统一入口：有后续重复排课时弹"仅本次/本次及之后"双选（无则普通确认）
@@ -2439,9 +2461,11 @@
     const laterCount = later.length;
 
     const doDelete = (ids, msg) => {
+      // 删除是不可逆感最强的操作，撤销优先级最高
+      pushUndo('删除排课', sch.id);
       schedules = schedules.filter((s) => !ids.includes(s.id));
       saveData();
-      showToast(msg);
+      offerUndo(msg, '删除排课');
       if (onDone) onDone();
     };
 
@@ -2698,7 +2722,70 @@
   }
 
   let toastTimer = null;
-  function showToast(msg) {
+  // 撤销（Undo）：操作前整体快照，Toast 内 5 秒窗口一键回滚
+  // 快照必须覆盖 4 个会被写入的集合 —— 漏掉 checkInLogs / debts
+  // 会让回滚留下脏流水（财务对不上）
+  let undoState = null;
+  let undoTimer = null;
+
+  function pushUndo(label, flashId) {
+    undoState = {
+      students: JSON.parse(JSON.stringify(students)),
+      schedules: JSON.parse(JSON.stringify(schedules)),
+      checkInLogs: JSON.parse(JSON.stringify(checkInLogs)),
+      debts: JSON.parse(JSON.stringify(debts)),
+      label: label || '上一次操作',
+      flashId: flashId || '',
+    };
+  }
+
+  function clearUndo() {
+    undoState = null;
+    if (undoTimer) { clearTimeout(undoTimer); undoTimer = null; }
+  }
+
+  function refreshMobileAll() {
+    renderMobile3DayView();
+    renderMobileStudents();
+    if (typeof renderMobileHome === 'function') renderMobileHome();
+  }
+
+  function runUndo() {
+    if (!undoState) return;
+    const label = undoState.label;
+    const flashId = undoState.flashId;
+    students = undoState.students;
+    schedules = undoState.schedules;
+    checkInLogs = undoState.checkInLogs;
+    debts = undoState.debts;
+    clearUndo();
+    saveData();
+    refreshMobileAll();
+    showToast(`↩️ 已撤销：${label}`);
+    if (window.uiAnim && flashId) window.uiAnim.flashSchedule(flashId);
+  }
+
+  // 提示 + 撤销入口。调用前必须已经在数据变更前执行过 pushUndo(label)
+  function offerUndo(msg, label) {
+    if (!undoState) { showToast(msg); return; }
+    if (label) undoState.label = label;
+    showToast(msg, '撤销', () => runUndo());
+    if (undoTimer) clearTimeout(undoTimer);
+    undoTimer = setTimeout(clearUndo, 5200);
+  }
+
+  function hideToast() {
+    const toast = document.getElementById('toast');
+    if (!toast) return;
+    toast.style.opacity = '';
+    toast.style.transform = '';
+    toast.classList.add('translate-y-10', 'opacity-0', 'pointer-events-none');
+    toast.classList.remove('translate-y-0', 'opacity-100');
+    const actionBtn = document.getElementById('toastAction');
+    if (actionBtn) { actionBtn.style.display = 'none'; actionBtn.onclick = null; }
+  }
+
+  function showToast(msg, actionLabel = '', onAction = null) {
     const toast = document.getElementById('toast');
     const toastMsg = document.getElementById('toastMsg');
     if (toast && toastMsg) {
@@ -2709,6 +2796,24 @@
       toast.style.translate = '';
       toast.style.rotate = '';
       toast.style.scale = '';
+
+      // 撤销按钮：按需动态挂载，不用时隐藏（避免误触上一次的回调）
+      let actionBtn = document.getElementById('toastAction');
+      if (actionLabel && typeof onAction === 'function') {
+        if (!actionBtn) {
+          actionBtn = document.createElement('button');
+          actionBtn.id = 'toastAction';
+          actionBtn.type = 'button';
+          toast.appendChild(actionBtn);
+        }
+        actionBtn.textContent = actionLabel;
+        actionBtn.style.display = '';
+        actionBtn.onclick = () => { hideToast(); onAction(); };
+      } else if (actionBtn) {
+        actionBtn.style.display = 'none';
+        actionBtn.onclick = null;
+      }
+
       toast.classList.remove('translate-y-10', 'opacity-0', 'pointer-events-none');
       toast.classList.add('translate-y-0', 'opacity-100');
       if (window.uiAnim) window.uiAnim.toastIn(toast);
@@ -2929,13 +3034,16 @@
     if (!editId) return;
 
     if (confirm('确定要删除该学员吗？其所有排课记录也会被清理。')) {
+      const victim = students.find((s) => s.id === editId);
+      pushUndo(`删除学员 ${victim ? victim.name : ''}`);
       students = students.filter((s) => s.id !== editId);
       schedules = schedules.filter((sch) => sch.studentId !== editId);
+      // 历史财务流水按原语义保留，不动 checkInLogs / debts
       saveData();
       closeMobileStudentModal();
       renderMobileStudents();
       renderMobile3DayView();
-      showToast('已删除学员记录');
+      offerUndo('已删除学员记录', `删除学员 ${victim ? victim.name : ''}`);
     }
   }
 

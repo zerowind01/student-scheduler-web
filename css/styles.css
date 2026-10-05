@@ -268,3 +268,36 @@ button, a, select, input, textarea {
 #statWeeklyHours {
   font-variant-numeric: tabular-nums;
 }
+
+/* 11. 就地反馈：保存 / 消课 / 撤销后目标卡片高亮回闪一次
+       「改到哪儿了」要有落点，不能只有 Toast。CSS 实现，不依赖 GSAP。 */
+@keyframes lm-flash-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.55); }
+  70%  { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+}
+
+.lm-flash {
+  animation: lm-flash-ring 620ms ease-out 1;
+  border-radius: inherit;
+}
+
+/* 12. Toast 内的「撤销」动作按钮 */
+#toastAction {
+  margin-left: 2px;
+  padding: 3px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-weight: 700;
+  font-size: 11px;
+  line-height: 1.4;
+  transition: background 140ms ease;
+}
+#toastAction:hover { background: rgba(255, 255, 255, 0.3); }
+#toastAction:active { background: rgba(255, 255, 255, 0.42); }
+
+/* 13. 无障碍：用户要求减少动效时，取消回闪（位移/淡入类由 anim.js 侧兜底） */
+@media (prefers-reduced-motion: reduce) {
+  .lm-flash { animation: none; }
+}

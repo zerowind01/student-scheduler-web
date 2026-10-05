@@ -55,44 +55,56 @@ function animateToastIn(el) {
 
 /* ---- 3. 课时数字滚动 ----
    消课/充值/撤销后调用：数字从旧值滚到新值
-   用法：animateNumber(el, oldValue, newValue, decimals) */
-function animateNumber(el, from, to, decimals = 0) {
-  if (RM || !hasGSAP || !el) {
-    if (el) el.textContent = decimals ? to.toFixed(decimals) : Math.round(to);
-    return;
-  }
+   用法：animateNumber(el, oldValue, newValue, decimals, suffix)
+   suffix 用于带单位的统计（「 节」「 小时」），避免滚动过程中单位丢失 */
+function animateNumber(el, from, to, decimals = 0, suffix = '') {
+  const render = (v) => {
+    if (el) el.textContent = (decimals ? v.toFixed(decimals) : Math.round(v)) + suffix;
+  };
+  if (RM || !hasGSAP || !el) { render(to); return; }
   const obj = { v: from };
   window.gsap.to(obj, {
     v: to,
     duration: 0.5,
     ease: 'power2.out',
-    onUpdate: () => {
-      el.textContent = decimals ? obj.v.toFixed(decimals) : Math.round(obj.v);
-    },
+    onUpdate: () => render(obj.v),
   });
 }
 
 /* ---- 4. 页面/视图切换 ----
-   tab 切换时对新视图做轻量 fade+rise */
-function animateViewIn(viewEl) {
+   tab 切换时对新视图做轻量 fade+rise
+   dirX：翻周时的方向感，-1 上一周（内容从左侧进）、1 下一周（从右侧进）；
+   不传则只做纵向 rise（分页切换场景） */
+function animateViewIn(viewEl, dirX = 0) {
   uiAnimate((gsap) => {
     gsap.fromTo(viewEl,
-      { opacity: 0, y: 10 },
-      { opacity: 1, y: 0, duration: 0.24, ease: 'power2.out', clearProps: 'all' }
+      { opacity: 0, y: dirX ? 0 : 10, x: dirX ? 26 * dirX : 0 },
+      { opacity: 1, y: 0, x: 0, duration: 0.26, ease: 'power2.out', clearProps: 'all' }
     );
   });
 }
 
-/* ---- 5. 日历课卡批量进场（月视图/3日视图渲染后） ----
-   只在首次渲染时轻微 stagger，列表更新频繁时不用 */
+/* ---- 5. 日历课卡批量进场（周视图 / 月视图 / 3日视图渲染后） ----
+   限流很重要：课表每次保存都会重渲染，长列表若逐个 stagger 会拖沓。
+   规则：超过 MAX_STAGGER 个就整体淡入；数量越多 stagger 步长越小。 */
+const MAX_STAGGER = 24;
+
 function animateCardsStagger(containerEl, cardSelector = '.schedule-event-card') {
   if (!containerEl) return;
   uiAnimate((gsap) => {
     const cards = containerEl.querySelectorAll(cardSelector);
     if (!cards.length) return;
+    if (cards.length > MAX_STAGGER) {
+      gsap.fromTo(cards,
+        { opacity: 0, y: 6 },
+        { opacity: 1, y: 0, duration: 0.22, ease: 'power2.out', clearProps: 'all' }
+      );
+      return;
+    }
+    const step = cards.length > 12 ? 0.018 : 0.03;
     gsap.fromTo(cards,
       { opacity: 0, y: 8 },
-      { opacity: 1, y: 0, duration: 0.26, stagger: 0.03, ease: 'power2.out', clearProps: 'all' }
+      { opacity: 1, y: 0, duration: 0.26, stagger: step, ease: 'power2.out', clearProps: 'all' }
     );
   });
 }
@@ -106,6 +118,54 @@ function animateCardOut(el, done) {
   });
 }
 
+/* ---- 7. 就地高亮回闪（保存 / 消课 / 撤销后） ----
+   目的：让「我刚才改的是哪一节」有落点，光靠 Toast 用户找不到目标。
+   CSS 动画实现（styles.css 的 .lm-flash），GSAP 挂了也不影响。
+   flashSchedule(id) 直接按 data-schedule-id 定位课卡，双端通用。 */
+function flash(el) {
+  if (!el) return;
+  if (RM) return; // 用户要求减少动效 → 不做回闪
+  el.classList.remove('lm-flash');
+  void el.offsetWidth; // 强制重排，保证连续触发时动画能重放
+  el.classList.add('lm-flash');
+  const clear = () => el.classList.remove('lm-flash');
+  el.addEventListener('animationend', clear, { once: true });
+  setTimeout(clear, 900); // 兜底清理
+}
+
+function flashSchedule(scheduleId) {
+  if (!scheduleId || RM) return;
+  const apply = () => {
+    const el = document.querySelector(`[data-schedule-id="${scheduleId}"]`);
+    if (!el) return false;
+    flash(el);
+    return true;
+  };
+
+  if (!apply()) {
+    // 目标不在当前视图（如切了周/月）：下一次渲染后补闪一次
+    document.addEventListener('lm:rendered', function once() {
+      document.removeEventListener('lm:rendered', once);
+      apply();
+    }, { once: true });
+    return;
+  }
+
+  // 已闪过一次，但实践中消课/保存后常会紧跟着再渲染一遍（卡片被重建 → class 丢失）。
+  // 短窗口内若发生重渲染，对新卡片补闪一次，保证用户看得到。
+  const reflash = () => {
+    document.removeEventListener('lm:rendered', reflash);
+    apply();
+  };
+  document.addEventListener('lm:rendered', reflash, { once: true });
+  setTimeout(() => document.removeEventListener('lm:rendered', reflash), 400);
+}
+
+/* 渲染完成事件：供 flashSchedule 延迟补偿，也方便以后挂别的渲染后逻辑 */
+function emitRendered() {
+  document.dispatchEvent(new CustomEvent('lm:rendered'));
+}
+
 /* 挂到 window 供 app.js / mobile.js 调用 */
 window.uiAnim = {
   modalIn: animateModalIn,
@@ -115,4 +175,7 @@ window.uiAnim = {
   viewIn: animateViewIn,
   cardsStagger: animateCardsStagger,
   cardOut: animateCardOut,
+  flash: flash,
+  flashSchedule: flashSchedule,
+  emitRendered: emitRendered,
 };

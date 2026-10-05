@@ -135,6 +135,38 @@ body:has(.lm-island) .toast-safe-bottom {
   border-left-color: #f43f5e;
 }
 
+/* ---- 触控热区：手机上小图标按钮必须够大才点得准（44×44 为 iOS HIG 下限） ----
+       只作用于手机端（本文件只在 mobile.html 引入），桌面鼠标操作不受影响。 */
+button.icon-btn,
+button[aria-label],
+.mnav-btn,
+#btnMobileMenu,
+.toast-safe-bottom button {
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 弹窗右上角关闭 ✕ 一类的小圆钮：视觉维持小圆点，热区用 ::after 外扩到 44px */
+.modal-close-btn,
+button.rounded-full.w-8,
+button.w-8.h-8 {
+  position: relative;
+}
+.modal-close-btn::after,
+button.rounded-full.w-8::after,
+button.w-8.h-8::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+
 /* ---- 老师登录门 ---- */
 .lm-gate {
   background: linear-gradient(180deg, var(--lm-canvas-top), var(--lm-canvas-mid)) !important;
