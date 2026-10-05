@@ -10,11 +10,11 @@
 /* ---- 页面底：奶油亮渐变（mobile.html 专属，index 不受影响） ----
    通过 body[datapage] 或专用 id 前缀选择器限定：mobile.html 的根视图都以 view* 开头，
    这里直接用 body:has(#viewHome) 的兜底 + mobile-bottom-nav 判定 */
-/* 提亮画布渐变（覆盖 intercom-tokens.css 的旧值，底部不再偏米褐） */
+/* 画布改为近纯白中性（奶油底会在岛台周围显出一块米黄，改中性后岛台显透明） */
 :root {
-  --lm-canvas-top: #fefdfb;
-  --lm-canvas-mid: #fcfaf6;
-  --lm-canvas-bot: #faf7f1;
+  --lm-canvas-top: #ffffff;
+  --lm-canvas-mid: #fdfdfc;
+  --lm-canvas-bot: #fbfbfa;
 }
 body:has(#viewHome) {
   background: linear-gradient(180deg, var(--lm-canvas-top), var(--lm-canvas-mid) 45%, var(--lm-canvas-bot) 100%) !important;
@@ -34,7 +34,7 @@ body:has(#viewHome) {
   right: 16px;
   bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   height: 62px;
-  background: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.55);
   backdrop-filter: blur(26px) saturate(180%);
   -webkit-backdrop-filter: blur(26px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.8);
