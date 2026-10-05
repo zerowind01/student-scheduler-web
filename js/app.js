@@ -109,7 +109,8 @@
         const data = JSON.parse(decoded);
         if (data && (data.students || data.schedules)) {
           students = data.students || [];
-          schedules = data.schedules || [];
+          schedules = (data.schedules || []).map(normalizeSchedule);
+          migrateSeriesIds();
           teachers = mergeTeachersKeepPin(data.teachers, teachers);
           // 欠课账校准：负课时（欠课）同步进欠课账
           syncAllDebts();
@@ -175,6 +176,50 @@
   function normalizeSchedule(sch) {
     if (!sch.status) sch.status = SCHEDULE_STATUS.SCHEDULED;
     return sch;
+  }
+
+  // 系列课迁移：给没有 seriesId 的排课回溯分组。
+  // 规则：同 学员+课程+开始时间+任课老师 的两节课，日期间隔恰为 7 或 14 天 → 同系列；
+  // 用并查集合并，能自然处理"中途改过时间断了链"的情况（断链的各自成组）。
+  function migrateSeriesIds() {
+    const parent = new Map();
+    const find = (x) => { while (parent.get(x) !== x) x = parent.get(x); return x; };
+    const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(ra, rb); };
+    const byKey = new Map();
+    schedules.forEach((s) => {
+      if (s.seriesId) return; // 已有系列的不动
+      parent.set(s.id, s.id);
+      const key = `${s.studentId}|${s.courseId || s.subject}|${s.startTime}|${s.teacherId || ''}`;
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key).push(s);
+    });
+    byKey.forEach((group) => {
+      group.sort((a, b) => a.date.localeCompare(b.date));
+      for (let i = 1; i < group.length; i++) {
+        for (let j = i - 1; j >= 0; j--) {
+          const gapDays = Math.round((new Date(group[i].date) - new Date(group[j].date)) / 86400000);
+          if (gapDays === 7 || gapDays === 14) { union(group[j].id, group[i].id); break; }
+          if (gapDays < 7) break;
+        }
+      }
+    });
+    const rootIds = new Map();
+    parent.forEach((_, id) => {
+      const root = find(id);
+      if (!rootIds.has(root)) rootIds.set(root, 'ser_' + root);
+      const sch = schedules.find((s) => s.id === id);
+      if (sch && !sch.seriesId) sch.seriesId = rootIds.get(root);
+    });
+  }
+
+  // 与 sch 同一系列、且发生在 sch 之后（含同日更晚开始）的排课
+  function seriesLaterSiblings(sch) {
+    return schedules.filter((s) =>
+      s.id !== sch.id &&
+      (s.seriesId ? s.seriesId === sch.seriesId
+        : (s.studentId === sch.studentId && s.courseId === sch.courseId && s.startTime === sch.startTime && (s.teacherId || '') === (sch.teacherId || ''))) &&
+      (s.date > sch.date || (s.date === sch.date && (s.startTime || '') > (sch.startTime || '')))
+    ).sort((a, b) => a.date.localeCompare(b.date) || (a.startTime || '').localeCompare(b.startTime || ''));
   }
 
   // 旧数据迁移：students[].courses[] (name+remainingLessons) 语义不变，
@@ -456,6 +501,7 @@
     }
 
     schedules = schedules.map(normalizeSchedule);
+    migrateSeriesIds();
 
     // 欠课账校准：负课时（手动填的欠课）同步进欠课账，保证财务页欠课名单完整
     syncAllDebts();
@@ -542,7 +588,8 @@
           // 只有远端确实更新才覆盖本地，防止轮询把刚做的本地改动回滚
           if (force || remoteData.updatedAt > localTime) {
             students = remoteData.students || [];
-            schedules = remoteData.schedules || [];
+            schedules = (remoteData.schedules || []).map(normalizeSchedule);
+            migrateSeriesIds();
             teachers = mergeTeachersKeepPin(remoteData.teachers, teachers);
             courseTypes = remoteData.courseTypes || courseTypes;
             checkInLogs = remoteData.checkInLogs || [];
@@ -575,7 +622,8 @@
       bc.onmessage = (event) => {
         if (event.data && event.data.updatedAt) {
           students = event.data.students || students;
-          schedules = event.data.schedules || schedules;
+          schedules = (event.data.schedules || schedules).map(normalizeSchedule);
+          migrateSeriesIds();
           teachers = mergeTeachersKeepPin(event.data.teachers, teachers);
           courseTypes = event.data.courseTypes || courseTypes;
           checkInLogs = event.data.checkInLogs || [];
@@ -839,7 +887,8 @@
         const data = JSON.parse(text.trim());
         if (data && (data.students || data.schedules)) {
           students = data.students || [];
-          schedules = data.schedules || [];
+          schedules = (data.schedules || []).map(normalizeSchedule);
+          migrateSeriesIds();
           teachers = mergeTeachersKeepPin(data.teachers, teachers);
           saveData();
           renderTeacherOptions();
@@ -1854,9 +1903,7 @@
   // 课程卡片点击 → 操作菜单（消课/请假/撤销/编辑/删除）
   // 删除课程统一入口：有后续重复排课时弹"仅本次/本次及之后"双选（无则普通确认）
   function deleteScheduleWithScope(sch, onDone) {
-    const later = schedules
-      .filter((s) => s.id !== sch.id && s.studentId === sch.studentId && s.courseId === sch.courseId && s.startTime === sch.startTime && (s.teacherId || '') === (sch.teacherId || '') && s.status === 'scheduled' && s.date > sch.date)
-      .sort((a, b) => a.date.localeCompare(b.date));
+    const later = seriesLaterSiblings(sch).filter((s) => s.status === 'scheduled');
     const laterCount = later.length;
 
     const doDelete = (ids, msg) => {
@@ -2130,6 +2177,10 @@
     }
     if (hintEl) hintEl.classList.add('hidden');
 
+    // 新增模式：隐藏系列批量修改块
+    const seriesBlockNew = document.getElementById('seriesEditBlock');
+    if (seriesBlockNew) seriesBlockNew.classList.add('hidden');
+
     showModal('modalSchedule');
   }
 
@@ -2202,9 +2253,23 @@
     const delBtn = document.getElementById('btnDeleteSchedule');
     if (delBtn) delBtn.classList.remove('hidden');
 
-    // 编辑模式隐藏重复排课块
+    // 编辑模式隐藏重复排课块，改为显示"系列批量修改"块（若属于系列）
     const repeatBlock = document.getElementById('repeatOptionsBlock');
     if (repeatBlock) repeatBlock.classList.add('hidden');
+
+    const seriesBlock = document.getElementById('seriesEditBlock');
+    const seriesChk = document.getElementById('chkApplyToSeries');
+    const seriesHint = document.getElementById('seriesEditHint');
+    if (seriesChk) seriesChk.checked = false;
+    if (seriesBlock) {
+      const laterCount = seriesLaterSiblings(schedule).filter((s) => s.status === 'scheduled').length;
+      if (laterCount > 0) {
+        seriesBlock.classList.remove('hidden');
+        if (seriesHint) seriesHint.textContent = `保存后同步修改本节及之后的 ${laterCount} 节课（课室 / 老师 / 时间 / 课程 / 时长）`;
+      } else {
+        seriesBlock.classList.add('hidden');
+      }
+    }
 
     showModal('modalSchedule');
   }
@@ -2259,9 +2324,35 @@
           notes,
           colorTheme,
         };
-        showToast('课程排期修改成功！', 'check');
+        // 系列批量修改：勾选后同步本节之后的待上课系列成员（各自保留日期）
+        const applyToSeries = document.getElementById('chkApplyToSeries');
+        if (applyToSeries && applyToSeries.checked) {
+          const base = schedules[index];
+          let synced = 0;
+          seriesLaterSiblings(base).forEach((s) => {
+            if (s.status !== SCHEDULE_STATUS.SCHEDULED) return;
+            s.courseId = courseId;
+            s.subject = subject;
+            s.teacherId = teacherId;
+            s.teacherName = teacherName;
+            s.assistantTeacherId = assistantTeacherId;
+            s.assistantTeacherName = assistantTeacherName;
+            s.startTime = startTime;
+            s.durationMinutes = durationMinutes;
+            s.room = room;
+            synced++;
+          });
+          showToast(synced > 0 ? `已同步修改本节及之后共 ${synced + 1} 节课` : '课程排期修改成功！', 'check');
+        } else {
+          showToast('课程排期修改成功！', 'check');
+        }
       }
     } else {
+      // 重复排课：按每周/隔周生成，冲突跳过，最多52节
+      const rule = document.getElementById('selectRepeatRule') ? document.getElementById('selectRepeatRule').value : 'none';
+      const endDateStr = document.getElementById('inputRepeatEndDate') ? document.getElementById('inputRepeatEndDate').value : '';
+      const seriesId = rule !== 'none' && endDateStr ? 'ser_' + Date.now() : undefined;
+
       const makeSchedule = (id, d) => ({
         id,
         studentId,
@@ -2278,14 +2369,12 @@
         room,
         notes,
         colorTheme,
+        ...(seriesId ? { seriesId } : {}),
       });
       schedules.push(makeSchedule('sch_' + Date.now(), date));
 
       // 课时在消课时扣除（App 语义），排课不再扣
 
-      // 重复排课：按每周/隔周生成，冲突跳过，最多52节
-      const rule = document.getElementById('selectRepeatRule') ? document.getElementById('selectRepeatRule').value : 'none';
-      const endDateStr = document.getElementById('inputRepeatEndDate') ? document.getElementById('inputRepeatEndDate').value : '';
       if (rule !== 'none' && endDateStr) {
         const stepDays = rule === 'biweekly' ? 14 : 7;
         const base = new Date(date + 'T00:00:00');

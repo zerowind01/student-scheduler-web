@@ -140,6 +140,48 @@
     return sch;
   }
 
+  // 系列课迁移（与桌面端 app.js 同逻辑）：给无 seriesId 的排课回溯分组。
+  function migrateSeriesIds() {
+    const parent = new Map();
+    const find = (x) => { while (parent.get(x) !== x) x = parent.get(x); return x; };
+    const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(ra, rb); };
+    const byKey = new Map();
+    schedules.forEach((s) => {
+      if (s.seriesId) return;
+      parent.set(s.id, s.id);
+      const key = `${s.studentId}|${s.courseId || s.subject}|${s.startTime}|${s.teacherId || ''}`;
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key).push(s);
+    });
+    byKey.forEach((group) => {
+      group.sort((a, b) => a.date.localeCompare(b.date));
+      for (let i = 1; i < group.length; i++) {
+        for (let j = i - 1; j >= 0; j--) {
+          const gapDays = Math.round((new Date(group[i].date) - new Date(group[j].date)) / 86400000);
+          if (gapDays === 7 || gapDays === 14) { union(group[j].id, group[i].id); break; }
+          if (gapDays < 7) break;
+        }
+      }
+    });
+    const rootIds = new Map();
+    parent.forEach((_, id) => {
+      const root = find(id);
+      if (!rootIds.has(root)) rootIds.set(root, 'ser_' + root);
+      const sch = schedules.find((s) => s.id === id);
+      if (sch && !sch.seriesId) sch.seriesId = rootIds.get(root);
+    });
+  }
+
+  // 与 sch 同系列且在其之后的排课
+  function seriesLaterSiblings(sch) {
+    return schedules.filter((s) =>
+      s.id !== sch.id &&
+      (s.seriesId ? s.seriesId === sch.seriesId
+        : (s.studentId === sch.studentId && s.courseId === sch.courseId && s.startTime === sch.startTime && (s.teacherId || '') === (sch.teacherId || ''))) &&
+      (s.date > sch.date || (s.date === sch.date && (s.startTime || '') > (sch.startTime || '')))
+    ).sort((a, b) => a.date.localeCompare(b.date) || (a.startTime || '').localeCompare(b.startTime || ''));
+  }
+
   function migrateStudentCourses(st) {
     if (!st.courses) return;
     st.courses.forEach((c) => {
@@ -632,6 +674,7 @@
     }
 
     schedules = schedules.map(normalizeSchedule);
+    migrateSeriesIds();
 
     // 欠课账校准：负课时（手动填的欠课）同步进欠课账
     syncAllDebts();
@@ -715,6 +758,7 @@
           if (force || remoteData.updatedAt > localTime) {
             students = remoteData.students || [];
             schedules = (remoteData.schedules || []).map(normalizeSchedule);
+            migrateSeriesIds();
             teachers = mergeTeachersKeepPin(remoteData.teachers, teachers);
             courseTypes = remoteData.courseTypes || courseTypes;
             checkInLogs = remoteData.checkInLogs || [];
@@ -789,6 +833,7 @@
         if (data && (data.students || data.schedules)) {
           students = data.students || [];
           schedules = (data.schedules || []).map(normalizeSchedule);
+          migrateSeriesIds();
           teachers = mergeTeachersKeepPin(data.teachers, teachers);
           saveDataLocalOnly();
           showToast('⚡ 扫码同步成功！已载入电脑端最新课表！');
@@ -977,6 +1022,7 @@
         if (data && (data.students || data.schedules)) {
           students = data.students || [];
           schedules = (data.schedules || []).map(normalizeSchedule);
+          migrateSeriesIds();
           teachers = mergeTeachersKeepPin(data.teachers, teachers);
           saveData();
           renderMobileTeacherSelect();
@@ -2151,6 +2197,10 @@
     }
     if (hintEl) hintEl.classList.add('hidden');
 
+    // 新增模式：隐藏系列批量修改块
+    const seriesBlockNew = document.getElementById('mobileSeriesEditBlock');
+    if (seriesBlockNew) seriesBlockNew.classList.add('hidden');
+
     showModal('modalMobileSchedule');
   }
 
@@ -2195,9 +2245,23 @@
     const delBtn = document.getElementById('btnDeleteMobileSchedule');
     if (delBtn) delBtn.classList.remove('hidden');
 
-    // 编辑模式隐藏重复排课块
+    // 编辑模式隐藏重复排课块，改为显示系列批量修改块（若属于系列）
     const repeatBlock = document.getElementById('mobileRepeatOptionsBlock');
     if (repeatBlock) repeatBlock.classList.add('hidden');
+
+    const seriesBlock = document.getElementById('mobileSeriesEditBlock');
+    const seriesChk = document.getElementById('chkApplyToSeriesMobile');
+    const seriesHint = document.getElementById('seriesEditHintMobile');
+    if (seriesChk) seriesChk.checked = false;
+    if (seriesBlock) {
+      const laterCount = seriesLaterSiblings(schedule).filter((s) => !s.status || s.status === 'scheduled').length;
+      if (laterCount > 0) {
+        seriesBlock.classList.remove('hidden');
+        if (seriesHint) seriesHint.textContent = `保存后同步修改本节及之后的 ${laterCount} 节课（课室 / 老师 / 时间 / 课程 / 时长）`;
+      } else {
+        seriesBlock.classList.add('hidden');
+      }
+    }
 
     showModal('modalMobileSchedule');
   }
@@ -2288,9 +2352,37 @@
           durationMinutes,
           room,
         };
-        showToast('修改成功！');
+        // 系列批量修改：勾选后同步本节之后的待上课系列成员（各自保留日期）
+        const applyToSeries = document.getElementById('chkApplyToSeriesMobile');
+        if (applyToSeries && applyToSeries.checked) {
+          const base = schedules[idx];
+          let synced = 0;
+          seriesLaterSiblings(base).forEach((s) => {
+            if (s.status && s.status !== SCHEDULE_STATUS.SCHEDULED) return;
+            s.courseId = courseId;
+            s.subject = subject;
+            s.teacherId = teacherId;
+            s.teacherName = teacherName;
+            s.assistantTeacherId = assistantTeacherId;
+            s.assistantTeacherName = assistantTeacherName;
+            s.startTime = startTime;
+            s.durationMinutes = durationMinutes;
+            s.room = room;
+            synced++;
+          });
+          showToast(synced > 0 ? `已同步修改本节及之后共 ${synced + 1} 节课` : '修改成功！');
+        } else {
+          showToast('修改成功！');
+        }
       }
     } else {
+      // 重复排课（seriesId 需先于 makeSchedule 声明）
+      const ruleEl = document.getElementById('selectMobileRepeatRule');
+      const endEl = document.getElementById('inputMobileRepeatEndDate');
+      const rule = ruleEl ? ruleEl.value : 'none';
+      const endDateStr = endEl ? endEl.value : '';
+      const seriesId = rule !== 'none' && endDateStr ? 'ser_' + Date.now() : undefined;
+
       const makeSchedule = (id, d) => ({
         id,
         studentId,
@@ -2306,16 +2398,12 @@
         durationMinutes,
         room,
         colorTheme: student ? student.colorTheme : 'amber',
+        ...(seriesId ? { seriesId } : {}),
       });
       schedules.push(makeSchedule('sch_' + Date.now(), date));
 
       // 课时在消课时扣除（App 语义），排课不再扣——避免"排了又消"重复扣的困惑
 
-      // 重复排课
-      const ruleEl = document.getElementById('selectMobileRepeatRule');
-      const endEl = document.getElementById('inputMobileRepeatEndDate');
-      const rule = ruleEl ? ruleEl.value : 'none';
-      const endDateStr = endEl ? endEl.value : '';
       if (rule !== 'none' && endDateStr) {
         const stepDays = rule === 'biweekly' ? 14 : 7;
         const base = new Date(date + 'T00:00:00');
@@ -2347,9 +2435,7 @@
 
   // 删除课程统一入口：有后续重复排课时弹"仅本次/本次及之后"双选（无则普通确认）
   function deleteMobileScheduleWithScope(sch, onDone) {
-    const later = schedules
-      .filter((s) => s.id !== sch.id && s.studentId === sch.studentId && s.courseId === sch.courseId && s.startTime === sch.startTime && (s.teacherId || '') === (sch.teacherId || '') && (!s.status || s.status === 'scheduled') && s.date > sch.date)
-      .sort((a, b) => a.date.localeCompare(b.date));
+    const later = seriesLaterSiblings(sch).filter((s) => !s.status || s.status === 'scheduled');
     const laterCount = later.length;
 
     const doDelete = (ids, msg) => {
