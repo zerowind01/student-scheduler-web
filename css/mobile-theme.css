@@ -100,35 +100,27 @@ body:has(.lm-island) .toast-safe-bottom {
 /* ---- 课表课程方格：扁平化配色（手机端专属，桌面端保持 styles.css 原样） ----
    纯色底 + 发丝描边 + 左侧主色竖条，对齐 Intercom 扁平语言。
    选择器带 .schedule-event-card 提高优先级，确保压过 styles.css 的渐变底。 */
+/* 与电脑端统一：卡片纯白底 + 中性细边，不填主题色；
+   左侧 4px 弧形色条保留，颜色沿用各学员主题色（styles.css 圆角自然成弧形） */
+.schedule-event-card {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  color: #1e293b;
+}
 .schedule-event-card.event-amber {
-  background: #fff8e6;
-  border-color: #fde68a;
   border-left-color: #f59e0b;
-  color: #78350f;
 }
 .schedule-event-card.event-emerald {
-  background: #e9fbf2;
-  border-color: #a7f3d0;
   border-left-color: #10b981;
-  color: #064e3b;
 }
 .schedule-event-card.event-sky {
-  background: #eaf6ff;
-  border-color: #bae6fd;
   border-left-color: #0284c7;
-  color: #0c4a6e;
 }
 .schedule-event-card.event-purple {
-  background: #f7f0ff;
-  border-color: #e9d5ff;
   border-left-color: #9333ea;
-  color: #581c87;
 }
 .schedule-event-card.event-rose {
-  background: #fff0f2;
-  border-color: #fecdd3;
   border-left-color: #f43f5e;
-  color: #881337;
 }
 
 /* ---- 老师登录门 ---- */
