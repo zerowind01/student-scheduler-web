@@ -82,7 +82,7 @@
    覆盖 index.html body 上内联的 var(--surface-page) 与各分页的 bg-slate-50，
    让奶油渐变透出来；卡片本身仍保持纯白 + 细边。 */
 body {
-  background: linear-gradient(180deg, #fdfbf8 0%, #f7f2ea 45%, #f1eade 100%) !important;
+  background: linear-gradient(180deg, #fefdfb 0%, #fcfaf6 50%, #faf7f1 100%) !important;
   background-attachment: fixed !important;
 }
 #pageSchedule, #pageSchedule > main,
