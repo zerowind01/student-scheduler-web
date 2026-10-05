@@ -30,6 +30,8 @@
   let debts = [];         // 学员欠课账 { id, studentId, courseName, amount(节) }
   let selectedTeacherFilter = 'all'; // 筛选老师：all 或 teacherId
   let currentWeekStart = getMonday(new Date()); // 当前视图对应的周一
+  let calendarViewMode = 'week';      // 'week' | 'month'（月历总览）
+  let currentMonth = new Date();      // 月视图显示的月份（取该月任一日期）
   let draggedStudent = null; // 当前正在拖拽的学生
   let draggedSchedule = null; // 当前正在拖拽调整的现有课程
   let selectedStudentForTap = null; // 移动端/触摸屏点击选中的学员（点击排课模式）
@@ -828,8 +830,22 @@
 
     safeBind('btnToday', 'click', () => {
       currentWeekStart = getMonday(new Date());
+      if (calendarViewMode === 'month') currentMonth = new Date();
       refreshView();
     });
+
+    // 月历总览切换
+    safeBind('btnMonthView', 'click', () => {
+      if (calendarViewMode === 'month') {
+        setCalendarViewMode('week');
+      } else {
+        currentMonth = new Date(currentWeekStart);
+        setCalendarViewMode('month');
+      }
+    });
+    safeBind('btnMonthPrev', 'click', () => { currentMonth.setMonth(currentMonth.getMonth() - 1); renderMonthView(); });
+    safeBind('btnMonthNext', 'click', () => { currentMonth.setMonth(currentMonth.getMonth() + 1); renderMonthView(); });
+    safeBind('btnMonthToday', 'click', () => { currentMonth = new Date(); renderMonthView(); });
 
     safeBind('filterTeacherSelect', 'change', (e) => {
       selectedTeacherFilter = e.target.value;
@@ -1019,10 +1035,118 @@
     renderWeekHeader();
     renderStudentList();
     renderCalendarGrid();
+    if (calendarViewMode === 'month') renderMonthView();
     updateStats();
     renderPageStudents();
     renderPageFinance();
     updateDebtBadges();
+  }
+
+  // ==========================================
+  // 9.5 月历总览视图（圆点标课）
+  // ==========================================
+  function setCalendarViewMode(mode) {
+    calendarViewMode = mode;
+    const monthWrap = document.getElementById('monthViewWrap');
+    const weekHeader = document.getElementById('weekHeaderRow');
+    const weekBody = document.getElementById('calendarBodyScroll');
+    const btnMonth = document.getElementById('btnMonthView');
+    const isMonth = mode === 'month';
+    if (monthWrap) { monthWrap.classList.toggle('hidden', !isMonth); monthWrap.classList.toggle('flex', isMonth); }
+    if (weekHeader) weekHeader.classList.toggle('hidden', isMonth);
+    if (weekBody) weekBody.classList.toggle('hidden', isMonth);
+    const batchBtn = document.getElementById('btnBatchSchedule');
+    if (batchBtn) batchBtn.classList.toggle('hidden', isMonth);
+    if (btnMonth) {
+      btnMonth.classList.toggle('bg-white', isMonth);
+      btnMonth.classList.toggle('shadow-2xs', isMonth);
+      btnMonth.classList.toggle('text-amber-600', isMonth);
+    }
+    if (isMonth) renderMonthView();
+  }
+
+  function renderMonthView() {
+    const wrap = document.getElementById('monthViewWrap');
+    if (!wrap || wrap.classList.contains('hidden')) return;
+    const grid = document.getElementById('monthViewGrid');
+    const titleEl = document.getElementById('monthViewTitle');
+    if (!grid) return;
+
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    if (titleEl) titleEl.textContent = `${year}年${month + 1}月`;
+
+    // 按周一起排：本月1号所在周的周一
+    const first = new Date(year, month, 1);
+    const cursor0 = getMonday(first);
+    // 覆盖到本月最后一天，并补足整周
+    const last = new Date(year, month + 1, 0);
+    const spanDays = Math.round((last - cursor0) / 86400000) + 1;
+    const totalCells = Math.ceil(spanDays / 7) * 7;
+
+    const todayStr = formatDate(new Date());
+    const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+
+    // 预统计：每天的课程数（按老师筛选；请假课不计入）
+    const dayCountMap = new Map();
+    let shown = schedules;
+    if (selectedTeacherFilter !== 'all') {
+      shown = shown.filter((s) => s.teacherId === selectedTeacherFilter || s.assistantTeacherId === selectedTeacherFilter);
+    }
+    shown.forEach((s) => {
+      if (s.status === SCHEDULE_STATUS.STUDENT_LEAVE) return;
+      dayCountMap.set(s.date, (dayCountMap.get(s.date) || 0) + 1);
+    });
+
+    grid.innerHTML = '';
+    for (let i = 0; i < totalCells; i++) {
+      const d = addDays(cursor0, i);
+      const dateStr = formatDate(d);
+      const inMonth = d.getMonth() === month;
+      const isToday = dateStr === todayStr;
+      const count = dayCountMap.get(dateStr) || 0;
+      const dowIdx = i % 7; // 列序周一=0
+      const weekend = dowIdx >= 5;
+
+      const cell = document.createElement(inMonth ? 'button' : 'div');
+      if (inMonth) cell.type = 'button';
+      const base = 'relative min-h-[72px] p-1.5 text-left border-b border-r transition select-none ';
+      if (inMonth) {
+        cell.className = base + (isToday
+          ? 'bg-amber-50/70 border-slate-100 hover:bg-amber-100/70 cursor-pointer'
+          : 'bg-white border-slate-100 hover:bg-slate-50 cursor-pointer');
+      } else {
+        cell.className = base + 'bg-slate-50/60 border-slate-100 opacity-45';
+      }
+
+      // 圆点标课：最多 3 点，超过 3 节附数字
+      let dotsHtml = '';
+      if (count > 0 && inMonth) {
+        const dot = 'w-1.5 h-1.5 rounded-full bg-amber-500 inline-block';
+        const shownDots = Math.min(count, 3);
+        let dots = '';
+        for (let k = 0; k < shownDots; k++) dots += `<span class="${dot}"></span>`;
+        dotsHtml = `<div class="flex items-center gap-0.5 mt-1">${dots}${count > 3 ? `<span class="text-[9px] font-bold text-amber-600 ml-0.5">${count}</span>` : ''}</div>`;
+      }
+
+      cell.innerHTML = `
+        <div class="flex items-start justify-between">
+          <span class="text-[11px] ${isToday ? 'w-5 h-5 flex items-center justify-center rounded-full bg-amber-500 text-white font-black' : (weekend ? 'font-bold text-amber-500' : 'font-semibold text-slate-600')}">${d.getDate()}</span>
+          ${count > 0 && inMonth ? `<span class="text-[9px] font-bold ${isToday ? 'text-amber-600' : 'text-slate-400'}">${count}节</span>` : ''}
+        </div>
+        ${dotsHtml}
+      `;
+
+      if (inMonth) {
+        cell.title = `${dateStr} ${WEEKDAY_LABELS[dowIdx]} · ${count} 节课，点击查看当周课表`;
+        cell.addEventListener('click', () => {
+          currentWeekStart = getMonday(d);
+          setCalendarViewMode('week');
+          refreshView();
+        });
+      }
+      grid.appendChild(cell);
+    }
   }
 
   // ==========================================
