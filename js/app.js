@@ -129,6 +129,7 @@
   function initApp() {
     checkUrlSyncData();
     loadData();
+    syncScheduleColors();
     setupEventListeners();
     bindPageNav();
     renderTeacherOptions();
@@ -1977,9 +1978,30 @@
   // ==========================================
   // 8. 创建日历中的课程事件卡片
   // ==========================================
+  // 一次性迁移：把历史排课存的色值对齐为学员头像色。
+  // 渲染已实时跟随学员，这一步只是为了清掉历史遗留的脏值（导出/其他端也一致）。
+  function syncScheduleColors() {
+    let changed = 0;
+    schedules.forEach((s) => {
+      const st = students.find((x) => x.id === s.studentId);
+      if (!st || !st.colorTheme) return;
+      if (s.colorTheme !== st.colorTheme) {
+        s.colorTheme = st.colorTheme;
+        changed += 1;
+      }
+    });
+    if (changed > 0) saveData();
+  }
+
+  // 课卡颜色统一跟随学员头像色（schedule.colorTheme 已废弃，仅作历史数据兜底）
+  function resolveScheduleTheme(schedule) {
+    const st = students.find((s) => s.id === schedule.studentId);
+    return (st && st.colorTheme) || schedule.colorTheme || 'amber';
+  }
+
   function createScheduleEventCard(schedule, conflictInfo) {
     const card = document.createElement('div');
-    const themeClass = `event-${schedule.colorTheme || 'amber'}`;
+    const themeClass = `event-${resolveScheduleTheme(schedule)}`;
     const hasConflict = !!conflictInfo;
     card.className = `schedule-event-card ${themeClass} ${hasConflict ? 'has-conflict' : ''}`;
     card.setAttribute('draggable', 'true');
@@ -2362,10 +2384,6 @@
 
     renderTeacherOptions();
 
-    const theme = student.colorTheme || 'amber';
-    const radio = document.querySelector(`input[name="colorTheme"][value="${theme}"]`);
-    if (radio) radio.checked = true;
-
     const delBtn = document.getElementById('btnDeleteSchedule');
     if (delBtn) delBtn.classList.add('hidden');
 
@@ -2459,10 +2477,7 @@
     const aEl = document.getElementById('selectAssistantTeacher');
     if (aEl && schedule.assistantTeacherId) aEl.value = schedule.assistantTeacherId;
 
-    const theme = schedule.colorTheme || 'amber';
-    const radio = document.querySelector(`input[name="colorTheme"][value="${theme}"]`);
-    if (radio) radio.checked = true;
-
+    // 课卡颜色跟随学员，排课弹窗不再提供单独选色
     const delBtn = document.getElementById('btnDeleteSchedule');
     if (delBtn) delBtn.classList.remove('hidden');
 
@@ -2523,7 +2538,8 @@
     const durationMinutes = parseInt(document.getElementById('selectDuration').value, 10);
     const room = document.getElementById('inputRoom').value.trim();
     const notes = document.getElementById('inputNotes') ? document.getElementById('inputNotes').value.trim() : '';
-    const colorTheme = document.querySelector('input[name="colorTheme"]:checked')?.value || 'amber';
+    // 课卡颜色统一跟随学员头像色（排课弹窗不再单独选色）
+    const colorTheme = (student && student.colorTheme) || 'amber';
 
     if (schId) {
       const index = schedules.findIndex((s) => s.id === schId);

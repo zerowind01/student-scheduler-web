@@ -911,6 +911,7 @@
   function initMobileApp() {
     checkUrlSyncData();
     loadData();
+    syncScheduleColors();
     loadTeacherSession();
     if (typeof updateHeaderIdentity === 'function') updateHeaderIdentity();
     setupMobileEvents();
@@ -2099,9 +2100,29 @@
     return items;
   }
 
+  // 一次性迁移：把历史排课存的色值对齐为学员头像色（渲染已实时跟随，这一步只清历史脏值）
+  function syncScheduleColors() {
+    let changed = 0;
+    schedules.forEach((s) => {
+      const st = students.find((x) => x.id === s.studentId);
+      if (!st || !st.colorTheme) return;
+      if (s.colorTheme !== st.colorTheme) {
+        s.colorTheme = st.colorTheme;
+        changed += 1;
+      }
+    });
+    if (changed > 0) saveData();
+  }
+
+  // 课卡颜色统一跟随学员头像色（schedule.colorTheme 已废弃，仅作历史数据兜底）
+  function resolveScheduleTheme(schedule) {
+    const st = students.find((s) => s.id === schedule.studentId);
+    return (st && st.colorTheme) || schedule.colorTheme || 'amber';
+  }
+
   function createMobileScheduleCard(schedule, conflictInfo) {
     const card = document.createElement('div');
-    const themeClass = `event-${schedule.colorTheme || 'amber'}`;
+    const themeClass = `event-${resolveScheduleTheme(schedule)}`;
     const hasConflict = !!conflictInfo;
     card.className = `schedule-event-card ${themeClass} ${hasConflict ? 'has-conflict' : ''}`;
     card.setAttribute('data-schedule-id', schedule.id);
