@@ -79,7 +79,7 @@ function animateViewIn(viewEl, dirX = 0) {
   uiAnimate((gsap) => {
     gsap.fromTo(viewEl,
       { opacity: 0, y: dirX ? 0 : 10, x: dirX ? 26 * dirX : 0 },
-      { opacity: 1, y: 0, x: 0, duration: 0.26, ease: 'power2.out', clearProps: 'all' }
+      { opacity: 1, y: 0, x: 0, duration: 0.26, ease: 'power2.out', clearProps: 'opacity,transform' }
     );
   });
 }
@@ -97,14 +97,14 @@ function animateCardsStagger(containerEl, cardSelector = '.schedule-event-card')
     if (cards.length > MAX_STAGGER) {
       gsap.fromTo(cards,
         { opacity: 0, y: 6 },
-        { opacity: 1, y: 0, duration: 0.22, ease: 'power2.out', clearProps: 'all' }
+        { opacity: 1, y: 0, duration: 0.22, ease: 'power2.out', clearProps: 'opacity,transform' }
       );
       return;
     }
     const step = cards.length > 12 ? 0.018 : 0.03;
     gsap.fromTo(cards,
       { opacity: 0, y: 8 },
-      { opacity: 1, y: 0, duration: 0.26, stagger: step, ease: 'power2.out', clearProps: 'all' }
+      { opacity: 1, y: 0, duration: 0.26, stagger: step, ease: 'power2.out', clearProps: 'opacity,transform' }
     );
   });
 }
