@@ -369,6 +369,10 @@
             <div class="font-bold text-sm text-slate-800 flex items-center gap-2"><i class="fa-solid fa-chalkboard-user text-amber-600"></i> 教师管理</div>
             <div class="text-[11px] text-slate-400 mt-1">添加或编辑任课老师</div>
           </button>
+          <button id="btnPageCourseTypes" class="p-4 bg-white border border-slate-200 rounded-2xl text-left hover:border-amber-300 hover:shadow-sm transition">
+            <div class="font-bold text-sm text-slate-800 flex items-center gap-2"><i class="fa-solid fa-tags text-slate-700"></i> 课程类型管理</div>
+            <div class="text-[11px] text-slate-400 mt-1">统一科目名称，排课与建课包时下拉选用</div>
+          </button>
           <button id="btnPageIcsCalendar" class="p-4 bg-white border border-slate-200 rounded-2xl text-left hover:border-amber-300 hover:shadow-sm transition">
             <div class="font-bold text-sm text-slate-800 flex items-center gap-2"><i class="fa-solid fa-bell text-amber-600"></i> 上课提醒订阅</div>
             <div class="text-[11px] text-slate-400 mt-1">复制老师专属链接，iPhone 日历订阅后每节课提前 15 分钟提醒</div>
@@ -502,6 +506,13 @@
             </div>
             <div id="desktopDurationHint" class="text-[10px] text-slate-400 mt-0.5">5 分钟为单位 · 45 分钟 = 1 课时</div>
           </div>
+        </div>
+
+        <div>
+          <label class="block font-medium text-slate-700 mb-1">本次科目 <span class="text-slate-400 font-normal">(选填，从课程类型里选或直接输入新科目)</span></label>
+          <input type="text" id="inputSubject" list="courseTypesList" autocomplete="off" placeholder="留空则默认等于上方课程包名称"
+                 class="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:ring-1 focus:ring-amber-400 outline-none bg-white text-slate-800">
+          <div id="subjectHint" class="text-[10px] text-slate-400 mt-0.5">只影响课表显示与统计；扣课时仍按上方课程包</div>
         </div>
 
         <div class="grid grid-cols-2 gap-2.5">
@@ -903,8 +914,91 @@
     </div>
   </div>
 
+  <!-- 课程类型（courseTypes）下拉候选：排课科目 / 学员课程包名称共用 -->
+  <datalist id="courseTypesList"></datalist>
+
+  <!-- 课程类型管理 Modal 弹窗 -->
+  <div id="modalCourseTypes" role="dialog" aria-modal="true" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
+    <div class="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full sm:w-[480px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
+      <div class="bg-gradient-to-r from-slate-800 to-slate-700 px-5 py-3.5 text-white flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-tags text-amber-300"></i>
+          <h3 class="font-bold text-sm sm:text-base">课程类型管理</h3>
+        </div>
+        <button id="btnCloseCourseTypesModal" aria-label="关闭" class="text-white/80 hover:text-white transition">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="p-5 space-y-3.5 text-xs">
+        <div class="lm-section rounded-xl p-2.5 text-[11px] lm-t2 leading-relaxed">
+          课程类型是全机构统一的科目名（钢琴 / 乐理 / 声乐 …）。建好后，给学员添加课程包、排课时选科目都从这里下拉选，避免同一门课打出「钢琴」「鋼琴」「钢琴课」多种写法。
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 mb-2">已建的课程类型</label>
+          <div id="courseTypesListContainer" class="space-y-2 max-h-56 overflow-y-auto custom-scrollbar p-1"></div>
+        </div>
+
+        <form id="formAddCourseType" autocomplete="off" class="border-t border-slate-100 pt-3 space-y-2.5">
+          <label class="block font-bold text-slate-700">新增课程类型</label>
+          <div class="flex items-center gap-2">
+            <input type="text" id="courseTypeNameInput" required placeholder="如：钢琴 / 乐理 / 声乐" class="flex-1 min-w-0 px-2.5 py-1.5 border border-slate-200 rounded-lg outline-none">
+            <button type="submit" class="shrink-0 px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-xl transition">
+              <i class="fa-solid fa-plus text-xs mr-1"></i> 添加
+            </button>
+          </div>
+        </form>
+
+        <div class="border-t border-slate-100 pt-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="font-bold text-slate-700">历史课程名归并</div>
+              <div class="text-[10px] lm-t3 mt-0.5">把过去手打出来的各种写法统一到标准课程类型</div>
+            </div>
+            <button id="btnOpenCourseMerge" type="button" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl transition">
+              <i class="fa-solid fa-code-merge text-xs mr-1"></i> 开始归并
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 历史课程名归并 Modal 弹窗 -->
+  <div id="modalCourseMerge" role="dialog" aria-modal="true" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
+    <div class="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full sm:w-[520px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
+      <div class="bg-gradient-to-r from-amber-600 to-amber-500 px-5 py-3.5 text-white flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-code-merge text-amber-200"></i>
+          <h3 class="font-bold text-sm sm:text-base">历史课程名归并</h3>
+        </div>
+        <button id="btnCloseCourseMergeModal" aria-label="关闭" class="text-white/80 hover:text-white transition">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="p-5 space-y-3 text-xs">
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-[11px] text-amber-800 leading-relaxed">
+          左边是数据里出现过的课程名，右边选它要归到哪个标准类型。<b>只勾选的才会被改</b>。历史消课流水里的科目名保持原样不动（那是当时的记录）。
+        </div>
+        <div id="courseMergeList" class="space-y-2 max-h-72 overflow-y-auto custom-scrollbar p-1"></div>
+        <div class="flex items-center justify-between pt-2 border-t border-slate-100">
+          <label class="flex items-center gap-1.5 lm-t2 cursor-pointer select-none">
+            <input type="checkbox" id="chkMergeSelectAll" class="rounded border-slate-300">
+            <span>全选需要归并的</span>
+          </label>
+          <div class="flex items-center gap-2">
+            <button type="button" id="btnCancelCourseMerge" class="px-3.5 py-1.5 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl font-medium transition">取消</button>
+            <button type="button" id="btnApplyCourseMerge" class="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-semibold transition">应用归并</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=3"></script>
+  <script src="js/app.js?v=6"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

@@ -915,6 +915,7 @@
     if (typeof updateHeaderIdentity === 'function') updateHeaderIdentity();
     setupMobileEvents();
     setupTeacherLoginGate();
+    mRenderCourseTypesDatalist();
     renderMobileTeacherSelect();
     renderMobile3DayView();
     renderMobileStudents();
@@ -1178,6 +1179,33 @@
       renderMobileTeacherManager();
       showModal('modalMobileTeachers');
     });
+    safeBind('msetCourseTypes', 'click', openMobileCourseTypesModal);
+    safeBind('btnCloseMobileCourseTypes', 'click', () => hideModal('modalMobileCourseTypes'));
+    safeBind('formMobileAddCourseType', 'submit', (e) => {
+      e.preventDefault();
+      const input = document.getElementById('mobileCourseTypeNameInput');
+      const name = input ? input.value.trim() : '';
+      if (!name) return;
+      if (!mAddCourseType(name)) {
+        showToast(`「${name}」已经在课程类型里了`);
+        return;
+      }
+      input.value = '';
+      saveData();
+      mRenderCourseTypesList();
+      showToast(`已添加课程类型「${name}」`);
+    });
+    safeBind('btnMobileOpenCourseMerge', 'click', openMobileCourseMergeModal);
+    safeBind('btnCloseMobileCourseMerge', 'click', () => hideModal('modalMobileCourseMerge'));
+    safeBind('btnCancelMobileCourseMerge', 'click', () => hideModal('modalMobileCourseMerge'));
+    safeBind('btnApplyMobileCourseMerge', 'click', applyMobileCourseMerge);
+    // 选课程包时，科目框若为空就自动带出同名科目
+    safeBind('selectMobileCourse', 'change', (e) => {
+      const opt = e.target.options[e.target.selectedIndex];
+      const subjectEl = document.getElementById('inputMobileSubject');
+      if (!opt || !subjectEl) return;
+      if (!subjectEl.value.trim()) subjectEl.value = opt.getAttribute('data-name') || '';
+    });
     // 上课提醒：ICS 日历订阅链接（每位老师一条专属链接）
     safeBind('msetIcsCalendar', 'click', () => {
       const buildLink = (id) => {
@@ -1336,6 +1364,7 @@
       const stId = e.target.value;
       const st = students.find((x) => x.id === stId);
       updateMobileCourseDropdown(st);
+      syncMobileSubjectFromCourse();
     });
 
     safeBind('mobileSearchStudent', 'input', renderMobileStudents);
@@ -1431,6 +1460,229 @@
   }
 
   // 手机端教师管理：列表渲染（含访问码生成/换码/删除）
+  // ==========================================
+  // 课程类型（courseTypes）：统一科目名 + 历史课程名归并
+  // ==========================================
+
+  function mEscAttr(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  function mEnsureCourseTypes() {
+    if (!Array.isArray(courseTypes)) courseTypes = [];
+    if (courseTypes.length === 0) {
+      courseTypes = ['钢琴', '美术', '乐理', '吉他'].map((n) => ({ id: 'ct_' + n, name: n }));
+    }
+  }
+
+  function mAddCourseType(name) {
+    const n = (name || '').trim();
+    if (!n) return false;
+    mEnsureCourseTypes();
+    if (courseTypes.some((ct) => ct.name === n)) return false;
+    courseTypes.push({ id: 'ct_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), name: n });
+    return true;
+  }
+
+  function mRenderCourseTypesDatalist() {
+    const dl = document.getElementById('courseTypesListMobile');
+    if (!dl) return;
+    mEnsureCourseTypes();
+    dl.innerHTML = courseTypes.map((ct) => `<option value="${mEscAttr(ct.name)}"></option>`).join('');
+  }
+
+  function mCourseTypeUsage(name) {
+    let packages = 0;
+    let lessons = 0;
+    students.forEach((s) => {
+      (s.courses || []).forEach((c) => {
+        if (c.name === name) packages += 1;
+      });
+    });
+    schedules.forEach((s) => {
+      if ((s.subject || '') === name) lessons += 1;
+    });
+    return { packages, lessons };
+  }
+
+  function mRenderCourseTypesList() {
+    const container = document.getElementById('mobileCourseTypesList');
+    if (!container) return;
+    mEnsureCourseTypes();
+    mRenderCourseTypesDatalist();
+    container.innerHTML = '';
+
+    if (courseTypes.length === 0) {
+      container.innerHTML = `<div class="lm-t3 text-center py-4">还没有课程类型，先在下面添加</div>`;
+      return;
+    }
+
+    courseTypes.forEach((ct) => {
+      const u = mCourseTypeUsage(ct.name);
+      const item = document.createElement('div');
+      item.className = 'flex items-center justify-between p-2.5 lm-section rounded-xl';
+      item.innerHTML = `
+        <div class="min-w-0">
+          <div class="font-bold lm-t1 truncate">${mEscAttr(ct.name)}</div>
+          <div class="text-[10px] lm-t2">${u.packages} 个课程包 · ${u.lessons} 节排课在用</div>
+        </div>
+        <div class="flex items-center gap-1 shrink-0">
+          <button class="btn-rename-ct lm-t3 px-2 py-2" title="改名"><i class="fa-solid fa-pen"></i></button>
+          <button class="btn-del-ct lm-t3 px-2 py-2" title="删除"><i class="fa-solid fa-trash-can"></i></button>
+        </div>
+      `;
+
+      item.querySelector('.btn-rename-ct').addEventListener('click', () => {
+        const next = prompt(`把「${ct.name}」改名为：`, ct.name);
+        if (next === null) return;
+        const n = next.trim();
+        if (!n || n === ct.name) return;
+        if (courseTypes.some((x) => x.name === n)) {
+          alert(`「${n}」已经存在了`);
+          return;
+        }
+        ct.name = n;
+        saveData();
+        mRenderCourseTypesList();
+        showToast(`已改名为「${n}」`);
+      });
+
+      item.querySelector('.btn-del-ct').addEventListener('click', () => {
+        const used = u.packages + u.lessons;
+        const warn = used > 0
+          ? `「${ct.name}」目前有 ${u.packages} 个课程包、${u.lessons} 节排课在用。\n删除只是不再出现在下拉里，已有数据不会改。确定删除吗？`
+          : `确定删除课程类型「${ct.name}」吗？`;
+        if (!confirm(warn)) return;
+        courseTypes = courseTypes.filter((x) => x.id !== ct.id);
+        saveData();
+        mRenderCourseTypesList();
+        showToast('已删除课程类型');
+      });
+
+      container.appendChild(item);
+    });
+  }
+
+  function openMobileCourseTypesModal() {
+    mRenderCourseTypesList();
+    showModal('modalMobileCourseTypes');
+  }
+
+  function mCollectCourseNameStats() {
+    const map = new Map();
+    const bump = (name, kind) => {
+      const n = (name || '').trim();
+      if (!n) return;
+      if (!map.has(n)) map.set(n, { name: n, packages: 0, lessons: 0, debts: 0 });
+      map.get(n)[kind] += 1;
+    };
+    students.forEach((s) => (s.courses || []).forEach((c) => bump(c.name, 'packages')));
+    schedules.forEach((s) => bump(s.subject, 'lessons'));
+    debts.forEach((d) => bump(d.courseName, 'debts'));
+    return [...map.values()].sort((a, b) => (b.packages + b.lessons) - (a.packages + a.lessons));
+  }
+
+  function openMobileCourseMergeModal() {
+    const list = document.getElementById('mobileCourseMergeList');
+    if (!list) return;
+    mEnsureCourseTypes();
+    mRenderCourseTypesDatalist();
+
+    const known = new Set(courseTypes.map((c) => c.name));
+    const rows = mCollectCourseNameStats().filter((s) => !known.has(s.name));
+
+    if (rows.length === 0) {
+      list.innerHTML = `<div class="lm-t3 text-center py-6">数据里的课程名都已是标准课程类型，没有需要归并的 👍</div>`;
+      showModal('modalMobileCourseMerge');
+      return;
+    }
+
+    const options = courseTypes.map((c) => `<option value="${mEscAttr(c.name)}">${mEscAttr(c.name)}</option>`).join('');
+    list.innerHTML = rows.map((r) => `
+      <div class="merge-row flex items-center gap-2 p-2 lm-section rounded-xl" data-old="${mEscAttr(r.name)}">
+        <input type="checkbox" class="merge-check rounded border-slate-300 shrink-0" checked>
+        <div class="min-w-0 flex-1">
+          <div class="font-bold lm-t1 truncate">${mEscAttr(r.name)}</div>
+          <div class="text-[10px] lm-t3">${r.packages} 个课程包 · ${r.lessons} 节排课${r.debts ? ` · ${r.debts} 条欠课` : ''}</div>
+        </div>
+        <select class="merge-target px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold shrink-0 max-w-[7.5rem]">
+          <option value="">（选目标）</option>
+          ${options}
+        </select>
+      </div>
+    `).join('');
+
+    showModal('modalMobileCourseMerge');
+  }
+
+  function applyMobileCourseMerge() {
+    const rows = document.querySelectorAll('#mobileCourseMergeList .merge-row');
+    const mapping = {};
+    let picked = 0;
+    rows.forEach((row) => {
+      const chk = row.querySelector('.merge-check');
+      const sel = row.querySelector('.merge-target');
+      if (!chk || !sel || !chk.checked) return;
+      const from = row.getAttribute('data-old');
+      const to = (sel.value || '').trim();
+      if (!from || !to || from === to) return;
+      mapping[from] = to;
+      picked += 1;
+    });
+
+    if (picked === 0) {
+      alert('请至少勾选一行，并选好要归并到的目标类型');
+      return;
+    }
+
+    const summary = Object.keys(mapping).map((k) => `「${k}」→「${mapping[k]}」`).join('\n');
+    if (!confirm(`即将归并 ${picked} 个课程名：\n\n${summary}\n\n会同步改动：学员课程包名、排课科目、欠课账。\n历史消课流水里的科目名保持原样。\n\n确定应用吗？`)) return;
+
+    pushUndo(`课程名归并 ${picked} 项`);
+
+    let touchedPackages = 0;
+    let touchedLessons = 0;
+    students.forEach((s) => {
+      (s.courses || []).forEach((c) => {
+        if (mapping[c.name]) {
+          c.name = mapping[c.name];
+          touchedPackages += 1;
+        }
+      });
+    });
+    schedules.forEach((s) => {
+      if (mapping[s.subject]) {
+        s.subject = mapping[s.subject];
+        touchedLessons += 1;
+      }
+    });
+    debts.forEach((d) => {
+      if (mapping[d.courseName]) d.courseName = mapping[d.courseName];
+    });
+    const merged = new Map();
+    debts.forEach((d) => {
+      const key = `${d.studentId}|${d.courseName}`;
+      if (merged.has(key)) {
+        merged.get(key).amount += d.amount;
+      } else {
+        merged.set(key, d);
+      }
+    });
+    debts = [...merged.values()];
+
+    Object.values(mapping).forEach((n) => mAddCourseType(n));
+    saveData();
+    hideModal('modalMobileCourseMerge');
+    mRenderCourseTypesList();
+    renderMobile3DayView();
+    renderMobileStudents();
+    offerUndo(`已归并 ${picked} 个课程名（${touchedPackages} 个课程包 / ${touchedLessons} 节排课）`, `课程名归并 ${picked} 项`);
+  }
+
   function renderMobileTeacherManager() {
     const box = document.getElementById('mobileTeacherList');
     if (!box) return;
@@ -2181,6 +2433,7 @@
       const targetStudent = student || students[0];
       if (targetStudent) stSelect.value = targetStudent.id;
       updateMobileCourseDropdown(targetStudent);
+      syncMobileSubjectFromCourse();
     }
 
     const dateEl = document.getElementById('inputMobileDate');
@@ -2242,6 +2495,11 @@
     const st = students.find((x) => x.id === schedule.studentId);
     updateMobileCourseDropdown(st, schedule.courseId || schedule.subject);
 
+    // 科目：编辑时回填已存的值，候选来自课程类型
+    mRenderCourseTypesDatalist();
+    const mSubjectEl = document.getElementById('inputMobileSubject');
+    if (mSubjectEl) mSubjectEl.value = schedule.subject || '';
+
     const dateEl = document.getElementById('inputMobileDate');
     if (dateEl) dateEl.value = schedule.date;
 
@@ -2297,6 +2555,16 @@
     });
   }
 
+  // 新建 / 换学员时：科目框跟着当前课程包带出同名科目（用户可改）
+  function syncMobileSubjectFromCourse() {
+    mRenderCourseTypesDatalist();
+    const subjectEl = document.getElementById('inputMobileSubject');
+    if (!subjectEl) return;
+    const cSel = document.getElementById('selectMobileCourse');
+    const opt = cSel ? cSel.options[cSel.selectedIndex] : null;
+    subjectEl.value = opt ? opt.getAttribute('data-name') || '' : '';
+  }
+
   function renderMobileTeacherDropdowns() {
     const tSelect = document.getElementById('selectMobileTeacher');
     const aSelect = document.getElementById('selectMobileAssistant');
@@ -2332,7 +2600,12 @@
     const cSelect = document.getElementById('selectMobileCourse');
     const courseId = cSelect ? cSelect.value : '';
     const courseOpt = cSelect ? cSelect.options[cSelect.selectedIndex] : null;
-    const subject = courseOpt ? courseOpt.getAttribute('data-name') : '通用课程';
+    const courseName = courseOpt ? courseOpt.getAttribute('data-name') : '通用课程';
+    // 科目独立字段：留空则等于课程包名（兼容旧数据）
+    const subjectInputEl = document.getElementById('inputMobileSubject');
+    let subject = subjectInputEl ? subjectInputEl.value.trim() : '';
+    if (!subject) subject = courseName;
+    mAddCourseType(subject);
 
     const tSelect = document.getElementById('selectMobileTeacher');
     const teacherId = tSelect ? tSelect.value : '';
@@ -2887,11 +3160,12 @@
   function addMobileCourseRow(course = null) {
     const container = document.getElementById('mobileStudentCoursesContainer');
     if (!container) return;
+    mRenderCourseTypesDatalist();
     const row = document.createElement('div');
     row.className = 'mobile-course-row bg-white border border-slate-200 rounded-xl p-2 space-y-1.5';
     row.innerHTML = `
       <div class="flex items-center gap-2">
-        <input type="text" class="m-course-name flex-1 min-w-0 px-3 py-2.5 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-[#ff5600]/30 bg-white"
+        <input type="text" list="courseTypesListMobile" class="m-course-name flex-1 min-w-0 px-3 py-2.5 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-[#ff5600]/30 bg-white"
                placeholder="课程名称（如：钢琴一对一）" value="${course ? course.name || '' : ''}" required>
         <button type="button" class="m-course-remove text-slate-300 hover:text-rose-500 px-1.5 py-2 transition shrink-0" title="删除该课程">
           <i class="fa-solid fa-trash-can"></i>
@@ -2981,6 +3255,8 @@
         remainingLessons: cLessons,
         unitPrice: cPrice,
       });
+      // 现场输入的课程名自动收录进课程类型
+      mAddCourseType(cName);
     });
 
     if (courses.length === 0) {
