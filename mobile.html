@@ -71,7 +71,10 @@
     <span id="mobileDateText" class="font-bold text-[#111111] text-xs text-right truncate">
       9月1日 - 9月3日
     </span>
-    <button id="btnMobileAddSchedule" aria-label="新增排课" class="lm-btn-fin ml-2 shrink-0 w-8 h-8 flex items-center justify-center transition">
+    <button id="btnMobileCalMode" aria-label="切换周月视图" title="切换 周·月视图 / 3日课表" class="lm-btn-ghost ml-1 shrink-0 w-8 h-8 flex items-center justify-center transition">
+      <i id="calModeIcon" class="fa-solid fa-calendar-days text-[12px]"></i>
+    </button>
+    <button id="btnMobileAddSchedule" aria-label="新增排课" class="lm-btn-fin ml-1 shrink-0 w-8 h-8 flex items-center justify-center transition">
       <i class="fa-solid fa-plus text-[11px]"></i>
     </button>
   </div>
@@ -132,6 +135,36 @@
             <div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- 1b. 手机端 周/月日历视图（系统日历风格：周条收起 ↔ 点开整月，下方挂选中日日程） -->
+    <div id="viewCalweek" class="h-full flex flex-col overflow-hidden hidden">
+      <!-- 标题行：年月 + 展开箭头（翻页走日期条按钮或左右滑动手势） -->
+      <div class="flex items-center px-4 pt-3 pb-0.5 shrink-0">
+        <button id="btnCalExpand" class="flex items-center gap-1.5 active:opacity-60 transition" aria-label="展开/收起整月">
+          <span id="calTitle" class="text-[20px] font-extrabold text-[#111111] tracking-tight">10月</span>
+          <i id="calChevron" class="fa-solid fa-chevron-down text-[11px] text-[#9c9fa5] transition-transform duration-300"></i>
+        </button>
+      </div>
+
+      <!-- 星期表头 + 日历网格（收起=一周条，展开=整月） -->
+      <div class="px-3 shrink-0">
+        <div class="grid grid-cols-7 text-center text-[10.5px] font-semibold text-[#9c9fa5] py-1.5 select-none">
+          <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span class="text-[#c2704e]">六</span><span class="text-[#c2704e]">日</span>
+        </div>
+        <div id="calGridWrap" style="overflow:hidden;transition:max-height .32s cubic-bezier(.4,0,.2,1)">
+          <div id="calGrid" class="grid grid-cols-7 gap-y-0.5"></div>
+        </div>
+        <div class="mx-1 mt-1.5" style="border-top:1px solid #f0ebe2"></div>
+      </div>
+
+      <!-- 选中日的日程列表 -->
+      <div class="flex-1 overflow-y-auto custom-scrollbar px-3 pt-2.5" style="padding-bottom:calc(78px + env(safe-area-inset-bottom,0px))">
+        <div id="calDayTitle" class="text-[11px] font-bold text-[#626260] mb-2 flex items-center gap-1.5">
+          <span class="inline-block rounded-full" style="width:6px;height:6px;background:#111"></span> 今日安排
+        </div>
+        <div id="calDayList" class="space-y-2.5"></div>
       </div>
     </div>
 
@@ -579,7 +612,7 @@
     </div>
   </div>
 
-  <script src="js/mobile.js?v=24"></script>
+  <script src="js/mobile.js?v=25"></script>
   <!-- 老师访问码登录遮罩（管理员数据加载后自动隐藏） -->
   <div id="teacherLoginGate" class="hidden fixed inset-0 z-[90] lm-gate flex flex-col items-center justify-center px-8">
     <div class="w-14 h-14 rounded-2xl bg-[#111111] flex items-center justify-center text-white shadow-lg mb-4">
