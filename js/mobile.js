@@ -947,6 +947,36 @@
     localStorage.setItem('edu_scheduler_school_key', val);
   }
 
+  // 探测云端该同步码下是否已有数据（同步码大小写敏感，用来做容错而不静默改写用户输入）
+  async function cloudHasData(key) {
+    if (!key) return false;
+    try {
+      const res = await fetch(`${CLOUD_SYNC_ENDPOINT}?key=${encodeURIComponent(key)}`, {
+        headers: { 'Accept': 'application/json' }
+      });
+      if (!res.ok) return false;
+      const raw = await res.json();
+      if (!raw) return false;
+      const remoteData = raw.result
+        ? (typeof raw.result === 'string' ? JSON.parse(raw.result) : raw.result)
+        : raw;
+      return !!(remoteData && remoteData.updatedAt);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // 同步码大小写容错：优先用用户输入的原文；只有原文在云端查不到、而大写形式能查到时，才退回大写
+  async function normalizeSyncKeyInput(raw) {
+    const val = (raw || '').trim();
+    if (!val) return val;
+    const upper = val.toUpperCase();
+    if (upper === val) return val;
+    if (await cloudHasData(val)) return val;
+    if (await cloudHasData(upper)) return upper;
+    return val;
+  }
+
   function showSyncGate() {
     const ov = document.createElement('div');
     ov.id = 'syncGateOverlay';
@@ -960,7 +990,7 @@
         </div>
         <button id="gateCreate" class="w-full py-3.5 rounded-2xl lm-btn-fin text-sm">🎬 我是新机构，创建同步码</button>
         <div class="flex items-center gap-2">
-          <input id="gateKeyInput" type="text" placeholder="输入已有同步码加入机构" class="flex-1 min-w-0 px-3 py-3 border border-slate-200 rounded-2xl text-center font-bold tracking-wider outline-none focus:ring-1 focus:ring-[#ff5600]/30">
+          <input id="gateKeyInput" type="text" placeholder="输入已有同步码加入机构" autocapitalize="none" autocomplete="off" autocorrect="off" spellcheck="false" class="flex-1 min-w-0 px-3 py-3 border border-slate-200 rounded-2xl text-center font-bold tracking-wider outline-none focus:ring-1 focus:ring-[#ff5600]/30" style="text-transform:none">
           <button id="gateJoin" class="shrink-0 px-5 py-3 rounded-2xl bg-slate-900 text-white text-sm font-bold active:opacity-80">登录</button>
         </div>
       </div>`;
@@ -974,7 +1004,8 @@
         showToast(`同步码 ${code} 已创建，可在 设置 → 实时云同步 查看`);
       } else if (e.target.closest('#gateJoin')) {
         const el = document.getElementById('gateKeyInput');
-        const val = (el ? el.value.trim() : '').toUpperCase();
+        // 保留用户输入的原文大小写（旧版强制 toUpperCase，会把手输的小写码改掉导致登空）
+        const val = await normalizeSyncKeyInput(el ? el.value : '');
         if (!val || val.length < 4) { showToast('请输入正确的同步码'); return; }
         applySyncKey(val);
         await pullFromCloudSync(true);
@@ -1074,9 +1105,10 @@
     safeBind('btnCloseSyncModal', 'click', () => hideModal('modalSyncKey'));
     safeBind('btnCancelSyncModal', 'click', () => hideModal('modalSyncKey'));
 
-    safeBind('btnSaveSyncKey', 'click', () => {
+    safeBind('btnSaveSyncKey', 'click', async () => {
       const el = document.getElementById('inputSyncKey');
-      const val = (el ? el.value.trim() : '');
+      // 与门禁同一套大小写容错：保留原文，只有原文查不到、大写能查到时才退回大写
+      const val = await normalizeSyncKeyInput(el ? el.value : '');
       if (!val) { showToast('请输入同步码'); return; }
       schoolSyncKey = val;
       localStorage.setItem('edu_scheduler_school_key', val);

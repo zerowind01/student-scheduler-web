@@ -548,7 +548,7 @@
 
         <div class="space-y-2 pt-1">
           <label class="block font-bold text-slate-800">☁️ 方式二：机构专属云同步码（实时轮询）</label>
-          <input type="text" id="inputSyncKey" required placeholder="如：my_school_2026" class="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-[#ff5600]/30 font-bold text-slate-800">
+          <input type="text" id="inputSyncKey" required placeholder="如：my_school_2026" autocapitalize="none" autocomplete="off" autocorrect="off" spellcheck="false" class="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-[#ff5600]/30 font-bold text-slate-800" style="text-transform:none">
         </div>
 
         <div class="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
@@ -612,7 +612,7 @@
     </div>
   </div>
 
-  <script src="js/mobile.js?v=25"></script>
+  <script src="js/mobile.js?v=26"></script>
   <!-- 老师访问码登录遮罩（管理员数据加载后自动隐藏） -->
   <div id="teacherLoginGate" class="hidden fixed inset-0 z-[90] lm-gate flex flex-col items-center justify-center px-8">
     <div class="w-14 h-14 rounded-2xl bg-[#111111] flex items-center justify-center text-white shadow-lg mb-4">

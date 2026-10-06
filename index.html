@@ -815,7 +815,7 @@
 
         <div class="space-y-2 pt-1">
           <label class="block font-bold text-[#111111]">☁️ 方式二：机构专属云同步码（实时轮询）</label>
-          <input type="text" id="inputSyncKey" required placeholder="如：my_school_2026" class="w-full px-3 py-2 border border-[#efe9e0] rounded-xl outline-none focus:ring-2 focus:ring-[#a8a29e] font-bold text-[#111111]">
+          <input type="text" id="inputSyncKey" required placeholder="如：my_school_2026" autocapitalize="none" autocomplete="off" autocorrect="off" spellcheck="false" class="w-full px-3 py-2 border border-[#efe9e0] rounded-xl outline-none focus:ring-2 focus:ring-[#a8a29e] font-bold text-[#111111]" style="text-transform:none">
         </div>
 
         <div class="flex items-center justify-end space-x-2 pt-2 border-t border-[#f2ece4]">
@@ -858,7 +858,7 @@
       <div class="p-5 space-y-3 text-xs">
         <button type="button" id="btnGateCreate" class="w-full px-3 py-3 bg-[#111111] hover:bg-[#2b2b2b] text-white font-bold rounded-xl transition">🎬 我是新机构，创建同步码</button>
         <div class="flex items-center gap-2">
-          <input id="gateKeyInput" type="text" placeholder="输入已有同步码加入机构" class="flex-1 min-w-0 px-3 py-2.5 border border-[#efe9e0] rounded-xl text-center font-bold tracking-wider outline-none focus:ring-1 focus:ring-[#a8a29e]">
+          <input id="gateKeyInput" type="text" placeholder="输入已有同步码加入机构" autocapitalize="none" autocomplete="off" autocorrect="off" spellcheck="false" class="flex-1 min-w-0 px-3 py-2.5 border border-[#efe9e0] rounded-xl text-center font-bold tracking-wider outline-none focus:ring-1 focus:ring-[#a8a29e]" style="text-transform:none">
           <button type="button" id="btnGateJoin" class="shrink-0 px-5 py-2.5 bg-[#111111] hover:bg-[#2b2b2b] text-white font-bold rounded-xl transition">登录</button>
         </div>
       </div>
@@ -998,7 +998,7 @@
   </div>
 
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=12"></script>
+  <script src="js/app.js?v=13"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
