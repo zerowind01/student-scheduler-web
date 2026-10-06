@@ -226,6 +226,71 @@
     ).sort((a, b) => a.date.localeCompare(b.date) || (a.startTime || '').localeCompare(b.startTime || ''));
   }
 
+  // 两个 YYYY-MM-DD 相差的整天数（to - from）
+  function diffDays(fromStr, toStr) {
+    const a = new Date(fromStr + 'T00:00:00');
+    const b = new Date(toStr + 'T00:00:00');
+    if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return 0;
+    return Math.round((b - a) / 86400000);
+  }
+
+  // 日期整体平移 N 天
+  function shiftDateStr(dateStr, days) {
+    const d = new Date(dateStr + 'T00:00:00');
+    if (Number.isNaN(d.getTime())) return dateStr;
+    d.setDate(d.getDate() + days);
+    return formatDate(d);
+  }
+
+  function weekdayLabel(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00');
+    if (Number.isNaN(d.getTime())) return '';
+    return ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()];
+  }
+
+  function minutesOfDay(hhmm) {
+    const parts = String(hhmm || '00:00').split(':');
+    const h = parseInt(parts[0], 10) || 0;
+    const m = parseInt(parts[1], 10) || 0;
+    return h * 60 + m;
+  }
+
+  // 系列整体平移日期时，判断某一节平移到 targetDate 后是否会撞上既有排课
+  // 维度：同一学员 / 同一任课老师 / 同一课室；excludeIds 里的课（本系列正在一起平移的）互相不算冲突
+  function seriesShiftConflict(self, targetDate, startTime, durationMinutes, teacherId, room, excludeIds) {
+    const start = minutesOfDay(startTime);
+    const end = start + (durationMinutes || 45);
+    return schedules.some((o) => {
+      if (o.id === self.id || excludeIds.has(o.id)) return false;
+      if (o.date !== targetDate) return false;
+      if (o.status && o.status !== SCHEDULE_STATUS.SCHEDULED) return false;
+      const os = minutesOfDay(o.startTime);
+      const oe = os + (o.durationMinutes || 45);
+      if (start >= oe || end <= os) return false; // 时间不重叠
+      const sameStudent = o.studentId === self.studentId;
+      const sameTeacher = !!teacherId && !!o.teacherId && o.teacherId === teacherId;
+      const sameRoom = !!room && !!o.room && o.room === room;
+      return sameStudent || sameTeacher || sameRoom;
+    });
+  }
+
+  // 系列批量修改提示文案：跟着日期框实时变化，让"星期几会变"这件事看得见
+  function updateSeriesHint() {
+    const block = document.getElementById('seriesEditBlock');
+    const hint = document.getElementById('seriesEditHint');
+    if (!block || !hint || block.classList.contains('hidden')) return;
+    const idEl = document.getElementById('inputScheduleId');
+    const dateEl = document.getElementById('inputCourseDate');
+    const sch = schedules.find((s) => s.id === (idEl ? idEl.value : ''));
+    const count = sch ? seriesLaterSiblings(sch).filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).length : 0;
+    let shift = 0;
+    if (sch && dateEl && dateEl.value) shift = diffDays(sch.date, dateEl.value);
+    const base = `勾选后同步修改本节及之后的 ${count} 节课（日期 / 开始时间 / 时长 / 课室 / 老师 / 课程）`;
+    hint.textContent = shift !== 0
+      ? `${base}，日期整体平移 ${shift > 0 ? '+' : ''}${shift} 天：${weekdayLabel(sch.date)} → ${weekdayLabel(dateEl.value)}`
+      : `${base}，日期保持不变`;
+  }
+
   // 旧数据迁移：students[].courses[] (name+remainingLessons) 语义不变，
   // 补充单价 unitPrice（默认 0 = 未设置）与课程类型标记
   function migrateStudentCourses(st) {
@@ -831,7 +896,17 @@
   // ==========================================
   // 3. 安全防崩溃事件监听配置
   // ==========================================
+  // 排课日期改动时刷新系列批量修改的提示（事件委托，避免重复绑定）
+  function bindSeriesHintUpdates() {
+    ['input', 'change'].forEach((evt) => {
+      document.addEventListener(evt, (e) => {
+        if (e.target && e.target.id === 'inputCourseDate') updateSeriesHint();
+      });
+    });
+  }
+
   function setupEventListeners() {
+    bindSeriesHintUpdates();
     // 翻周方向感：dirX = -1 上一周 / 1 下一周 / 0 回今天
     function weekSlide(dirX) {
       if (!window.uiAnim || calendarViewMode === 'month') return;
@@ -2493,7 +2568,7 @@
       const laterCount = seriesLaterSiblings(schedule).filter((s) => s.status === 'scheduled').length;
       if (laterCount > 0) {
         seriesBlock.classList.remove('hidden');
-        if (seriesHint) seriesHint.textContent = `保存后同步修改本节及之后的 ${laterCount} 节课（课室 / 老师 / 时间 / 课程 / 时长）`;
+        updateSeriesHint(); // 文案随日期框实时变化（含「周四 → 周五」的平移提示）
       } else {
         seriesBlock.classList.add('hidden');
       }
@@ -2544,6 +2619,14 @@
     if (schId) {
       const index = schedules.findIndex((s) => s.id === schId);
       if (index !== -1) {
+        // 系列成员清单必须基于「修改前」的原始课来计算：
+        // seriesLaterSiblings 用日期/时间做边界，改完再算会把自己之后的课漏掉
+        const prev = { ...schedules[index] };
+        const seriesList = seriesLaterSiblings(prev).filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED);
+        const shiftDays = diffDays(prev.date, date);
+        const applyToSeries = document.getElementById('chkApplyToSeries');
+        const willSync = !!(applyToSeries && applyToSeries.checked);
+        if (willSync) pushUndo('批量修改系列', schedules[index].id);
         schedules[index] = {
           ...schedules[index],
           courseId,
@@ -2559,13 +2642,11 @@
           notes,
           colorTheme,
         };
-        // 系列批量修改：勾选后同步本节之后的待上课系列成员（各自保留日期）
-        const applyToSeries = document.getElementById('chkApplyToSeries');
-        if (applyToSeries && applyToSeries.checked) {
-          const base = schedules[index];
-          let synced = 0;
-          seriesLaterSiblings(base).forEach((s) => {
-            if (s.status !== SCHEDULE_STATUS.SCHEDULED) return;
+        // 系列批量修改：勾选后同步本节之后的待上课系列成员
+        if (willSync) {
+          let dateSkipped = 0;
+          const excludeIds = new Set(seriesList.map((s) => s.id));
+          seriesList.forEach((s) => {
             s.courseId = courseId;
             s.subject = subject;
             s.teacherId = teacherId;
@@ -2575,9 +2656,21 @@
             s.startTime = startTime;
             s.durationMinutes = durationMinutes;
             s.room = room;
-            synced++;
+            if (shiftDays !== 0) {
+              const target = shiftDateStr(s.date, shiftDays);
+              if (seriesShiftConflict(s, target, startTime, durationMinutes, teacherId, room, excludeIds)) {
+                dateSkipped++; // 撞课的那节保留原日期，其余照改
+              } else {
+                s.date = target;
+              }
+            }
           });
-          showToast(synced > 0 ? `已同步修改本节及之后共 ${synced + 1} 节课` : '课程排期修改成功！', 'check');
+          let msg = `已同步修改本节及之后共 ${seriesList.length + 1} 节课`;
+          if (shiftDays !== 0) {
+            msg += `，日期平移 ${shiftDays > 0 ? '+' : ''}${shiftDays} 天（${weekdayLabel(prev.date)} → ${weekdayLabel(date)}）`;
+            if (dateSkipped > 0) msg += `，其中 ${dateSkipped} 节撞课未移动日期`;
+          }
+          offerUndo(msg, 'layer-group', '批量修改系列');
         } else {
           showToast('课程排期修改成功！', 'check');
         }
