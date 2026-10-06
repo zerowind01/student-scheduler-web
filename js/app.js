@@ -1301,6 +1301,37 @@
   // ==========================================
   // 校务看板（电脑端首页）
   // ==========================================
+  let dashWeekOffset = 0; // 0 = 本周，-1 = 上周
+
+  function renderDashWeekBars() {
+    const weekBars = document.getElementById('dashWeekBars');
+    const weekSummary = document.getElementById('dashWeekSummary');
+    if (!weekBars || !weekSummary) return;
+    const names = ['一', '二', '三', '四', '五', '六', '日'];
+    const start = addDays(currentWeekStart, dashWeekOffset * 7);
+    const counts = [];
+    let weekTotal = 0;
+    for (let i = 0; i < 7; i++) {
+      const dstr = formatDate(addDays(start, i));
+      const n = checkInLogs.filter((l) => l.date === dstr).reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
+      counts.push(n);
+      weekTotal += n;
+    }
+    const max = Math.max(...counts, 1);
+    weekSummary.innerHTML = `${dashWeekOffset === 0 ? '本周' : '上周'}合计 <b class="text-slate-700">${weekTotal} 节</b>`;
+    // 列高由 h-full 撑满 h-32 容器，柱子的百分比高度才有参照（否则高度塌成 0）
+    weekBars.innerHTML = counts.map((n, i) => {
+      const h = n > 0 ? Math.max(8, Math.round((n / max) * 100)) : 4;
+      const active = n > 0;
+      return `<div class="flex-1 h-full flex flex-col items-center gap-1.5">
+        <div class="w-full flex-1 flex items-end">
+          <div class="w-full rounded-md ${active ? 'bg-gradient-to-b from-slate-400 to-slate-600' : 'bg-slate-200'}" style="height:${h}%"></div>
+        </div>
+        <span class="text-[10px] font-bold ${active ? 'text-slate-700' : 'text-slate-400'}">${names[i]} ${n}</span>
+      </div>`;
+    }).join('');
+  }
+
   function renderDashboard() {
     const todayStr = formatDate(new Date());
     const dateLabel = document.getElementById('dashDateLabel');
@@ -1415,29 +1446,7 @@
     }
 
     // ---- 本周课消趋势 ----
-    const weekBars = document.getElementById('dashWeekBars');
-    const weekSummary = document.getElementById('dashWeekSummary');
-    if (weekBars && weekSummary) {
-      const names = ['一', '二', '三', '四', '五', '六', '日'];
-      const counts = [];
-      let weekTotal = 0;
-      for (let i = 0; i < 7; i++) {
-        const dstr = formatDate(addDays(currentWeekStart, i));
-        const n = checkInLogs.filter((l) => l.date === dstr).reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
-        counts.push(n);
-        weekTotal += n;
-      }
-      const max = Math.max(...counts, 1);
-      weekSummary.innerHTML = `本周合计 <b class="text-slate-700">${weekTotal} 节</b>`;
-      weekBars.innerHTML = counts.map((n, i) => {
-        const h = Math.max(6, Math.round((n / max) * 100));
-        const active = n > 0;
-        return `<div class="flex-1 flex flex-col items-center gap-1.5">
-          <div class="w-full rounded-md ${active ? 'bg-gradient-to-b from-slate-400 to-slate-600' : 'bg-slate-100'}" style="height:${h}%"></div>
-          <span class="text-[10px] font-bold ${active ? 'text-slate-700' : 'text-slate-400'}">${names[i]} ${n}</span>
-        </div>`;
-      }).join('');
-    }
+    renderDashWeekBars();
 
     // ---- 本月老师课时 ----
     const tStats = document.getElementById('dashTeacherStats');
@@ -1468,6 +1477,20 @@
   function bindPageNav() {
     document.querySelectorAll('.nav-page-btn[data-page], .mnav-btn[data-page]').forEach((btn) => {
       btn.addEventListener('click', () => switchPage(btn.getAttribute('data-page')));
+    });
+    // 看板：本周 / 上周消课趋势切换
+    document.querySelectorAll('.dash-week-tab').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        dashWeekOffset = btn.getAttribute('data-week') === 'prev' ? -1 : 0;
+        document.querySelectorAll('.dash-week-tab').forEach((b) => {
+          const on = b === btn;
+          b.classList.toggle('bg-slate-800', on);
+          b.classList.toggle('text-white', on);
+          b.classList.toggle('bg-slate-100', !on);
+          b.classList.toggle('text-slate-500', !on);
+        });
+        renderDashWeekBars();
+      });
     });
     // 看板：新增排课 / 预警直通
     safeBind('btnDashNewSchedule', 'click', () => { switchPage('schedule'); setTimeout(() => openScheduleModalForNew(), 200); });
