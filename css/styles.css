@@ -117,15 +117,15 @@ body {
 
 /* 4. 拖拽高亮放置目标区 (Drag Over Zone) */
 .calendar-day-column.drag-over {
-  background-color: rgba(254, 243, 199, 0.3) !important;
+  background-color: rgba(148, 163, 184, 0.18) !important;
 }
 
 .drag-preview-slot {
   position: absolute;
   left: 3px;
   right: 3px;
-  background: linear-gradient(135deg, rgba(251, 191, 36, 0.25), rgba(245, 158, 11, 0.35));
-  border: 2px dashed #f59e0b;
+  background: linear-gradient(135deg, rgba(148, 163, 184, 0.22), rgba(100, 116, 139, 0.30));
+  border: 2px dashed #64748b;
   border-radius: 12px;
   pointer-events: none;
   z-index: 25;
@@ -148,8 +148,8 @@ body {
 }
 .student-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px -3px rgba(245, 158, 11, 0.12), 0 2px 6px -2px rgba(0, 0, 0, 0.04);
-  border-color: #fcd34d;
+  box-shadow: 0 8px 20px -3px rgba(15, 23, 42, 0.12), 0 2px 6px -2px rgba(0, 0, 0, 0.04);
+  border-color: #cbd5e1;
 }
 .student-card:active {
   cursor: grabbing;
@@ -157,7 +157,7 @@ body {
 }
 .student-card.dragging {
   opacity: 0.35;
-  border: 2px dashed #f59e0b;
+  border: 2px dashed #64748b;
   box-shadow: none;
 }
 
@@ -244,15 +244,15 @@ div:not(.hidden) .modal-box {
 
 /* 8. 今天日期高亮 */
 .today-column-header {
-  background: linear-gradient(to bottom, #fffbeb, #fef3c7);
-  border-bottom: 3px solid #f59e0b;
+  background: linear-gradient(to bottom, #f8fafc, #f1f5f9);
+  border-bottom: 3px solid #334155;
 }
 .today-badge {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
+  background: linear-gradient(135deg, #334155, #1e293b);
   color: #ffffff;
   border-radius: 9999px;
   padding: 1px 8px;
-  box-shadow: 0 2px 6px -1px rgba(245, 158, 11, 0.4);
+  box-shadow: 0 2px 6px -1px rgba(30, 41, 59, 0.35);
 }
 
 /* 9. 触控优化：消除移动端点击 300ms 双击缩放判定延迟 */

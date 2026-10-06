@@ -5,15 +5,15 @@
    ========================================================================== */
 
 :root {
-  /* ---- 品牌色阶（琥珀，替代散落的 amber-xxx 混用） ---- */
-  --brand-50: #fffbeb;
-  --brand-100: #fef3c7;
-  --brand-200: #fde68a;
-  --brand-300: #fcd34d;
-  --brand-400: #fbbf24;
-  --brand-500: #f59e0b;
-  --brand-600: #d97706;
-  --brand-700: #b45309;
+  /* ---- 品牌色阶（中性 slate；全局禁用琥珀，琥珀仅保留为学员调色板一色） ---- */
+  --brand-50: #f8fafc;
+  --brand-100: #f1f5f9;
+  --brand-200: #e2e8f0;
+  --brand-300: #cbd5e1;
+  --brand-400: #94a3b8;
+  --brand-500: #64748b;
+  --brand-600: #475569;
+  --brand-700: #334155;
 
   /* ---- 中性面（stone 微暖 tinted，禁纯白） ---- */
   --surface-page: #fafaf9;        /* 页面底 */
@@ -31,8 +31,8 @@
   /* ---- 语义色（全站唯一用途） ---- */
   --sem-danger: #e11d48;          /* 欠课 / 删除 */
   --sem-danger-soft: #fff1f2;
-  --sem-warn: #d97706;            /* 课时不足 */
-  --sem-warn-soft: #fffbeb;
+  --sem-warn: #dc2626;            /* 课时不足（警示走红系，禁用琥珀） */
+  --sem-warn-soft: #fef2f2;
   --sem-ok: #059669;              /* 成功 / 已消课确认 */
   --sem-ok-soft: #ecfdf5;
   --sem-info: #0284c7;            /* 详情 / 提示 */

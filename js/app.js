@@ -381,7 +381,7 @@
             <div class="flex items-center justify-between bg-white border ${isDebt ? 'border-rose-200 bg-rose-50/40' : isLow ? 'border-[#ffd9c7]' : 'lm-hairline'} rounded-xl px-3 py-2">
               <div>
                 <span class="font-bold lm-t1">${c.name}</span>
-                ${isDebt ? '<span class="text-[9px] font-bold text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded ml-1.5">欠课</span>' : isLow ? '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded ml-1.5" style="background:#fff2ec;color:var(--lm-orange);">课时不足</span>' : ''}
+                ${isDebt ? '<span class="text-[9px] font-bold text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded ml-1.5">欠课</span>' : isLow ? '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded ml-1.5" style="background:#fef2f2;color:var(--lm-orange);">课时不足</span>' : ''}
               </div>
               <div class="flex items-center gap-3 text-[11px]">
                 ${c.unitPrice > 0 ? `<span class="lm-t2">¥${c.unitPrice}/节</span>` : ''}
@@ -1159,7 +1159,7 @@
     if (btnMonth) {
       btnMonth.classList.toggle('bg-white', isMonth);
       btnMonth.classList.toggle('shadow-2xs', isMonth);
-      btnMonth.classList.toggle('text-amber-600', isMonth);
+      btnMonth.classList.toggle('text-slate-700', isMonth);
     }
     if (isMonth) {
       renderMonthView();
@@ -1223,7 +1223,7 @@
       const base = 'relative min-h-[72px] p-1.5 text-left border-b border-r transition select-none ';
       if (inMonth) {
         cell.className = base + (isToday
-          ? 'bg-amber-50/70 border-slate-100 hover:bg-amber-100/70 cursor-pointer'
+          ? 'bg-slate-50/70 border-slate-100 hover:bg-slate-100/70 cursor-pointer'
           : 'bg-white border-slate-100 hover:bg-slate-50 cursor-pointer');
       } else {
         cell.className = base + 'bg-slate-50/60 border-slate-100 opacity-45';
@@ -1232,17 +1232,17 @@
       // 圆点标课：最多 3 点，超过 3 节附数字
       let dotsHtml = '';
       if (count > 0 && inMonth) {
-        const dot = 'w-1.5 h-1.5 rounded-full bg-amber-500 inline-block';
+        const dot = 'w-1.5 h-1.5 rounded-full bg-slate-700 inline-block';
         const shownDots = Math.min(count, 3);
         let dots = '';
         for (let k = 0; k < shownDots; k++) dots += `<span class="${dot}"></span>`;
-        dotsHtml = `<div class="flex items-center gap-0.5 mt-1">${dots}${count > 3 ? `<span class="text-[9px] font-bold text-amber-600 ml-0.5">${count}</span>` : ''}</div>`;
+        dotsHtml = `<div class="flex items-center gap-0.5 mt-1">${dots}${count > 3 ? `<span class="text-[9px] font-bold text-slate-500 ml-0.5">${count}</span>` : ''}</div>`;
       }
 
       cell.innerHTML = `
         <div class="flex items-start justify-between">
-          <span class="text-[11px] ${isToday ? 'w-5 h-5 flex items-center justify-center rounded-full bg-amber-500 text-white font-black' : (weekend ? 'font-bold text-amber-500' : 'font-semibold text-slate-600')}">${d.getDate()}</span>
-          ${count > 0 && inMonth ? `<span class="text-[9px] font-bold ${isToday ? 'text-amber-600' : 'text-slate-400'}">${count}节</span>` : ''}
+          <span class="text-[11px] ${isToday ? 'w-5 h-5 flex items-center justify-center rounded-full bg-slate-800 text-white font-black' : (weekend ? 'font-bold text-slate-400' : 'font-semibold text-slate-600')}">${d.getDate()}</span>
+          ${count > 0 && inMonth ? `<span class="text-[9px] font-bold ${isToday ? 'text-slate-500' : 'text-slate-400'}">${count}节</span>` : ''}
         </div>
         ${dotsHtml}
       `;

@@ -17,8 +17,8 @@
   --lm-ink-2: #64748b;      /* slate-500 次文字 */
   --lm-ink-3: #94a3b8;      /* slate-400 弱文字 */
 
-  --lm-fin: #f59e0b;        /* amber-500 点缀 */
-  --lm-orange: #d97706;     /* amber-600 待续费 */
+  --lm-fin: #334155;        /* slate-700 点缀（全局禁用琥珀） */
+  --lm-orange: #dc2626;     /* red-600 待续费 / 课时不足（警示走红系） */
   --lm-pink: #e11d48;       /* rose-600  欠课 / 危险 */
 
   --lm-line: #e2e8f0;       /* slate-200 发丝线 */
