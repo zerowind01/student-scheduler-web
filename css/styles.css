@@ -50,15 +50,15 @@ body {
   height: 5px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: rgba(241, 245, 249, 0.4);
+  background: rgba(245, 242, 236, 0.5);
   border-radius: 99px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(203, 213, 225, 0.8);
+  background: rgba(227, 219, 208, 0.9);
   border-radius: 99px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 1);
+  background: rgba(168, 162, 158, 1);
 }
 
 /* 移动端 (手机屏幕 < 768px) 学员侧边栏 Overlay 抽屉效果 */
@@ -87,7 +87,7 @@ body {
   align-items: flex-start;
   justify-content: center;
   margin-top: -8px;
-  color: #94a3b8;
+  color: #a8a29e;
   font-size: 11px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-weight: 600;
@@ -98,7 +98,7 @@ body {
   position: relative;
   height: 832px; /* 13 个小时 * 64px = 832px */
   background-size: 100% 64px;
-  background-image: linear-gradient(to bottom, transparent 63px, rgba(226, 232, 240, 0.5) 64px);
+  background-image: linear-gradient(to bottom, transparent 63px, rgba(239, 233, 224, 0.65) 64px);
   transition: background-color 0.15s ease;
 }
 
@@ -112,20 +112,20 @@ body {
   bottom: 0;
   pointer-events: none;
   background-size: 100% 32px;
-  background-image: linear-gradient(to bottom, transparent 31px, rgba(241, 245, 249, 0.7) 32px);
+  background-image: linear-gradient(to bottom, transparent 31px, rgba(245, 242, 236, 0.75) 32px);
 }
 
 /* 4. 拖拽高亮放置目标区 (Drag Over Zone) */
 .calendar-day-column.drag-over {
-  background-color: rgba(148, 163, 184, 0.18) !important;
+  background-color: rgba(168, 162, 158, 0.20) !important;
 }
 
 .drag-preview-slot {
   position: absolute;
   left: 3px;
   right: 3px;
-  background: linear-gradient(135deg, rgba(148, 163, 184, 0.22), rgba(100, 116, 139, 0.30));
-  border: 2px dashed #64748b;
+  background: linear-gradient(135deg, rgba(168, 162, 158, 0.22), rgba(120, 113, 108, 0.30));
+  border: 2px dashed #78716c;
   border-radius: 12px;
   pointer-events: none;
   z-index: 25;
@@ -148,8 +148,8 @@ body {
 }
 .student-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px -3px rgba(15, 23, 42, 0.12), 0 2px 6px -2px rgba(0, 0, 0, 0.04);
-  border-color: #cbd5e1;
+  box-shadow: 0 8px 20px -3px rgba(120, 100, 70, 0.16), 0 2px 6px -2px rgba(0, 0, 0, 0.04);
+  border-color: #e3dbd0;
 }
 .student-card:active {
   cursor: grabbing;
@@ -157,7 +157,7 @@ body {
 }
 .student-card.dragging {
   opacity: 0.35;
-  border: 2px dashed #64748b;
+  border: 2px dashed #78716c;
   box-shadow: none;
 }
 
@@ -244,15 +244,15 @@ div:not(.hidden) .modal-box {
 
 /* 8. 今天日期高亮 */
 .today-column-header {
-  background: linear-gradient(to bottom, #f8fafc, #f1f5f9);
-  border-bottom: 3px solid #334155;
+  background: linear-gradient(to bottom, #faf8f3, #f5f2ec);
+  border-bottom: 3px solid #111111;
 }
 .today-badge {
-  background: linear-gradient(135deg, #334155, #1e293b);
+  background: linear-gradient(135deg, #2b2b2b, #111111);
   color: #ffffff;
   border-radius: 9999px;
   padding: 1px 8px;
-  box-shadow: 0 2px 6px -1px rgba(30, 41, 59, 0.35);
+  box-shadow: 0 2px 6px -1px rgba(28, 25, 23, 0.35);
 }
 
 /* 9. 触控优化：消除移动端点击 300ms 双击缩放判定延迟 */

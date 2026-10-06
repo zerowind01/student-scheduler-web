@@ -1159,7 +1159,7 @@
     if (btnMonth) {
       btnMonth.classList.toggle('bg-white', isMonth);
       btnMonth.classList.toggle('shadow-2xs', isMonth);
-      btnMonth.classList.toggle('text-slate-700', isMonth);
+      btnMonth.classList.toggle('text-[#44403c]', isMonth);
     }
     if (isMonth) {
       renderMonthView();
@@ -1223,26 +1223,26 @@
       const base = 'relative min-h-[72px] p-1.5 text-left border-b border-r transition select-none ';
       if (inMonth) {
         cell.className = base + (isToday
-          ? 'bg-slate-50/70 border-slate-100 hover:bg-slate-100/70 cursor-pointer'
-          : 'bg-white border-slate-100 hover:bg-slate-50 cursor-pointer');
+          ? 'bg-[#faf8f3]/70 border-[#f2ece4] hover:bg-[#f5f2ec]/70 cursor-pointer'
+          : 'bg-white border-[#f2ece4] hover:bg-[#faf8f3] cursor-pointer');
       } else {
-        cell.className = base + 'bg-slate-50/60 border-slate-100 opacity-45';
+        cell.className = base + 'bg-[#faf8f3]/60 border-[#f2ece4] opacity-45';
       }
 
       // 圆点标课：最多 3 点，超过 3 节附数字
       let dotsHtml = '';
       if (count > 0 && inMonth) {
-        const dot = 'w-1.5 h-1.5 rounded-full bg-slate-700 inline-block';
+        const dot = 'w-1.5 h-1.5 rounded-full bg-[#2b2b2b] inline-block';
         const shownDots = Math.min(count, 3);
         let dots = '';
         for (let k = 0; k < shownDots; k++) dots += `<span class="${dot}"></span>`;
-        dotsHtml = `<div class="flex items-center gap-0.5 mt-1">${dots}${count > 3 ? `<span class="text-[9px] font-bold text-slate-500 ml-0.5">${count}</span>` : ''}</div>`;
+        dotsHtml = `<div class="flex items-center gap-0.5 mt-1">${dots}${count > 3 ? `<span class="text-[9px] font-bold text-[#78716c] ml-0.5">${count}</span>` : ''}</div>`;
       }
 
       cell.innerHTML = `
         <div class="flex items-start justify-between">
-          <span class="text-[11px] ${isToday ? 'w-5 h-5 flex items-center justify-center rounded-full bg-slate-800 text-white font-black' : (weekend ? 'font-bold text-slate-400' : 'font-semibold text-slate-600')}">${d.getDate()}</span>
-          ${count > 0 && inMonth ? `<span class="text-[9px] font-bold ${isToday ? 'text-slate-500' : 'text-slate-400'}">${count}节</span>` : ''}
+          <span class="text-[11px] ${isToday ? 'w-5 h-5 flex items-center justify-center rounded-full bg-[#111111] text-white font-black' : (weekend ? 'font-bold text-[#a8a29e]' : 'font-semibold text-[#57534e]')}">${d.getDate()}</span>
+          ${count > 0 && inMonth ? `<span class="text-[9px] font-bold ${isToday ? 'text-[#78716c]' : 'text-[#a8a29e]'}">${count}节</span>` : ''}
         </div>
         ${dotsHtml}
       `;
@@ -1318,16 +1318,16 @@
       weekTotal += n;
     }
     const max = Math.max(...counts, 1);
-    weekSummary.innerHTML = `${dashWeekOffset === 0 ? '本周' : '上周'}合计 <b class="text-slate-700">${weekTotal} 节</b>`;
+    weekSummary.innerHTML = `${dashWeekOffset === 0 ? '本周' : '上周'}合计 <b class="text-[#44403c]">${weekTotal} 节</b>`;
     // 列高由 h-full 撑满 h-32 容器，柱子的百分比高度才有参照（否则高度塌成 0）
     weekBars.innerHTML = counts.map((n, i) => {
       const h = n > 0 ? Math.max(8, Math.round((n / max) * 100)) : 4;
       const active = n > 0;
       return `<div class="flex-1 h-full flex flex-col items-center gap-1.5">
         <div class="w-full flex-1 flex items-end">
-          <div class="w-full rounded-md ${active ? 'bg-gradient-to-b from-slate-400 to-slate-600' : 'bg-slate-200'}" style="height:${h}%"></div>
+          <div class="w-full rounded-md ${active ? 'bg-gradient-to-b from-[#a8a29e] to-[#57534e]' : 'bg-[#e7e5e4]'}" style="height:${h}%"></div>
         </div>
-        <span class="text-[10px] font-bold ${active ? 'text-slate-700' : 'text-slate-400'}">${names[i]} ${n}</span>
+        <span class="text-[10px] font-bold ${active ? 'text-[#44403c]' : 'text-[#a8a29e]'}">${names[i]} ${n}</span>
       </div>`;
     }).join('');
   }
@@ -1354,25 +1354,25 @@
     const kpiRow = document.getElementById('dashKpiRow');
     if (kpiRow) {
       kpiRow.innerHTML = `
-        <div class="bg-white border border-slate-200 rounded-2xl p-5">
-          <div class="text-[11px] text-slate-400 font-bold">今日课程</div>
-          <div class="text-3xl font-black text-slate-800 mt-1.5">${todaySchedules.length} <span class="text-sm font-bold text-slate-400">节</span></div>
-          <div class="text-[11px] font-semibold mt-1.5 text-slate-500"><i class="fa-solid fa-circle-check mr-1"></i>已消 ${todayDone} · 待上 ${todayPending}</div>
+        <div class="bg-white border border-[#efe9e0] rounded-2xl p-5">
+          <div class="text-[11px] text-[#a8a29e] font-bold">今日课程</div>
+          <div class="text-3xl font-black text-[#111111] mt-1.5">${todaySchedules.length} <span class="text-sm font-bold text-[#a8a29e]">节</span></div>
+          <div class="text-[11px] font-semibold mt-1.5 text-[#78716c]"><i class="fa-solid fa-circle-check mr-1"></i>已消 ${todayDone} · 待上 ${todayPending}</div>
         </div>
-        <div class="bg-white border border-slate-200 rounded-2xl p-5">
-          <div class="text-[11px] text-slate-400 font-bold">本月课消</div>
-          <div class="text-3xl font-black text-slate-800 mt-1.5">${monthLessons.toFixed(0)} <span class="text-sm font-bold text-slate-400">节</span></div>
-          <div class="text-[11px] font-semibold mt-1.5 text-slate-400">${monthLogs.length} 条消课记录</div>
+        <div class="bg-white border border-[#efe9e0] rounded-2xl p-5">
+          <div class="text-[11px] text-[#a8a29e] font-bold">本月课消</div>
+          <div class="text-3xl font-black text-[#111111] mt-1.5">${monthLessons.toFixed(0)} <span class="text-sm font-bold text-[#a8a29e]">节</span></div>
+          <div class="text-[11px] font-semibold mt-1.5 text-[#a8a29e]">${monthLogs.length} 条消课记录</div>
         </div>
-        <div class="bg-white border border-slate-200 rounded-2xl p-5">
-          <div class="text-[11px] text-slate-400 font-bold">本月收入</div>
-          <div class="text-3xl font-black text-slate-800 mt-1.5">¥${monthValue.toFixed(0)}</div>
-          <div class="text-[11px] font-semibold mt-1.5 text-slate-400">课消价值合计</div>
+        <div class="bg-white border border-[#efe9e0] rounded-2xl p-5">
+          <div class="text-[11px] text-[#a8a29e] font-bold">本月收入</div>
+          <div class="text-3xl font-black text-[#111111] mt-1.5">¥${monthValue.toFixed(0)}</div>
+          <div class="text-[11px] font-semibold mt-1.5 text-[#a8a29e]">课消价值合计</div>
         </div>
-        <div class="bg-white border ${debtors.length ? 'border-rose-200' : 'border-slate-200'} rounded-2xl p-5">
-          <div class="text-[11px] font-bold ${debtors.length ? 'text-rose-500' : 'text-slate-400'}">欠费预警</div>
-          <div class="text-3xl font-black mt-1.5 ${debtors.length ? 'text-rose-600' : 'text-slate-300'}">${debtors.length} <span class="text-sm font-bold ${debtors.length ? 'text-rose-300' : 'text-slate-300'}">人</span></div>
-          <div class="text-[11px] font-semibold mt-1.5 ${debtors.length ? 'text-rose-500' : 'text-slate-300'}">共欠 ${debtTotal} 节${debtors.length ? ' · 需跟进' : ''}</div>
+        <div class="bg-white border ${debtors.length ? 'border-rose-200' : 'border-[#efe9e0]'} rounded-2xl p-5">
+          <div class="text-[11px] font-bold ${debtors.length ? 'text-rose-500' : 'text-[#a8a29e]'}">欠费预警</div>
+          <div class="text-3xl font-black mt-1.5 ${debtors.length ? 'text-rose-600' : 'text-[#d6d3d1]'}">${debtors.length} <span class="text-sm font-bold ${debtors.length ? 'text-rose-300' : 'text-[#d6d3d1]'}">人</span></div>
+          <div class="text-[11px] font-semibold mt-1.5 ${debtors.length ? 'text-rose-500' : 'text-[#d6d3d1]'}">共欠 ${debtTotal} 节${debtors.length ? ' · 需跟进' : ''}</div>
         </div>`;
     }
 
@@ -1386,7 +1386,7 @@
     if (todayList) {
       const sorted = todaySchedules.slice().sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
       if (!sorted.length) {
-        todayList.innerHTML = `<div class="text-center py-10 text-slate-400 text-xs"><i class="fa-solid fa-mug-hot text-2xl mb-2 block opacity-40"></i>今天没有排课</div>`;
+        todayList.innerHTML = `<div class="text-center py-10 text-[#a8a29e] text-xs"><i class="fa-solid fa-mug-hot text-2xl mb-2 block opacity-40"></i>今天没有排课</div>`;
       } else {
         todayList.innerHTML = sorted.map((s) => {
           const done = s.status === SCHEDULE_STATUS.COMPLETED;
@@ -1395,14 +1395,14 @@
           const statusHtml = done
             ? '<span class="text-[11px] font-bold text-emerald-600 shrink-0">已消课</span>'
             : isLeave
-              ? '<span class="text-[10px] font-bold px-2 py-1 rounded-full bg-slate-100 text-slate-500 shrink-0">请假待补</span>'
-              : `<button class="dash-checkin-btn shrink-0 text-[11px] font-bold px-3.5 py-1.5 rounded-full bg-slate-800 text-white hover:bg-slate-700 transition" data-id="${s.id}">消课</button>`;
+              ? '<span class="text-[10px] font-bold px-2 py-1 rounded-full bg-[#f5f2ec] text-[#78716c] shrink-0">请假待补</span>'
+              : `<button class="dash-checkin-btn shrink-0 text-[11px] font-bold px-3.5 py-1.5 rounded-full bg-[#111111] text-white hover:bg-[#2b2b2b] transition" data-id="${s.id}">消课</button>`;
           const student = students.find((st) => st.id === s.studentId);
           const debtTag = student ? (debts.find((d) => d.studentId === student.id && d.amount > 0) ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-600 ml-1.5">欠课</span>' : '') : '';
-          return `<div class="flex items-center justify-between px-5 py-3 border-t border-slate-100">
+          return `<div class="flex items-center justify-between px-5 py-3 border-t border-[#f2ece4]">
             <div class="flex items-center gap-3 min-w-0">
               <span class="w-2 h-2 rounded-full shrink-0" style="background:${dot}"></span>
-              <div class="text-[13px] font-bold text-slate-800 truncate">${s.startTime || '--'} ${s.subject || ''} · ${s.studentName || ''}${debtTag}</div>
+              <div class="text-[13px] font-bold text-[#111111] truncate">${s.startTime || '--'} ${s.subject || ''} · ${s.studentName || ''}${debtTag}</div>
             </div>
             ${statusHtml}
           </div>`;
@@ -1427,12 +1427,12 @@
         })
         .filter((x) => x.lowCourses.length);
       if (!lowStudents.length) {
-        lowList.innerHTML = `<div class="text-center py-8 text-slate-400 text-xs"><i class="fa-solid fa-shield-heart text-2xl mb-2 block opacity-40"></i>暂无课时预警</div>`;
+        lowList.innerHTML = `<div class="text-center py-8 text-[#a8a29e] text-xs"><i class="fa-solid fa-shield-heart text-2xl mb-2 block opacity-40"></i>暂无课时预警</div>`;
       } else {
         lowList.innerHTML = lowStudents.slice(0, 8).map(({ st, lowCourses }) => {
           const min = Math.min(...lowCourses.map((c) => c.remainingLessons));
-          return `<div class="flex items-center justify-between px-5 py-3 border-t border-slate-100 cursor-pointer hover:bg-slate-50 transition dash-low-student" data-id="${st.id}">
-            <span class="text-[13px] font-bold text-slate-800 truncate">${st.name} <span class="text-[11px] text-slate-400 font-semibold">· ${lowCourses.map((c) => c.name).join('、')}</span></span>
+          return `<div class="flex items-center justify-between px-5 py-3 border-t border-[#f2ece4] cursor-pointer hover:bg-[#faf8f3] transition dash-low-student" data-id="${st.id}">
+            <span class="text-[13px] font-bold text-[#111111] truncate">${st.name} <span class="text-[11px] text-[#a8a29e] font-semibold">· ${lowCourses.map((c) => c.name).join('、')}</span></span>
             <span class="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0 ml-2 ${min < 0 ? 'bg-rose-100 text-rose-700' : 'bg-rose-50 text-rose-600'}">剩 ${min} 节</span>
           </div>`;
         }).join('');
@@ -1460,14 +1460,14 @@
       });
       const rows = Object.entries(byTeacher).sort((a, b) => b[1].lessons - a[1].lessons);
       if (!rows.length) {
-        tStats.innerHTML = `<div class="text-center py-8 text-slate-400 text-xs"><i class="fa-solid fa-chalkboard-user text-2xl mb-2 block opacity-40"></i>本月暂无消课</div>`;
+        tStats.innerHTML = `<div class="text-center py-8 text-[#a8a29e] text-xs"><i class="fa-solid fa-chalkboard-user text-2xl mb-2 block opacity-40"></i>本月暂无消课</div>`;
       } else {
         tStats.innerHTML = rows.map(([name, v]) => `
-          <div class="flex items-center justify-between px-5 py-3 border-t border-slate-100">
-            <span class="text-[13px] font-bold text-slate-800">${name}</span>
+          <div class="flex items-center justify-between px-5 py-3 border-t border-[#f2ece4]">
+            <span class="text-[13px] font-bold text-[#111111]">${name}</span>
             <div class="flex items-center gap-2">
-              <span class="text-[13px] font-black text-slate-800">${v.lessons} 节</span>
-              ${v.value > 0 ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-50 text-slate-700">¥${v.value.toFixed(0)}</span>` : ''}
+              <span class="text-[13px] font-black text-[#111111]">${v.lessons} 节</span>
+              ${v.value > 0 ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#faf8f3] text-[#44403c]">¥${v.value.toFixed(0)}</span>` : ''}
             </div>
           </div>`).join('');
       }
@@ -1484,10 +1484,10 @@
         dashWeekOffset = btn.getAttribute('data-week') === 'prev' ? -1 : 0;
         document.querySelectorAll('.dash-week-tab').forEach((b) => {
           const on = b === btn;
-          b.classList.toggle('bg-slate-800', on);
+          b.classList.toggle('bg-[#111111]', on);
           b.classList.toggle('text-white', on);
-          b.classList.toggle('bg-slate-100', !on);
-          b.classList.toggle('text-slate-500', !on);
+          b.classList.toggle('bg-[#f5f2ec]', !on);
+          b.classList.toggle('text-[#78716c]', !on);
         });
         renderDashWeekBars();
       });
@@ -2340,16 +2340,16 @@
       ${statusBadge}
       <div class="flex flex-col justify-between h-full space-y-0.5 pointer-events-none px-2 py-1">
         <div class="flex items-center justify-between gap-1 leading-none shrink-0">
-          <span class="truncate text-slate-900 ${nameFontSize} flex-1 tracking-normal font-sans">${schedule.studentName}</span>
+          <span class="truncate text-[#111111] ${nameFontSize} flex-1 tracking-normal font-sans">${schedule.studentName}</span>
           ${
             !isSideBySide
-              ? `<span class="${timeFontSize} shrink-0 bg-slate-50 px-1 py-0.2 rounded border border-slate-200 lm-t2">${schedule.startTime}</span>`
+              ? `<span class="${timeFontSize} shrink-0 bg-[#faf8f3] px-1 py-0.2 rounded border border-[#efe9e0] lm-t2">${schedule.startTime}</span>`
               : ''
           }
         </div>
 
         <div class="leading-none flex items-center gap-1 flex-wrap truncate shrink-0 -mt-[2px]">
-          <span class="${badgeFontSize} px-1.5 py-0.5 bg-slate-100 lm-t1 rounded-md border border-slate-200 truncate">${schedule.subject}</span>
+          <span class="${badgeFontSize} px-1.5 py-0.5 bg-[#f5f2ec] lm-t1 rounded-md border border-[#efe9e0] truncate">${schedule.subject}</span>
           ${teacherText ? `<span class="opacity-85 ${textFontSize} truncate">${teacherText}</span>` : ''}
           ${roomText ? `<span class="opacity-85 ${textFontSize} truncate">${roomText}</span>` : ''}
         </div>
@@ -3021,7 +3021,7 @@
       item.className = 'flex items-center justify-between p-2.5 lm-section rounded-xl text-xs';
       item.innerHTML = `
         <div class="flex items-center gap-2.5 min-w-0">
-          <div class="w-8 h-8 rounded-lg bg-slate-800 text-white font-bold flex items-center justify-center text-[10px] shrink-0">
+          <div class="w-8 h-8 rounded-lg bg-[#111111] text-white font-bold flex items-center justify-center text-[10px] shrink-0">
             <i class="fa-solid fa-tag"></i>
           </div>
           <div class="min-w-0">
@@ -3111,7 +3111,7 @@
     const options = courseTypes.map((c) => `<option value="${escAttr(c.name)}">${escAttr(c.name)}</option>`).join('');
     list.innerHTML = rows.map((r, i) => `
       <div class="merge-row flex items-center gap-2 p-2 lm-section rounded-xl" data-old="${escAttr(r.name)}">
-        <input type="checkbox" class="merge-check rounded border-slate-300 shrink-0" checked>
+        <input type="checkbox" class="merge-check rounded border-[#e3dbd0] shrink-0" checked>
         <div class="min-w-0 flex-1">
           <div class="font-bold lm-t1 truncate">${escAttr(r.name)}</div>
           <div class="text-[10px] lm-t3">${r.packages} 个课程包 · ${r.lessons} 节排课${r.debts ? ` · ${r.debts} 条欠课` : ''}</div>

@@ -1,37 +1,41 @@
 /* ==========================================================================
-   LessonMate 电脑端 · 冷白 slate 兼容层（V1 原生配色）
+   LessonMate 电脑端 · 暖中性兼容层（与手机端同一套视觉语言）
    --------------------------------------------------------------------------
-   背景：桌面首页回到改动之前的「扁平冷白」结构（index.html 用 Tailwind
-   slate 原子类，页面底 slate-50、卡片纯白 + slate-200 细边、主按钮深灰）。
-   但 js/app.js 在运行期会动态生成学员卡 / 财务统计卡 / 弹窗等节点，其中用到
-   一批 lm-* 语义类与 --lm-* 变量（原先由 Intercom 主题层提供）。
-   本文件用 V1 同色系 slate 重新定义它们，只为 index.html 加载，不影响手机端。
+   手机端语言：奶油渐变底 · 软陶白卡 · 炭黑主色 #111111 · Fin 橙 #ff5600
+   唯一主按钮 · 暖色发丝线 #efe9e0 · 暖调柔影。
+   电脑端曾经走冷灰 slate，与手机端明显割裂，这里统一到同一套色值：
+   - 墨色 #111111 / #44403c / #78716c / #a8a29e（stone 暖灰阶，非 slate 蓝灰）
+   - 发丝线与凹陷面用暖色（#efe9e0 / #f5f2ec / #faf8f3）
+   - Fin 橙只用在每页唯一主行动按钮上
+   ⚠️ 禁用琥珀色（amber），唯一例外：学员头像调色板（.event-amber）
+   本文件与 js/app.js 的暖色原子类配合，只对 index.html 生效，不影响手机端。
    ========================================================================== */
 
 :root {
-  --lm-canvas-top: #ffffff;
-  --lm-canvas-mid: #f8fafc;
-  --lm-canvas-bot: #f1f5f9;
+  --lm-canvas-top: #fffdfa;
+  --lm-canvas-mid: #fbf8f3;
+  --lm-canvas-bot: #f7f2ea;
 
-  --lm-ink: #1e293b;        /* slate-800 主文字 */
-  --lm-ink-2: #64748b;      /* slate-500 次文字 */
-  --lm-ink-3: #94a3b8;      /* slate-400 弱文字 */
+  --lm-ink: #111111;        /* 炭黑 主文字（手机端同色） */
+  --lm-ink-2: #78716c;      /* stone-500 次文字 */
+  --lm-ink-3: #a8a29e;      /* stone-400 弱文字 */
 
-  --lm-fin: #334155;        /* slate-700 点缀（全局禁用琥珀） */
-  --lm-orange: #dc2626;     /* red-600 待续费 / 课时不足（警示走红系） */
-  --lm-pink: #e11d48;       /* rose-600  欠课 / 危险 */
+  --lm-fin: #ff5600;        /* Fin 橙：每页唯一主按钮（与手机端一致） */
+  --lm-orange: #fe4c02;     /* 待续费 / 课时不足 */
+  --lm-pink: #d5304f;       /* 欠课 / 危险（与手机端同色） */
 
-  --lm-line: #e2e8f0;       /* slate-200 发丝线 */
-  --lm-line-strong: #cbd5e1;/* slate-300 */
+  --lm-line: #efe9e0;       /* 暖色发丝线 */
+  --lm-line-strong: #e3dbd0;
 
-  --lm-card-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-  --lm-card-shadow-lg: 0 8px 22px rgba(15, 23, 42, 0.10), 0 2px 5px rgba(15, 23, 42, 0.06);
-  --lm-pill-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  /* 软陶阴影：暖调多层柔影，不用纯黑（手机端同款） */
+  --lm-card-shadow: 0 1px 2px rgba(120, 100, 70, 0.07);
+  --lm-card-shadow-lg: 0 8px 22px rgba(120, 100, 70, 0.11), 0 2px 5px rgba(120, 100, 70, 0.06);
+  --lm-pill-shadow: 0 1px 3px rgba(120, 100, 70, 0.10);
 }
 
-/* ---- 左侧主导航分页按钮：激活态（深色导航条内） ---- */
+/* ---- 左侧主导航分页按钮：激活态（暖黑导航条内） ---- */
 .nav-page-btn.active {
-  background: #1e293b !important;   /* slate-800 */
+  background: #3f3b37 !important;
   color: #ffffff !important;
 }
 .nav-page-btn.active i { color: #ffffff !important; }
@@ -43,12 +47,12 @@
 .lm-warn { color: var(--lm-orange) !important; }
 
 /* ---- 面 ---- */
-.lm-soft { background: #f8fafc !important; }
-.lm-soft-2 { background: #f1f5f9 !important; }
+.lm-soft { background: #faf8f3 !important; }
+.lm-soft-2 { background: #f5f2ec !important; }
 .lm-hairline { border-color: var(--lm-line) !important; }
-.lm-scrim { background: rgba(15, 23, 42, 0.45) !important; }
-.lm-scrim-soft { background: rgba(15, 23, 42, 0.28) !important; }
-.lm-scrim-strong { background: rgba(15, 23, 42, 0.95) !important; }
+.lm-scrim { background: rgba(28, 25, 23, 0.45) !important; }
+.lm-scrim-soft { background: rgba(28, 25, 23, 0.28) !important; }
+.lm-scrim-strong { background: rgba(28, 25, 23, 0.95) !important; }
 
 /* ---- 表单控件：白底 + 发丝线 ---- */
 .lm-field {
@@ -61,16 +65,16 @@
 }
 .lm-field:focus {
   border-color: var(--lm-ink);
-  box-shadow: 0 0 0 3px rgba(30, 41, 59, 0.10);
+  box-shadow: 0 0 0 3px rgba(28, 25, 23, 0.10);
 }
 
-/* ---- 深灰主按钮（沿用 V1 的 slate-800） ---- */
+/* ---- 炭黑主按钮（与手机端 .lm-btn-ink 同色） ---- */
 .lm-btn-ink {
-  background: #1e293b;
+  background: #111111;
   color: #fff;
 }
 .lm-btn-ink:hover {
-  background: #334155;
+  background: #2b2b2b;
 }
 
 /* ---- 统计卡 / 分区块：纯白卡片 + 细边 ---- */
@@ -81,7 +85,7 @@
   box-shadow: var(--lm-card-shadow);
 }
 .lm-section {
-  background: #f8fafc;
+  background: #faf8f3;
   border: 1px solid var(--lm-line);
 }
 
@@ -110,14 +114,14 @@ body {
    状态色（消课绿、请假红、冲突红边）属语义提示，予以保留。 */
 .schedule-event-card {
   background: #ffffff !important;
-  border-top: 1px solid #e2e8f0 !important;
-  border-right: 1px solid #e2e8f0 !important;
-  border-bottom: 1px solid #e2e8f0 !important;
+  border-top: 1px solid #efe9e0 !important;
+  border-right: 1px solid #efe9e0 !important;
+  border-bottom: 1px solid #efe9e0 !important;
   /* 左侧弧形色条：只定宽与样式，颜色沿用 .event-amber / .event-emerald / … 的主题色，
      卡片 12px 圆角会把它切成弧形状 */
   border-left-width: 4px !important;
   border-left-style: solid !important;
-  color: #1e293b !important;
+  color: #111111 !important;
 }
 .schedule-event-card.has-conflict {
   border-right: 3px solid #ef4444 !important;
@@ -125,6 +129,6 @@ body {
 
 /* ---- 学员卡选中态（批量排课拖拽时） ---- */
 .student-card.lm-picked {
-  border-color: #1e293b !important;
+  border-color: #111111 !important;
   box-shadow: 0 0 0 2px rgba(30, 41, 59, 0.85) !important;
 }
