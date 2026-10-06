@@ -29,6 +29,13 @@
   --lm-pill-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
 }
 
+/* ---- 左侧主导航分页按钮：激活态（深色导航条内） ---- */
+.nav-page-btn.active {
+  background: #1e293b !important;   /* slate-800 */
+  color: #ffffff !important;
+}
+.nav-page-btn.active i { color: #ffffff !important; }
+
 /* ---- 文字层级 ---- */
 .lm-t1 { color: var(--lm-ink) !important; }
 .lm-t2 { color: var(--lm-ink-2) !important; }
