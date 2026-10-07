@@ -325,4 +325,6 @@ button, a, select, input, textarea {
   #pageSettings { padding-left: calc(16px + 7rem + 24px) !important; }
   /* 待排课学员侧栏：跟着浮起，避开面板右缘 */
   #sidebarStudent { left: calc(16px + 7rem + 16px) !important; }
+  /* 非课表页面隐藏顶栏（品牌已入侧边栏；手机端不受影响） */
+  #mainTopbar.header-hide-desktop { display: none !important; }
 }

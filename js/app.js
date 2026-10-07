@@ -1338,6 +1338,9 @@
       const el = document.getElementById(id);
       if (el) el.classList.toggle('hidden', id !== 'page' + page.charAt(0).toUpperCase() + page.slice(1));
     });
+    // 顶栏只在课表视图保留（品牌已整合进侧边栏；手机端不受影响）
+    const topbar = document.getElementById('mainTopbar');
+    if (topbar) topbar.classList.toggle('header-hide-desktop', page !== 'schedule');
     // GSAP：切换后的新页面轻量进场
     const activeEl = document.getElementById('page' + page.charAt(0).toUpperCase() + page.slice(1));
     if (window.uiAnim && activeEl) window.uiAnim.viewIn(activeEl);
