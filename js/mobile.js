@@ -1297,6 +1297,54 @@
     // ============ 四视图切换（课表/学员/财务/设置） ============
     const MOBILE_VIEWS = ['home', 'schedule', 'students', 'finance', 'settings'];
 
+    // ---- 岛台玻璃胶囊滑块：切换时滑向新 tab，途中沿移动方向拉长，到位弹性回弹 ----
+    const navGlider = document.getElementById('navGlider');
+    let gliderLastX = null;
+    function positionNavGlider(animate) {
+      if (!navGlider) return;
+      const island = navGlider.parentElement;
+      const active =
+        island.querySelector('.nav-tab.font-bold') ||
+        island.querySelector('.nav-tab');
+      if (!active) return;
+      const ir = island.getBoundingClientRect();
+      const tr = active.getBoundingClientRect();
+      const x = tr.left - ir.left;
+      const w = tr.width;
+      const fromX = gliderLastX;
+      const fromW = parseFloat(navGlider.style.width) || w;
+      gliderLastX = x;
+      // 直接落位（首次/无位移/窗口尺寸变化）
+      if (!animate || fromX === null || Math.abs(x - fromX) < 1) {
+        navGlider.style.left = x + 'px';
+        navGlider.style.width = w + 'px';
+        return;
+      }
+      const dx = x - fromX;
+      const dir = dx > 0 ? 1 : -1;
+      const stretch = Math.min(20, Math.abs(dx) * 0.38); // 移动越远拉得越长（封顶 20px）
+      // 中段：前缘先行 → 胶囊沿移动方向拉长
+      const midX = fromX + dx * 0.5 - (dir > 0 ? 0 : stretch);
+      const midW = fromW + stretch;
+      // 过冲：整体越过目标一点，再弹回
+      const overX = x + dir * 7;
+      navGlider.style.left = x + 'px';
+      navGlider.style.width = w + 'px';
+      navGlider.animate(
+        [
+          { left: fromX + 'px', width: fromW + 'px', offset: 0, easing: 'cubic-bezier(.45,0,.55,1)' },
+          { left: midX + 'px', width: midW + 'px', offset: 0.52, easing: 'cubic-bezier(.3,0,.2,1)' },
+          { left: overX + 'px', width: w + 'px', offset: 0.8, easing: 'cubic-bezier(.34,1.56,.64,1)' },
+          { left: x + 'px', width: w + 'px', offset: 1 }
+        ],
+        { duration: 480, fill: 'both' }
+      );
+    }
+    window.addEventListener('resize', () => positionNavGlider(false));
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => positionNavGlider(false)).catch(() => {});
+    }
+
     function switchMobileView(view) {
       MOBILE_VIEWS.forEach((v) => {
         const el = document.getElementById('view' + v.charAt(0).toUpperCase() + v.slice(1));
@@ -1323,6 +1371,8 @@
         const icon = tab.querySelector('i.fa-solid');
         if (icon) icon.classList.toggle('is-active', active);
       });
+      // 玻璃胶囊滑块滑到新选中的 tab（animate=有无位移都做动画，首帧自动直落）
+      positionNavGlider(true);
       // 日期导航栏与左下角新增排课悬浮按钮只在课表视图显示
       const dateBar = document.getElementById('mobileDateBar');
       if (dateBar) dateBar.classList.toggle('hidden', view !== 'schedule');

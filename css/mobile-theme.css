@@ -75,6 +75,8 @@ body:has(#viewHome) {
   padding: 0 12px;
 }
 .lm-island .nav-tab {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -84,12 +86,29 @@ body:has(#viewHome) {
   width: 58px;
   border-radius: 999px;
   color: var(--lm-ink-3);
-  transition: background 0.18s var(--ease-out, ease), box-shadow 0.18s ease;
+  transition: color 0.18s var(--ease-out, ease);
 }
-/* 选中高亮胶囊：JS 已给激活 tab 切换 font-bold，直接借力 */
+/* 选中态只管文字加重/变色；底衬由 #navGlider 玻璃胶囊统一承载（JS 滑动驱动） */
 .lm-island .nav-tab.font-bold {
-  background: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 5px 16px rgba(15, 23, 42, 0.10), 0 1px 4px rgba(15, 23, 42, 0.06);
+  color: #111111;
+}
+/* 玻璃胶囊滑块：半透明磨砂底 + 边缘一圈细高光；位置/宽度由 JS 用 WAAPI 驱动 */
+.lm-island #navGlider {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 12px;
+  width: 58px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(14px) saturate(170%);
+  -webkit-backdrop-filter: blur(14px) saturate(170%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.85),
+    inset 0 1.5px 0.5px -0.5px rgba(255, 255, 255, 0.95),
+    0 5px 14px -6px rgba(15, 23, 42, 0.14);
+  pointer-events: none;
+  will-change: left, width;
 }
 /* 内容避让：不再在 main 上挖一整条全宽色带（那会被看成"长方形"）。
    改为——内容延伸到屏幕最底部，从岛台后面滚过去（毛玻璃透出底下列表）；
