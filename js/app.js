@@ -1294,9 +1294,9 @@
 
     if (dayList.length === 0) {
       listEl.innerHTML = `
-        <div class="text-center py-10 text-[#a8a29e]">
-          <i class="fa-regular fa-calendar-check text-2xl mb-2 block"></i>
-          <div class="text-xs">这一天还没有排课</div>
+        <div class="text-center py-12 text-[#a8a29e]">
+          <i class="fa-regular fa-calendar-check text-3xl mb-2 block"></i>
+          <div class="text-sm">这一天还没有排课</div>
         </div>`;
       return;
     }
@@ -1308,20 +1308,20 @@
       const endMins = h * 60 + m + (s.durationMinutes || 45);
       const endHM = `${String(Math.floor(endMins / 60)).padStart(2, '0')}:${String(endMins % 60).padStart(2, '0')}`;
       const badge = done
-        ? '<span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-[#f5f2ec] text-[#78716c] shrink-0">已消课</span>'
+        ? '<span class="text-[10px] font-bold px-2.5 py-1 rounded-full bg-[#f5f2ec] text-[#78716c] shrink-0">已消课</span>'
         : leave
-          ? '<span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-500 shrink-0">请假</span>'
-          : '<span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-[#111111] text-white shrink-0">待上课</span>';
+          ? '<span class="text-[10px] font-bold px-2.5 py-1 rounded-full bg-rose-50 text-rose-500 shrink-0">请假</span>'
+          : '<span class="text-[10px] font-bold px-2.5 py-1 rounded-full bg-[#111111] text-white shrink-0">待上课</span>';
       return `
-      <button type="button" data-month-sch="${s.id}" class="w-full text-left bg-white border border-[#efe9e0] rounded-2xl p-3 flex items-center gap-3 hover:border-[#e3dbd0] transition">
+      <button type="button" data-month-sch="${s.id}" class="w-full text-left bg-white border border-[#efe9e0] rounded-2xl p-3.5 flex items-center gap-3.5 hover:border-[#e3dbd0] transition">
         <div class="text-center shrink-0">
-          <div class="text-sm font-black text-[#111111]">${s.startTime}</div>
-          <div class="text-[9px] lm-t3 mt-0.5">${endHM}</div>
+          <div class="text-base font-black text-[#111111]">${s.startTime}</div>
+          <div class="text-[10px] lm-t3 mt-0.5">${endHM}</div>
         </div>
         <div class="w-px self-stretch bg-[#f2ece4]"></div>
         <div class="flex-1 min-w-0">
-          <div class="text-xs font-bold text-[#111111] truncate">${s.studentName || ''} · ${s.subject || ''}</div>
-          <div class="text-[10px] lm-t3 mt-0.5 truncate">${s.teacherName || ''} · ${s.room || '—'}</div>
+          <div class="text-sm font-bold text-[#111111] truncate">${s.studentName || ''} · ${s.subject || ''}</div>
+          <div class="text-[11px] lm-t3 mt-1 truncate">${s.teacherName || ''} · ${s.room || '—'}</div>
         </div>
         ${badge}
       </button>`;

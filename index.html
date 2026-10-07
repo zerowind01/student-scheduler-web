@@ -278,12 +278,12 @@
             <div id="monthViewGrid" class="h-full overflow-y-auto grid grid-cols-7 auto-rows-fr border border-[#efe9e0] rounded-lg custom-scrollbar"></div>
           </div>
         </div>
-        <aside class="w-[300px] shrink-0 border-l border-[#efe9e0] bg-[#faf8f3] flex flex-col overflow-hidden">
+        <aside class="w-[440px] shrink-0 border-l border-[#efe9e0] bg-[#faf8f3] flex flex-col overflow-hidden">
           <div class="px-4 pt-4 pb-2 flex items-center justify-between shrink-0">
-            <div id="monthDayTitle" class="text-xs font-bold text-[#111111]"></div>
-            <button id="btnMonthGotoWeek" class="text-[11px] font-bold text-[#78716c] hover:text-[#111111] transition">查看周课表 →</button>
+            <div id="monthDayTitle" class="text-sm font-bold text-[#111111]"></div>
+            <button id="btnMonthGotoWeek" class="text-xs font-bold text-[#78716c] hover:text-[#111111] transition">查看周课表 →</button>
           </div>
-          <div id="monthDayList" class="flex-1 overflow-y-auto custom-scrollbar px-3 pb-3 space-y-2"></div>
+          <div id="monthDayList" class="flex-1 overflow-y-auto custom-scrollbar px-4 pb-4 space-y-2.5"></div>
         </aside>
       </div>
 
@@ -1009,7 +1009,7 @@
   </div>
 
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=16"></script>
+  <script src="js/app.js?v=17"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
