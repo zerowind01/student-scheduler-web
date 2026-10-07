@@ -1244,9 +1244,13 @@
 
       const cell = document.createElement(inMonth ? 'button' : 'div');
       if (inMonth) cell.type = 'button';
-      // 无框格子：对齐手机版（选中浅底、hover 反馈、非本月淡显）
-      cell.className = 'flex flex-col items-center pt-1.5 rounded-xl transition select-none ' +
-        (inMonth ? 'cursor-pointer hover:bg-[#faf8f3]' : '') +
+      // 表格线格子：暖发丝内框（末列去右边线、末行去下边线，避免与外框叠加）
+      const isLastCol = i % 7 === 6;
+      const isLastRow = i >= totalCells - 7;
+      cell.className = 'flex flex-col items-center pt-1.5 pb-1 transition select-none border-[#efe9e0] ' +
+        (isLastCol ? '' : 'border-r ') +
+        (isLastRow ? '' : 'border-b ') +
+        (inMonth ? 'cursor-pointer hover:bg-[#faf8f3] ' : '') +
         (isSel ? ' bg-[#faf8f3]' : '') +
         (inMonth ? '' : ' opacity-30');
 

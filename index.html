@@ -274,7 +274,9 @@
             <div class="py-1 text-center text-[11px] font-bold text-[#a8a29e]">六</div>
             <div class="py-1 text-center text-[11px] font-bold text-[#a8a29e]">日</div>
           </div>
-          <div id="monthViewGrid" class="flex-1 overflow-y-auto grid grid-cols-7 auto-rows-fr gap-y-1 px-4 pb-4 custom-scrollbar"></div>
+          <div class="flex-1 overflow-hidden px-4 pb-4">
+            <div id="monthViewGrid" class="h-full overflow-y-auto grid grid-cols-7 auto-rows-fr border border-[#efe9e0] rounded-lg custom-scrollbar"></div>
+          </div>
         </div>
         <aside class="w-[300px] shrink-0 border-l border-[#efe9e0] bg-[#faf8f3] flex flex-col overflow-hidden">
           <div class="px-4 pt-4 pb-2 flex items-center justify-between shrink-0">
@@ -1007,7 +1009,7 @@
   </div>
 
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=15"></script>
+  <script src="js/app.js?v=16"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

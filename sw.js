@@ -1,7 +1,7 @@
 // LessonMate PWA Service Worker
 // 策略：页面导航 network-first（保更新，断网回退缓存）；静态资源 SWR；/api/* 永不缓存
 // 更新版本号 CACHE 即可让全量客户端刷新
-const CACHE = 'lessonmate-v46';
+const CACHE = 'lessonmate-v47';
 const CORE = [
   '/', '/mobile', '/index.html', '/mobile.html', '/manifest.json',
   '/icons/icon-192.png?v=6', '/icons/icon-512.png?v=6', '/icons/apple-touch-icon.png?v=6',
