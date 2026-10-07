@@ -1604,6 +1604,8 @@
     document.querySelectorAll('.nav-page-btn[data-page], .mnav-btn[data-page]').forEach((btn) => {
       btn.addEventListener('click', () => switchPage(btn.getAttribute('data-page')));
     });
+    // 每次刷新/进入默认显示看板页（顶栏隐藏、滑块落位）
+    switchPage('dashboard');
     // 看板：本周 / 上周消课趋势切换
     document.querySelectorAll('.dash-week-tab').forEach((btn) => {
       btn.addEventListener('click', () => {

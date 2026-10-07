@@ -138,6 +138,8 @@
    ========================================================================== */
 .fn-home { color: #6366f1; }
 .fn-home.is-active { color: #4f46e5; }
+.fn-dashboard { color: #78716c; }
+.fn-dashboard.is-active { color: #111111; }
 .fn-schedule { color: var(--brand-600); }
 .fn-students { color: #059669; }
 .fn-finance  { color: var(--sem-danger); }
