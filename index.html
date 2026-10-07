@@ -324,6 +324,13 @@
       <i class="fa-solid fa-plus"></i>
     </button>
 
+    <!-- FAB 选学员弹层：桌面排课弹窗需绑定学员，先选人再进排课 -->
+    <div id="fabStudentPickerBackdrop" class="hidden fixed inset-0 z-30"></div>
+    <div id="fabStudentPicker" class="hidden fixed right-6 bottom-24 z-40 w-64 max-h-80 overflow-y-auto custom-scrollbar bg-white border border-[#efe9e0] rounded-2xl shadow-xl p-2">
+      <div class="text-[11px] font-bold text-[#78716c] px-2 pt-1.5 pb-1">选择学员开始排课</div>
+      <div id="fabStudentList" class="space-y-0.5"></div>
+    </div>
+
     </section><!-- /pageSchedule -->
 
     <!-- ============ 分页：学员 ============ -->
@@ -966,7 +973,7 @@
   </div>
 
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=21"></script>
+  <script src="js/app.js?v=22"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

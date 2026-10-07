@@ -1622,8 +1622,9 @@
     });
     // 看板：新增排课 / 预警直通
     safeBind('btnDashNewSchedule', 'click', () => { switchPage('schedule'); setTimeout(() => openScheduleModalForNew(), 200); });
-    // 课表页右下角 FAB：新增排课（对齐手机版）
-    safeBind('fabNewSchedule', 'click', () => openScheduleModalForNew());
+    // 课表页右下角 FAB：先选学员再进排课弹窗（桌面弹窗需绑定学员）
+    safeBind('fabNewSchedule', 'click', toggleFabStudentPicker);
+    safeBind('fabStudentPickerBackdrop', 'click', hideFabStudentPicker);
     safeBind('btnDashGotoLow', 'click', () => switchPage('students'));
     // 底部导航"学员"按钮沿用原 btnMobileOpenStudents id
     safeBind('btnMobileOpenStudents', 'click', () => switchPage('students'));
@@ -2766,6 +2767,58 @@
   // ==========================================
   // 10. 排课 Modal 弹窗控制
   // ==========================================
+  // ============ FAB 选学员弹层 ============
+  function hideFabStudentPicker() {
+    document.getElementById('fabStudentPicker')?.classList.add('hidden');
+    document.getElementById('fabStudentPickerBackdrop')?.classList.add('hidden');
+  }
+
+  function toggleFabStudentPicker() {
+    const picker = document.getElementById('fabStudentPicker');
+    if (!picker) return;
+    if (!picker.classList.contains('hidden')) { hideFabStudentPicker(); return; }
+    renderFabStudentList();
+    picker.classList.remove('hidden');
+    document.getElementById('fabStudentPickerBackdrop')?.classList.remove('hidden');
+  }
+
+  function renderFabStudentList() {
+    const listEl = document.getElementById('fabStudentList');
+    if (!listEl) return;
+    if (!students.length) {
+      listEl.innerHTML = '<div class="text-[11px] text-[#a8a29e] text-center py-4">还没有学员，请先到「学员」页新建</div>';
+      return;
+    }
+    listEl.innerHTML = students.map((st) => {
+      const total = (st.courses || []).reduce((acc, c) => acc + (c.remainingLessons || 0), 0);
+      const avTheme = getThemeBadgeStyle(st.colorTheme || 'amber');
+      return `
+      <button type="button" data-fab-student="${st.id}" class="w-full flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-[#faf8f3] transition text-left">
+        <span class="w-7 h-7 rounded-full ${avTheme.bg} ${avTheme.text} flex items-center justify-center font-bold text-[11px] shrink-0">${(st.name || '?').substring(0, 1)}</span>
+        <span class="flex-1 min-w-0">
+          <span class="block text-xs font-bold text-[#111111] truncate">${st.name || ''}</span>
+          <span class="block text-[10px] lm-t3">剩 ${total} 课时</span>
+        </span>
+        <i class="fa-solid fa-chevron-right text-[9px] text-[#d6d3d1]"></i>
+      </button>`;
+    }).join('');
+    listEl.querySelectorAll('[data-fab-student]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const st = students.find((s) => s.id === btn.getAttribute('data-fab-student'));
+        hideFabStudentPicker();
+        if (!st) return;
+        // 默认今天 + 下一个整半点（8:00-20:00 之间）
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('sv');
+        const slot = Math.ceil((now.getHours() * 60 + now.getMinutes() + 1) / 30) * 30;
+        let hour = Math.floor(slot / 60), min = slot % 60;
+        if (hour > 20) { hour = 20; min = 0; }
+        if (hour < 8) { hour = 8; min = 0; }
+        openScheduleModalForNew(st, dateStr, `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`);
+      });
+    });
+  }
+
   function openScheduleModalForNew(student, dateStr, startTimeStr) {
     normalizeStudent(student);
 
