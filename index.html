@@ -25,8 +25,8 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <!-- Custom CSS -->
   <link rel="stylesheet" href="css/tokens.css?v=7">
-  <link rel="stylesheet" href="css/styles.css?v=13">
-  <link rel="stylesheet" href="css/legacy-tokens.css?v=7">
+  <link rel="stylesheet" href="css/styles.css?v=14">
+  <link rel="stylesheet" href="css/legacy-tokens.css?v=8">
   <!-- GSAP 动效 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
   <script src="js/anim.js?v=5"></script>
@@ -34,7 +34,7 @@
 <body class="text-[#111111] font-sans h-screen flex flex-col overflow-hidden select-none" style="background: var(--surface-page);">
 
   <!-- 顶栏 Header (仅课表视图保留；其他桌面页面隐藏，品牌已移入侧边栏) -->
-  <header id="mainTopbar" class="bg-white/95 backdrop-blur-md border-b border-[#efe9e0] px-3 sm:px-5 py-2 flex items-center justify-between shadow-2xs z-20 shrink-0">
+  <header id="mainTopbar" class="bg-white/95 backdrop-blur-md border-b border-[#efe9e0] px-3 sm:px-5 md:pl-[184px] py-2 flex items-center justify-between shadow-2xs z-10 shrink-0">
     <!-- 中间：周次切换控制 & 老师筛选 -->
     <div class="flex items-center space-x-2 sm:space-x-3 overflow-x-auto max-w-full">
       <div class="flex items-center space-x-1 sm:space-x-1.5 bg-[#f5f2ec]/80 p-0.5 rounded-lg border border-[#efe9e0]/60 shrink-0">
@@ -102,29 +102,28 @@
   <div class="flex flex-1 overflow-hidden relative">
 
     <!-- 左侧 主导航栏（桌面端图标条 / 手机端隐藏） -->
-  <nav id="mainSideNav" class="hidden md:flex flex-col items-center w-28 bg-[#1c1917] text-white py-3 gap-1.5 shrink-0 z-20">
-      <!-- 品牌区：原顶栏 Logo 与标题整合入侧边栏顶部 -->
+  <nav id="mainSideNav" class="hidden md:flex flex-col items-center w-36 bg-[#1c1917] text-white py-3 gap-1.5 shrink-0 z-20">
+      <div id="navGliderDesktop" aria-hidden="true"></div>
+      <!-- 品牌区：橙色 App 图标 + 双倍字号 -->
       <div class="flex flex-col items-center gap-1 mb-2 shrink-0">
-        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#111111] to-[#2b2b2b] flex items-center justify-center text-white shadow-xs">
-          <i class="fa-solid fa-calendar-days text-base"></i>
-        </div>
-        <div class="text-[11px] font-bold text-white leading-none">LessonMate</div>
-        <div class="text-[8px] bg-white/15 text-white/80 px-1.5 py-0.5 rounded-md font-semibold leading-none">工作台</div>
+        <img src="icons/icon-192.png?v=6" alt="LessonMate" class="w-10 h-10 rounded-[10px] shadow-xs">
+        <div class="text-[22px] font-black text-white leading-none tracking-tight whitespace-nowrap">LessonMate</div>
+        <div class="text-[16px] bg-white/15 text-white/85 px-2 py-0.5 rounded-md font-semibold leading-none">工作台</div>
       </div>
-      <button class="nav-page-btn flex flex-row items-center justify-center w-20 py-2 rounded-xl text-[11px] font-bold gap-2.5 transition text-[#a8a29e] hover:text-white hover:bg-[#3f3b37]" data-page="dashboard" title="看板">
+      <button class="nav-page-btn flex flex-row items-center justify-center w-32 py-1.5 rounded-xl text-[11px] font-bold gap-2.5 transition text-[#a8a29e] hover:text-white hover:bg-[#3f3b37]" data-page="dashboard" title="看板">
         <i class="fa-solid fa-chart-line text-lg fn-dashboard"></i><span>看板</span>
       </button>
-      <button class="nav-page-btn active flex flex-row items-center justify-center w-20 py-2 rounded-xl text-[10px] font-bold gap-1.5 transition" data-page="schedule" title="课表">
+      <button class="nav-page-btn active flex flex-row items-center justify-center w-32 py-1.5 rounded-xl text-[11px] font-bold gap-2.5 transition" data-page="schedule" title="课表">
         <i class="fa-solid fa-calendar-week text-lg fn-schedule is-active"></i><span>课表</span>
       </button>
-      <button class="nav-page-btn flex flex-row items-center justify-center w-20 py-2 rounded-xl text-[11px] font-bold gap-2.5 transition text-[#a8a29e] hover:text-white hover:bg-[#3f3b37]" data-page="students" title="学员">
+      <button class="nav-page-btn flex flex-row items-center justify-center w-32 py-1.5 rounded-xl text-[11px] font-bold gap-2.5 transition text-[#a8a29e] hover:text-white hover:bg-[#3f3b37]" data-page="students" title="学员">
         <i class="fa-solid fa-users text-lg fn-students"></i><span>学员</span>
       </button>
-      <button class="nav-page-btn flex flex-row items-center justify-center w-20 py-2 rounded-xl text-[11px] font-bold gap-2.5 transition text-[#a8a29e] hover:text-white hover:bg-[#3f3b37] relative" data-page="finance" title="财务">
+      <button class="nav-page-btn flex flex-row items-center justify-center w-32 py-1.5 rounded-xl text-[11px] font-bold gap-2.5 transition text-[#a8a29e] hover:text-white hover:bg-[#3f3b37] relative" data-page="finance" title="财务">
         <i class="fa-solid fa-coins text-lg fn-finance"></i><span>财务</span>
         <span id="navDebtBadge" class="hidden absolute top-1 right-1.5 w-2 h-2 rounded-full bg-rose-500"></span>
       </button>
-      <button class="nav-page-btn flex flex-row items-center justify-center w-20 py-2 rounded-xl text-[11px] font-bold gap-2.5 transition text-[#a8a29e] hover:text-white hover:bg-[#3f3b37]" data-page="settings" title="设置">
+      <button class="nav-page-btn flex flex-row items-center justify-center w-32 py-1.5 rounded-xl text-[11px] font-bold gap-2.5 transition text-[#a8a29e] hover:text-white hover:bg-[#3f3b37]" data-page="settings" title="设置">
         <i class="fa-solid fa-gear text-lg fn-settings"></i><span>设置</span>
       </button>
       <div class="flex-1"></div>
@@ -1009,7 +1008,7 @@
   </div>
 
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=18"></script>
+  <script src="js/app.js?v=19"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

@@ -303,10 +303,11 @@ button, a, select, input, textarea {
 }
 
 /* 14. 桌面侧边栏毛玻璃（Glassmorphism）：半透明暖黑底 + 24px 背景模糊 + 亮白描边。
-       导航为浮动面板：四边 16px 外边距、圆角 20、低透明度柔和投影；内容从面板底下滚过。 */
+       浮动面板 fixed 定位（四边 16px、圆角 20、柔投影），全高统一；
+       选中色块由 #navGliderDesktop 滑块承载（动效对齐手机版）。 */
 @media (min-width: 768px) {
   #mainSideNav {
-    position: absolute;
+    position: fixed;
     left: 16px;
     top: 16px;
     bottom: 16px;
@@ -317,14 +318,31 @@ button, a, select, input, textarea {
     border: 1px solid rgba(255, 255, 255, 0.55);
     box-shadow: 0 12px 32px -8px rgba(15, 23, 42, 0.18);
   }
-  /* 内容避让：面板左缘 16px + 宽 112px，右侧再留出间隙 */
-  #pageSchedule { padding-left: calc(16px + 7rem + 16px) !important; }
+  /* 选中滑块：位置/高度由 JS 用 WAAPI 驱动（滑动+拉伸+过冲回弹） */
+  #mainSideNav #navGliderDesktop {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 0;
+    height: 0;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.16);
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.35),
+      inset 0 1px 0 rgba(255, 255, 255, 0.3),
+      0 2px 8px rgba(15, 23, 42, 0.12);
+    pointer-events: none;
+    will-change: top, height;
+  }
+  #mainSideNav .nav-page-btn { position: relative; z-index: 1; }
+  /* 内容避让：面板左缘 16px + 宽 144px，右侧再留出间隙 */
+  #pageSchedule { padding-left: calc(16px + 9rem + 16px) !important; }
   #pageDashboard,
   #pageStudents,
   #pageFinance,
-  #pageSettings { padding-left: calc(16px + 7rem + 24px) !important; }
+  #pageSettings { padding-left: calc(16px + 9rem + 24px) !important; }
   /* 待排课学员侧栏：跟着浮起，避开面板右缘 */
-  #sidebarStudent { left: calc(16px + 7rem + 16px) !important; }
+  #sidebarStudent { left: calc(16px + 9rem + 16px) !important; }
   /* 非课表页面隐藏顶栏（品牌已入侧边栏；手机端不受影响） */
   #mainTopbar.header-hide-desktop { display: none !important; }
 }

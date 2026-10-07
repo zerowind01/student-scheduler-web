@@ -1333,6 +1333,58 @@
   // ==========================================
   const PAGE_IDS = ['pageDashboard', 'pageSchedule', 'pageStudents', 'pageFinance', 'pageSettings'];
 
+    // ---- 桌面侧栏选中滑块（动效对齐手机版：滑动+沿方向拉伸+过冲回弹） ----
+    const navGliderD = document.getElementById('navGliderDesktop');
+    let gliderDLastTop = null;
+    function positionNavGliderD(animate) {
+      if (!navGliderD) return;
+      const island = navGliderD.parentElement;
+      const active = island.querySelector('.nav-page-btn.active') || island.querySelector('.nav-page-btn');
+      if (!active) return;
+      const ir = island.getBoundingClientRect();
+      const tr = active.getBoundingClientRect();
+      const x = tr.left - ir.left;
+      const w = tr.width;
+      const toTop = tr.top - ir.top + 3;      // 色块高度比按钮缩小（上下各缩 3px）
+      const toH = tr.height - 6;
+      const fromTop = gliderDLastTop;
+      const fromH = parseFloat(navGliderD.style.height) || toH;
+      gliderDLastTop = toTop;
+      navGliderD.style.left = x + 'px';
+      navGliderD.style.width = w + 'px';
+      // 直接落位（首次/无位移/窗口尺寸变化）
+      if (!animate || fromTop === null || Math.abs(toTop - fromTop) < 1) {
+        navGliderD.style.top = toTop + 'px';
+        navGliderD.style.height = toH + 'px';
+        return;
+      }
+      const dy = toTop - fromTop;
+      const dir = dy > 0 ? 1 : -1;
+      const stretch = Math.min(26, Math.abs(dy) * 0.38); // 移动越远拉得越长（封顶 26px）
+      // 中段：前缘先行 → 色块沿移动方向拉长
+      const midTop = fromTop + dy * 0.5 - (dir > 0 ? 0 : stretch);
+      const midH = fromH + stretch;
+      // 过冲：整体越过目标一点，再弹回
+      const overTop = toTop + dir * 7;
+      navGliderD.style.top = toTop + 'px';
+      navGliderD.style.height = toH + 'px';
+      navGliderD.animate(
+        [
+          { top: fromTop + 'px', height: fromH + 'px', offset: 0, easing: 'cubic-bezier(.45,0,.55,1)' },
+          { top: midTop + 'px', height: midH + 'px', offset: 0.52, easing: 'cubic-bezier(.3,0,.2,1)' },
+          { top: overTop + 'px', height: toH + 'px', offset: 0.8, easing: 'cubic-bezier(.34,1.56,.64,1)' },
+          { top: toTop + 'px', height: toH + 'px', offset: 1 }
+        ],
+        { duration: 480, fill: 'both' }
+      );
+    }
+    window.addEventListener('resize', () => positionNavGliderD(false));
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => positionNavGliderD(false)).catch(() => {});
+    }
+    // 初始落位：HTML 默认激活项（课表）在首帧就摆好滑块，保证首次切换也有滑动动画
+    requestAnimationFrame(() => positionNavGliderD(false));
+
   function switchPage(page) {
     PAGE_IDS.forEach((id) => {
       const el = document.getElementById(id);
@@ -1352,6 +1404,8 @@
       const icon = btn.querySelector('i.fa-solid');
       if (icon) icon.classList.toggle('is-active', active);
     });
+    // 桌面侧栏滑块滑到新选中项（首帧自动直落）
+    positionNavGliderD(true);
 
     // 手机底部导航高亮
     document.querySelectorAll('.mnav-btn').forEach((btn) => {

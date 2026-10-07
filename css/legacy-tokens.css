@@ -33,9 +33,8 @@
   --lm-pill-shadow: 0 1px 3px rgba(120, 100, 70, 0.10);
 }
 
-/* ---- 左侧主导航分页按钮：激活态（暖黑导航条内） ---- */
+/* ---- 左侧主导航分页按钮：激活态（底衬色块由 #navGliderDesktop 滑块承载） ---- */
 .nav-page-btn.active {
-  background: #3f3b37 !important;
   color: #ffffff !important;
 }
 .nav-page-btn.active i { color: #ffffff !important; }
