@@ -33,9 +33,9 @@
   --lm-pill-shadow: 0 1px 3px rgba(120, 100, 70, 0.10);
 }
 
-/* ---- 左侧主导航分页按钮：激活态（奶油浅底，激活文字转炭黑） ---- */
+/* ---- 左侧主导航分页按钮：激活态（选中靠白色胶囊滑块，文字统一灰字） ---- */
 .nav-page-btn.active {
-  color: #111111 !important;
+  color: #78716c !important;
 }
 .nav-page-btn.active i { color: inherit !important; }
 

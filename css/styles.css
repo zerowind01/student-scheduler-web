@@ -312,9 +312,9 @@ button, a, select, input, textarea {
     top: 16px;
     bottom: 16px;
     border-radius: 20px;
-    background: rgba(255, 255, 255, 0.5);
-    backdrop-filter: blur(24px) saturate(160%);
-    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(24px) saturate(150%);
+    -webkit-backdrop-filter: blur(24px) saturate(150%);
     border: 1px solid rgba(255, 255, 255, 0.9);
     box-shadow: 0 12px 32px -8px rgba(15, 23, 42, 0.14);
   }
