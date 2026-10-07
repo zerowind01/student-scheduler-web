@@ -33,11 +33,11 @@
   --lm-pill-shadow: 0 1px 3px rgba(120, 100, 70, 0.10);
 }
 
-/* ---- 左侧主导航分页按钮：激活态（底衬色块由 #navGliderDesktop 滑块承载） ---- */
+/* ---- 左侧主导航分页按钮：激活态（奶油浅底，激活文字转炭黑） ---- */
 .nav-page-btn.active {
-  color: #ffffff !important;
+  color: #111111 !important;
 }
-.nav-page-btn.active i { color: #ffffff !important; }
+.nav-page-btn.active i { color: inherit !important; }
 
 /* ---- 文字层级 ---- */
 .lm-t1 { color: var(--lm-ink) !important; }
