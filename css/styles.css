@@ -301,3 +301,25 @@ button, a, select, input, textarea {
 @media (prefers-reduced-motion: reduce) {
   .lm-flash { animation: none; }
 }
+
+/* 14. 桌面侧边栏毛玻璃（Glassmorphism）：半透明暖黑底 + 24px 背景模糊 + 亮白描边。
+       导航改为悬浮在内容上层，页面内容从它底下滚过，模糊才有意义。 */
+@media (min-width: 768px) {
+  #mainSideNav {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    background: rgba(28, 25, 23, 0.55);
+    backdrop-filter: blur(24px) saturate(150%);
+    -webkit-backdrop-filter: blur(24px) saturate(150%);
+    border-right: 1px solid rgba(255, 255, 255, 0.55);
+    box-shadow: 0 0 24px rgba(15, 23, 42, 0.08);
+  }
+  /* 内容避让：原本导航占一条 w-14 流式宽度，改悬浮后由内容自己留出 */
+  #pageSchedule { padding-left: 3.5rem !important; }
+  #pageDashboard,
+  #pageStudents,
+  #pageFinance,
+  #pageSettings { padding-left: calc(3.5rem + 24px) !important; }
+}
