@@ -1622,6 +1622,8 @@
     });
     // 看板：新增排课 / 预警直通
     safeBind('btnDashNewSchedule', 'click', () => { switchPage('schedule'); setTimeout(() => openScheduleModalForNew(), 200); });
+    // 课表页右下角 FAB：新增排课（对齐手机版）
+    safeBind('fabNewSchedule', 'click', () => openScheduleModalForNew());
     safeBind('btnDashGotoLow', 'click', () => switchPage('students'));
     // 底部导航"学员"按钮沿用原 btnMobileOpenStudents id
     safeBind('btnMobileOpenStudents', 'click', () => switchPage('students'));
@@ -1887,27 +1889,27 @@
             <div class="text-[11px] font-bold lm-t2">${monthLogs.length} 笔 · ${monthLessons.toFixed(1)} 节 · ¥${monthValue.toFixed(0)}</div>
           </div>
           ${monthLogs.length === 0 ? '<div class="text-[11px] lm-t3 py-8 text-center">本月暂无消课记录</div>' : `
-          <div class="max-h-[440px] overflow-y-auto custom-scrollbar px-2 pb-2">
+          <div class="max-h-[480px] overflow-y-auto custom-scrollbar px-2 pb-2">
             <table class="w-full text-xs">
               <thead class="sticky top-0 bg-white">
                 <tr class="text-left text-[10px] lm-t3 border-b border-[#efe9e0]">
-                  <th class="font-bold py-2 pl-2">学员</th>
-                  <th class="font-bold py-2">课程</th>
-                  <th class="font-bold py-2">备注</th>
-                  <th class="font-bold py-2 text-right">节数</th>
-                  <th class="font-bold py-2 text-right">金额</th>
-                  <th class="font-bold py-2 text-right pr-2">时间</th>
+                  <th class="font-bold py-2.5 pl-2">学员</th>
+                  <th class="font-bold py-2.5">课程</th>
+                  <th class="font-bold py-2.5">备注</th>
+                  <th class="font-bold py-2.5 text-right">节数</th>
+                  <th class="font-bold py-2.5 text-right">金额</th>
+                  <th class="font-bold py-2.5 text-right pr-2">时间</th>
                 </tr>
               </thead>
               <tbody>
                 ${monthLogs.map((l) => `
                 <tr class="border-b border-[#f2ece4] hover:bg-[#faf8f3] transition">
-                  <td class="py-2 pl-2 font-bold lm-t1 whitespace-nowrap">${l.studentName}</td>
-                  <td class="py-2 lm-t2 whitespace-nowrap">${l.courseName}</td>
-                  <td class="py-2 lm-t3 max-w-[180px] truncate" title="${l.remarks || ''}">${l.remarks || '—'}</td>
-                  <td class="py-2 text-right lm-t2 whitespace-nowrap">${l.deductedLessons} 节</td>
-                  <td class="py-2 text-right font-bold ${l.paymentAmount > 0 ? 'lm-t1' : 'lm-t3'} whitespace-nowrap">${l.paymentAmount > 0 ? `¥${l.paymentAmount.toFixed(0)}` : '—'}</td>
-                  <td class="py-2 text-right lm-t3 whitespace-nowrap pr-2">${(l.checkInTime || '').replace('T', ' ').slice(5, 16)}</td>
+                  <td class="py-3 pl-2 font-bold lm-t1 whitespace-nowrap">${l.studentName}</td>
+                  <td class="py-3 lm-t2 whitespace-nowrap">${l.courseName}</td>
+                  <td class="py-3 lm-t3 max-w-[180px] truncate" title="${l.remarks || ''}">${l.remarks || '—'}</td>
+                  <td class="py-3 text-right lm-t2 whitespace-nowrap">${l.deductedLessons} 节</td>
+                  <td class="py-3 text-right font-bold ${l.paymentAmount > 0 ? 'lm-t1' : 'lm-t3'} whitespace-nowrap">${l.paymentAmount > 0 ? `¥${l.paymentAmount.toFixed(0)}` : '—'}</td>
+                  <td class="py-3 text-right lm-t3 whitespace-nowrap pr-2">${(l.checkInTime || '').replace('T', ' ').slice(5, 16)}</td>
                 </tr>`).join('')}
               </tbody>
             </table>

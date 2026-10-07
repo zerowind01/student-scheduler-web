@@ -19,12 +19,10 @@
   </script>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- QRCode.js 图库（扫码同步） -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="css/tokens.css?v=9">
+  <link rel="stylesheet" href="css/tokens.css?v=10">
   <link rel="stylesheet" href="css/styles.css?v=20">
   <link rel="stylesheet" href="css/legacy-tokens.css?v=10">
   <!-- GSAP 动效 -->
@@ -86,10 +84,6 @@
           <span id="statWeeklyHours" class="font-bold text-emerald-700">0 小时</span>
         </div>
       </div>
-
-      <button id="btnNewStudent" class="px-3 py-1 bg-[#111111] text-white rounded-lg text-xs font-semibold hover:bg-[#2b2b2b] transition flex items-center gap-1 shadow-2xs shrink-0">
-        <i class="fa-solid fa-user-plus text-xs"></i> 新建学员
-      </button>
     </div>
 
     <!-- 手机端 菜单入口按钮 -->
@@ -127,10 +121,6 @@
         <i class="fa-solid fa-gear text-xl w-6 text-center fn-settings"></i><span>设置</span>
       </button>
       <div class="flex-1"></div>
-
-      <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#111111] to-[#2b2b2b] flex items-center justify-center text-white shadow-xs shrink-0 mb-1">
-        <i class="fa-solid fa-mobile-screen text-sm"></i>
-      </div>
     </nav>  
 
     <!-- ============ 分页：校务看板 (新增) ============ -->
@@ -141,9 +131,6 @@
             <h2 class="text-lg font-black text-[#111111] flex items-center gap-2"><i class="fa-solid fa-chart-line text-[#78716c]"></i> 校务看板</h2>
             <div id="dashDateLabel" class="text-[11px] text-[#a8a29e] font-semibold mt-0.5"></div>
           </div>
-          <button id="btnDashNewSchedule" class="px-4 py-2.5 bg-[#ff5600] text-white rounded-full text-xs font-bold hover:bg-[#2b2b2b] transition flex items-center gap-1.5">
-            <i class="fa-solid fa-plus text-xs"></i> 新增排课
-          </button>
         </div>
         <div id="dashKpiRow" class="grid grid-cols-2 lg:grid-cols-4 gap-4"><!-- KPI 卡动态渲染 --></div>
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -248,10 +235,7 @@
     <!-- 右侧：周日历视图 Main Calendar View -->
     <main class="flex-1 bg-[#faf8f3] flex flex-col overflow-hidden relative">
 
-      <!-- 批量排课按钮（弹出待排课学员列表） -->
-      <button id="btnBatchSchedule" class="absolute top-3 left-3 z-30 bg-[#ff5600] hover:bg-[#e64e00] text-white px-3.5 py-1.5 rounded-xl shadow-lg font-bold text-xs flex items-center gap-1.5 transition">
-        <i class="fa-solid fa-calendar-plus text-[#a8a29e] text-xs"></i> 批量排课
-      </button>
+
 
       <!-- 月历总览视图（对齐手机版：大标题 + 无框格子 + 学员色圆点 + 右侧当日安排） -->
       <div id="monthViewWrap" class="hidden flex-1 overflow-hidden">
@@ -335,6 +319,11 @@
 
     </main>
 
+    <!-- 课表页悬浮新增按钮（对齐手机版 FAB）：随 pageSchedule 显隐 -->
+    <button id="fabNewSchedule" aria-label="新增排课" title="新增排课" class="hidden md:flex fixed right-6 bottom-6 z-30 w-14 h-14 rounded-full items-center justify-center text-white text-xl shadow-lg bg-gradient-to-br from-[#ff8a3d] to-[#ff5600] hover:scale-105 active:scale-95 transition">
+      <i class="fa-solid fa-plus"></i>
+    </button>
+
     </section><!-- /pageSchedule -->
 
     <!-- ============ 分页：学员 ============ -->
@@ -370,10 +359,6 @@
           <button id="btnPageCloudSync" class="p-4 bg-white border border-[#efe9e0] rounded-2xl text-left hover:border-[#e3dbd0] hover:shadow-sm transition">
             <div class="font-bold text-sm text-[#111111] flex items-center gap-2"><i class="fa-solid fa-cloud-arrow-up text-[#78716c]"></i> 实时云同步</div>
             <div class="text-[11px] text-[#a8a29e] mt-1">设置机构专属同步码，多设备实时互通</div>
-          </button>
-          <button id="btnPageQrSync" class="p-4 bg-white border border-[#efe9e0] rounded-2xl text-left hover:border-[#e3dbd0] hover:shadow-sm transition">
-            <div class="font-bold text-sm text-[#111111] flex items-center gap-2"><i class="fa-solid fa-qrcode text-[#78716c]"></i> 扫码同步</div>
-            <div class="text-[11px] text-[#a8a29e] mt-1">手机扫一扫，1秒把电脑排课同步到手机</div>
           </button>
           <button id="btnPageManageTeachers" class="p-4 bg-white border border-[#efe9e0] rounded-2xl text-left hover:border-[#e3dbd0] hover:shadow-sm transition">
             <div class="font-bold text-sm text-[#111111] flex items-center gap-2"><i class="fa-solid fa-chalkboard-user text-[#78716c]"></i> 教师管理</div>
@@ -897,33 +882,6 @@
     </div>
   </div>
 
-  <!-- 扫码同步 Modal 弹窗 -->
-  <div id="modalQrSync" role="dialog" aria-modal="true" class="fixed inset-0 bg-[#1c1917]/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
-    <div class="bg-white rounded-2xl shadow-2xl border border-[#f2ece4] w-full sm:w-[380px] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box text-center p-6 space-y-4">
-      <div class="flex items-center justify-between pb-2 border-b border-[#f2ece4]">
-        <div class="flex items-center gap-2 font-bold text-[#111111] text-sm">
-          <i class="fa-solid fa-qrcode text-lg"></i>
-          <span>手机扫码 1 秒同步课表</span>
-        </div>
-        <button id="btnCloseQrModal" aria-label="关闭" class="text-[#a8a29e] hover:text-[#44403c] transition">
-          <i class="fa-solid fa-xmark text-lg"></i>
-        </button>
-      </div>
-
-      <div class="text-xs text-[#78716c] leading-relaxed">
-        请使用手机相机、微信或浏览器扫一扫，手机端将<strong>100% 自动同步载入</strong>当前电脑上的全部排课！
-      </div>
-
-      <div class="flex justify-center py-2">
-        <div id="qrcodeContainer" class="p-3 bg-white border-2 border-[#111111] rounded-2xl shadow-md inline-block"></div>
-      </div>
-
-      <div class="text-[11px] font-semibold text-[#78716c] py-1.5 px-3 bg-[#faf8f3] rounded-xl">
-        ✨ 扫码 100% 极速秒级直连同步
-      </div>
-    </div>
-  </div>
-
   <!-- 课程类型（courseTypes）下拉候选：排课科目 / 学员课程包名称共用 -->
   <datalist id="courseTypesList"></datalist>
 
@@ -1008,7 +966,7 @@
   </div>
 
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=20"></script>
+  <script src="js/app.js?v=21"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
