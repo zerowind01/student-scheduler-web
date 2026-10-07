@@ -316,7 +316,10 @@ button, a, select, input, textarea {
     backdrop-filter: blur(24px) saturate(150%);
     -webkit-backdrop-filter: blur(24px) saturate(150%);
     border: 1px solid rgba(255, 255, 255, 0.9);
-    box-shadow: 0 12px 32px -8px rgba(15, 23, 42, 0.14);
+    box-shadow:
+      0 24px 56px -16px rgba(15, 23, 42, 0.28),
+      0 8px 20px -8px rgba(15, 23, 42, 0.14),
+      0 2px 6px rgba(15, 23, 42, 0.06);
   }
   /* 选中滑块：暖白胶囊 + 细高光 + 柔投影（浅底上用投影衬出浮起感）；
      位置/高度由 JS 用 WAAPI 驱动（滑动+拉伸+过冲回弹） */
@@ -327,7 +330,7 @@ button, a, select, input, textarea {
     width: 0;
     height: 0;
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.72);
+    background: rgba(255, 255, 255, 0.55);
     backdrop-filter: blur(10px) saturate(140%);
     -webkit-backdrop-filter: blur(10px) saturate(140%);
     box-shadow:
