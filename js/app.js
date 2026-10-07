@@ -1326,7 +1326,7 @@
       const active = n > 0;
       return `<div class="flex-1 h-full flex flex-col items-center gap-1.5">
         <div class="w-full flex-1 flex items-end">
-          <div class="w-full rounded-md ${active ? 'bg-gradient-to-b from-[#a8a29e] to-[#57534e]' : 'bg-[#e7e5e4]'}" style="height:${h}%"></div>
+          <div class="w-full rounded-md ${active ? 'bg-gradient-to-b from-[#ff8a3d] to-[#ff5600]' : 'bg-[#f0ebe2]'}" style="height:${h}%"></div>
         </div>
         <span class="text-[10px] font-bold ${active ? 'text-[#44403c]' : 'text-[#a8a29e]'}">${names[i]} ${n}</span>
       </div>`;
@@ -1738,65 +1738,79 @@
     const totalStockValue = students.reduce((acc, st) => acc + (st.courses || []).reduce((a, c) => a + Math.max(0, c.remainingLessons) * (c.unitPrice || 0), 0), 0);
     const debtors = debts.filter((d) => d.amount > 0);
 
+    const kpiCard = (icon, iconStyle, label, valueHtml, extraAttr) => `
+      <div class="lm-stat-card rounded-2xl p-4" ${extraAttr || ''}>
+        <div class="flex items-center gap-1.5 text-[11px] font-bold lm-t3"><i class="fa-solid ${icon}" style="${iconStyle}"></i> ${label}</div>
+        <div class="text-2xl font-black lm-t1 mt-1.5">${valueHtml}</div>
+      </div>`;
+
     container.innerHTML = `
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div class="lm-stat-card rounded-2xl p-4">
-          <div class="text-[10px] font-bold lm-t3">本月课消</div>
-          <div class="text-xl font-black lm-t1 mt-1">${monthLessons.toFixed(1)} <span class="text-xs">节</span></div>
-        </div>
-        <div class="lm-stat-card rounded-2xl p-4">
-          <div class="text-[10px] font-bold lm-t3">课消价值</div>
-          <div class="text-xl font-black lm-t1 mt-1">¥${monthValue.toFixed(0)}</div>
-        </div>
-        <div class="lm-stat-card rounded-2xl p-4">
-          <div class="text-[10px] font-bold lm-t3">待消存量</div>
-          <div class="text-xl font-black lm-t1 mt-1">${totalRemaining.toFixed(1)} <span class="text-xs">节</span></div>
-        </div>
-        <div class="lm-stat-card rounded-2xl p-4"${debtors.length ? ' style="background:#fff1f2;"' : ''}>
-          <div class="text-[10px] font-bold ${debtors.length ? 'text-rose-600' : 'lm-t3'}">欠课学员</div>
-          <div class="text-xl font-black ${debtors.length ? 'text-rose-600' : 'lm-t3'} mt-1">${debtors.length} <span class="text-xs">人</span></div>
-        </div>
+      <div class="grid grid-cols-2 xl:grid-cols-4 gap-3">
+        ${kpiCard('fa-chart-simple', 'color:#111111;', '本月课消', `${monthLessons.toFixed(1)} <span class="text-xs font-bold lm-t3">节</span>`)}
+        ${kpiCard('fa-coins', 'color:#ff5600;', '课消价值', `¥${monthValue.toFixed(0)}`)}
+        ${kpiCard('fa-layer-group', 'color:#111111;', '待消存量', `${totalRemaining.toFixed(1)} <span class="text-xs font-bold lm-t3">节</span>`)}
+        ${kpiCard('fa-triangle-exclamation', 'color:#d5304f;', '欠课学员', `${debtors.length} <span class="text-xs font-bold lm-t3">人</span>`, debtors.length ? 'style="background:#fff1f2;"' : '')}
       </div>
 
-      <div class="lm-stat-card rounded-2xl p-4">
-        <div class="font-bold text-xs lm-t1 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-receipt"></i> 本月收入明细（消课流水）</div>
-        ${monthLogs.length === 0 ? '<div class="text-[11px] lm-t3 py-4 text-center">本月暂无消课记录</div>' : `
-        <div class="space-y-1.5 max-h-64 overflow-y-auto custom-scrollbar">
-          ${monthLogs.map((l) => `
-            <div class="flex items-center justify-between text-[11px] lm-soft px-3 py-2 rounded-lg">
-              <div>
-                <span class="font-bold lm-t1">${l.studentName}</span>
-                <span class="lm-t3 ml-1.5">${l.courseName}</span>
-                ${l.remarks ? `<span class="lm-t2 ml-1">${l.remarks}</span>` : ''}
-              </div>
-              <div class="text-right shrink-0 ml-2">
-                <div class="font-bold lm-t2">${l.deductedLessons}节 ${l.paymentAmount > 0 ? `· ¥${l.paymentAmount.toFixed(0)}` : ''}</div>
-                <div class="text-[9px] lm-t3">${(l.checkInTime || '').replace('T', ' ').slice(5, 16)}</div>
-              </div>
-            </div>`).join('')}
-        </div>`}
-      </div>
+      <div class="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+        <!-- 本月收入明细：桌面表格 -->
+        <div class="lm-stat-card rounded-2xl xl:col-span-2">
+          <div class="flex items-center justify-between px-4 pt-4 pb-2">
+            <div class="font-bold text-xs lm-t1 flex items-center gap-1.5"><i class="fa-solid fa-receipt" style="color:#ff5600;"></i> 本月收入明细（消课流水）</div>
+            <div class="text-[11px] font-bold lm-t2">${monthLogs.length} 笔 · ${monthLessons.toFixed(1)} 节 · ¥${monthValue.toFixed(0)}</div>
+          </div>
+          ${monthLogs.length === 0 ? '<div class="text-[11px] lm-t3 py-8 text-center">本月暂无消课记录</div>' : `
+          <div class="max-h-[440px] overflow-y-auto custom-scrollbar px-2 pb-2">
+            <table class="w-full text-xs">
+              <thead class="sticky top-0 bg-white">
+                <tr class="text-left text-[10px] lm-t3 border-b border-[#efe9e0]">
+                  <th class="font-bold py-2 pl-2">学员</th>
+                  <th class="font-bold py-2">课程</th>
+                  <th class="font-bold py-2">备注</th>
+                  <th class="font-bold py-2 text-right">节数</th>
+                  <th class="font-bold py-2 text-right">金额</th>
+                  <th class="font-bold py-2 text-right pr-2">时间</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${monthLogs.map((l) => `
+                <tr class="border-b border-[#f2ece4] hover:bg-[#faf8f3] transition">
+                  <td class="py-2 pl-2 font-bold lm-t1 whitespace-nowrap">${l.studentName}</td>
+                  <td class="py-2 lm-t2 whitespace-nowrap">${l.courseName}</td>
+                  <td class="py-2 lm-t3 max-w-[180px] truncate" title="${l.remarks || ''}">${l.remarks || '—'}</td>
+                  <td class="py-2 text-right lm-t2 whitespace-nowrap">${l.deductedLessons} 节</td>
+                  <td class="py-2 text-right font-bold ${l.paymentAmount > 0 ? 'lm-t1' : 'lm-t3'} whitespace-nowrap">${l.paymentAmount > 0 ? `¥${l.paymentAmount.toFixed(0)}` : '—'}</td>
+                  <td class="py-2 text-right lm-t3 whitespace-nowrap pr-2">${(l.checkInTime || '').replace('T', ' ').slice(5, 16)}</td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>`}
+        </div>
 
-      <div class="lm-stat-card rounded-2xl p-4">
-        <div class="font-bold text-xs lm-t1 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-triangle-exclamation" style="color:var(--lm-pink);"></i> 欠课名单</div>
-        ${debtors.length === 0 ? '<div class="text-[11px] lm-t3 py-4 text-center">没有欠课学员，太棒了 🎉</div>' : `
-        <div class="space-y-1.5">
-          ${debtors.map((d) => {
-            const st = students.find((s) => s.id === d.studentId);
-            return `
-            <div class="flex items-center justify-between text-[11px] bg-rose-50/60 px-3 py-2 rounded-lg">
-              <span class="font-bold lm-t1">${st ? st.name : '未知学员'} · ${d.courseName}</span>
-              <span class="font-black text-rose-600">欠 ${d.amount} 节</span>
-            </div>`;}).join('')}
-          <div class="text-[10px] lm-t3 pt-1">💡 到"学员"页点对应学员的"充值"按钮，会自动抵扣欠课</div>
-        </div>`}
-      </div>
+        <!-- 右栏：欠课名单 + 课时存量价值 -->
+        <div class="space-y-4">
+          <div class="lm-stat-card rounded-2xl p-4">
+            <div class="font-bold text-xs lm-t1 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-triangle-exclamation" style="color:var(--lm-pink);"></i> 欠课名单</div>
+            ${debtors.length === 0 ? '<div class="text-[11px] lm-t3 py-4 text-center">没有欠课学员，太棒了 🎉</div>' : `
+            <div class="space-y-1.5">
+              ${debtors.map((d) => {
+                const st = students.find((s) => s.id === d.studentId);
+                return `
+                <div class="flex items-center justify-between text-xs bg-rose-50/60 px-3 py-2 rounded-lg">
+                  <span class="font-bold lm-t1">${st ? st.name : '未知学员'} <span class="lm-t3 font-medium">· ${d.courseName}</span></span>
+                  <span class="font-black text-rose-600">欠 ${d.amount} 节</span>
+                </div>`;}).join('')}
+              <div class="text-[10px] lm-t3 pt-1">💡 到"学员"页点对应学员的"充值"按钮，会自动抵扣欠课</div>
+            </div>`}
+          </div>
 
-      <div class="lm-stat-card rounded-2xl p-4">
-        <div class="font-bold text-xs lm-t1 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-wallet"></i> 课时存量价值</div>
-        <div class="flex items-baseline gap-2">
-          <span class="text-2xl font-black lm-t1">¥${totalStockValue.toFixed(0)}</span>
-          <span class="text-[10px] lm-t3">全部学员剩余课时按单价折算</span>
+          <div class="lm-stat-card rounded-2xl p-4">
+            <div class="font-bold text-xs lm-t1 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-wallet"></i> 课时存量价值</div>
+            <div class="flex items-baseline gap-2">
+              <span class="text-2xl font-black lm-t1">¥${totalStockValue.toFixed(0)}</span>
+              <span class="text-[10px] lm-t3">全部学员剩余课时按单价折算</span>
+            </div>
+          </div>
         </div>
       </div>
     `;
