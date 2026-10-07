@@ -317,12 +317,12 @@ button, a, select, input, textarea {
     border: 1px solid rgba(255, 255, 255, 0.55);
     box-shadow: 0 12px 32px -8px rgba(15, 23, 42, 0.18);
   }
-  /* 内容避让：面板左缘 16px + 宽 56px，右侧再留出间隙 */
-  #pageSchedule { padding-left: calc(16px + 3.5rem + 16px) !important; }
+  /* 内容避让：面板左缘 16px + 宽 112px，右侧再留出间隙 */
+  #pageSchedule { padding-left: calc(16px + 7rem + 16px) !important; }
   #pageDashboard,
   #pageStudents,
   #pageFinance,
-  #pageSettings { padding-left: calc(16px + 3.5rem + 24px) !important; }
+  #pageSettings { padding-left: calc(16px + 7rem + 24px) !important; }
   /* 待排课学员侧栏：跟着浮起，避开面板右缘 */
-  #sidebarStudent { left: calc(16px + 3.5rem + 16px) !important; }
+  #sidebarStudent { left: calc(16px + 7rem + 16px) !important; }
 }
