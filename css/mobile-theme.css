@@ -28,6 +28,33 @@ body:has(#viewHome) {
   box-shadow: none;
 }
 
+/* ---- 新增排课悬浮按钮：左下角（岛台上方），仅课表视图显示 ---- */
+.lm-fab-add {
+  position: fixed;
+  left: 16px;
+  bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #ff6a1f, #ff5600);
+  color: #ffffff;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  box-shadow: 0 10px 24px -8px rgba(255, 86, 0, 0.55), 0 2px 8px rgba(255, 86, 0, 0.30);
+  z-index: 45;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.lm-fab-add:active {
+  transform: scale(0.92);
+  box-shadow: 0 6px 16px -8px rgba(255, 86, 0, 0.5), 0 1px 4px rgba(255, 86, 0, 0.28);
+}
+.lm-fab-add.hidden {
+  display: none;
+}
+
 /* ---- 岛台导航：悬浮胶囊 + 毛玻璃 ---- */
 .lm-island {
   position: fixed;

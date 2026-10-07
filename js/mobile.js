@@ -1323,9 +1323,11 @@
         const icon = tab.querySelector('i.fa-solid');
         if (icon) icon.classList.toggle('is-active', active);
       });
-      // 日期导航栏只在课表视图显示
+      // 日期导航栏与左下角新增排课悬浮按钮只在课表视图显示
       const dateBar = document.getElementById('mobileDateBar');
       if (dateBar) dateBar.classList.toggle('hidden', view !== 'schedule');
+      const fabAdd = document.getElementById('btnMobileAddSchedule');
+      if (fabAdd) fabAdd.classList.toggle('hidden', view !== 'schedule');
       // 顶部右侧：课表视图=老师筛选框（管理员），其余视图=老师名字徽章
       if (typeof updateHeaderIdentity === 'function') updateHeaderIdentity(view !== 'schedule');
       if (view === 'students') renderMobileStudents();
