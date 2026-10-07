@@ -254,26 +254,35 @@
         <i class="fa-solid fa-calendar-plus text-[#a8a29e] text-xs"></i> 批量排课
       </button>
 
-      <!-- 月历总览视图（圆点标课，点击日期切回周视图） -->
-      <div id="monthViewWrap" class="hidden flex-1 flex-col overflow-hidden">
-        <div class="flex items-center justify-between px-4 py-2 bg-white border-b border-[#efe9e0] shrink-0">
-          <div class="flex items-center gap-1">
-            <button id="btnMonthPrev" class="px-2 py-1 rounded-md text-[#57534e] hover:bg-[#f5f2ec] transition text-xs"><i class="fa-solid fa-chevron-left text-[10px]"></i></button>
-            <button id="btnMonthNext" class="px-2 py-1 rounded-md text-[#57534e] hover:bg-[#f5f2ec] transition text-xs"><i class="fa-solid fa-chevron-right text-[10px]"></i></button>
+      <!-- 月历总览视图（对齐手机版：大标题 + 无框格子 + 学员色圆点 + 右侧当日安排） -->
+      <div id="monthViewWrap" class="hidden flex-1 overflow-hidden">
+        <div class="flex-1 flex flex-col overflow-hidden bg-white">
+          <div class="flex items-center justify-between px-6 pt-4 pb-2 shrink-0">
+            <div id="monthViewTitle" class="text-[20px] font-extrabold text-[#111111] tracking-tight">2026年10月</div>
+            <div class="flex items-center gap-1 bg-[#f5f2ec] p-0.5 rounded-full">
+              <button id="btnMonthPrev" aria-label="上一月" class="w-7 h-7 rounded-full flex items-center justify-center text-[#57534e] hover:bg-[#e7e5e4] transition"><i class="fa-solid fa-chevron-left text-[10px]"></i></button>
+              <button id="btnMonthToday" class="px-3.5 h-7 rounded-full bg-[#111111] hover:bg-[#2b2b2b] text-white text-xs font-bold transition">今天</button>
+              <button id="btnMonthNext" aria-label="下一月" class="w-7 h-7 rounded-full flex items-center justify-center text-[#57534e] hover:bg-[#e7e5e4] transition"><i class="fa-solid fa-chevron-right text-[10px]"></i></button>
+            </div>
           </div>
-          <div id="monthViewTitle" class="text-sm font-black text-[#111111]">2026年10月</div>
-          <button id="btnMonthToday" class="px-2.5 py-1 rounded-md bg-[#f5f2ec] hover:bg-[#e7e5e4] text-[#44403c] transition text-xs font-semibold">回本月</button>
+          <div class="grid grid-cols-7 px-4 shrink-0">
+            <div class="py-1 text-center text-[11px] font-bold text-[#a8a29e]">一</div>
+            <div class="py-1 text-center text-[11px] font-bold text-[#a8a29e]">二</div>
+            <div class="py-1 text-center text-[11px] font-bold text-[#a8a29e]">三</div>
+            <div class="py-1 text-center text-[11px] font-bold text-[#a8a29e]">四</div>
+            <div class="py-1 text-center text-[11px] font-bold text-[#a8a29e]">五</div>
+            <div class="py-1 text-center text-[11px] font-bold text-[#a8a29e]">六</div>
+            <div class="py-1 text-center text-[11px] font-bold text-[#a8a29e]">日</div>
+          </div>
+          <div id="monthViewGrid" class="flex-1 overflow-y-auto grid grid-cols-7 auto-rows-fr gap-y-1 px-4 pb-4 custom-scrollbar"></div>
         </div>
-        <div class="grid grid-cols-7 bg-white border-b border-[#f2ece4] shrink-0">
-          <div class="py-1.5 text-center text-[11px] font-bold text-[#a8a29e]">一</div>
-          <div class="py-1.5 text-center text-[11px] font-bold text-[#a8a29e]">二</div>
-          <div class="py-1.5 text-center text-[11px] font-bold text-[#a8a29e]">三</div>
-          <div class="py-1.5 text-center text-[11px] font-bold text-[#a8a29e]">四</div>
-          <div class="py-1.5 text-center text-[11px] font-bold text-[#a8a29e]">五</div>
-          <div class="py-1.5 text-center text-[11px] font-bold text-[#78716c]">六</div>
-          <div class="py-1.5 text-center text-[11px] font-bold text-[#78716c]">日</div>
-        </div>
-        <div id="monthViewGrid" class="flex-1 overflow-y-auto grid grid-cols-7 auto-rows-fr custom-scrollbar"></div>
+        <aside class="w-[300px] shrink-0 border-l border-[#efe9e0] bg-[#faf8f3] flex flex-col overflow-hidden">
+          <div class="px-4 pt-4 pb-2 flex items-center justify-between shrink-0">
+            <div id="monthDayTitle" class="text-xs font-bold text-[#111111]"></div>
+            <button id="btnMonthGotoWeek" class="text-[11px] font-bold text-[#78716c] hover:text-[#111111] transition">查看周课表 →</button>
+          </div>
+          <div id="monthDayList" class="flex-1 overflow-y-auto custom-scrollbar px-3 pb-3 space-y-2"></div>
+        </aside>
       </div>
 
       <!-- 日历头部：星期 标题行 -->
@@ -998,7 +1007,7 @@
   </div>
 
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=14"></script>
+  <script src="js/app.js?v=15"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

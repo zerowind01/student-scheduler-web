@@ -31,6 +31,7 @@
   let selectedTeacherFilter = 'all'; // 筛选老师：all 或 teacherId
   let currentWeekStart = getMonday(new Date()); // 当前视图对应的周一
   let calendarViewMode = 'week';      // 'week' | 'month'（月历总览）
+  let monthSelectedDate = null;       // 月视图当前选中日（对齐手机版：点格子选中，右栏出当日安排）
   let currentMonth = new Date();      // 月视图显示的月份（取该月任一日期）
   let draggedStudent = null; // 当前正在拖拽的学生
   let draggedSchedule = null; // 当前正在拖拽调整的现有课程
@@ -944,7 +945,22 @@
     });
     safeBind('btnMonthPrev', 'click', () => { currentMonth.setMonth(currentMonth.getMonth() - 1); renderMonthView(); });
     safeBind('btnMonthNext', 'click', () => { currentMonth.setMonth(currentMonth.getMonth() + 1); renderMonthView(); });
-    safeBind('btnMonthToday', 'click', () => { currentMonth = new Date(); renderMonthView(); });
+    safeBind('btnMonthToday', 'click', () => { currentMonth = new Date(); monthSelectedDate = formatDate(getToday()); renderMonthView(); });
+
+    // 月视图右栏：点课卡弹操作菜单；「查看周课表」跳到选中日所在周
+    const monthDayList = document.getElementById('monthDayList');
+    if (monthDayList) monthDayList.onclick = (e) => {
+      const item = e.target.closest('[data-month-sch]');
+      if (!item) return;
+      const sch = schedules.find((x) => x.id === item.getAttribute('data-month-sch'));
+      if (sch) openScheduleActionMenu(sch);
+    };
+    safeBind('btnMonthGotoWeek', 'click', () => {
+      const sel = monthSelectedDate ? new Date(monthSelectedDate + 'T00:00:00') : new Date();
+      currentWeekStart = getMonday(sel);
+      setCalendarViewMode('week');
+      refreshView();
+    });
 
     safeBind('filterTeacherSelect', 'change', (e) => {
       selectedTeacherFilter = e.target.value;
@@ -1196,18 +1212,19 @@
     const totalCells = Math.ceil(spanDays / 7) * 7;
 
     const todayStr = formatDate(new Date());
+    if (!monthSelectedDate) monthSelectedDate = todayStr;
     const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
-    // 预统计：每天的课程数（按老师筛选；请假课不计入）
-    const dayCountMap = new Map();
-    let shown = schedules;
-    if (selectedTeacherFilter !== 'all') {
-      shown = shown.filter((s) => s.teacherId === selectedTeacherFilter || s.assistantTeacherId === selectedTeacherFilter);
-    }
+    // 每天的课程（按老师筛选；含请假课——列表要显示请假标签，圆点才排除）
+    const shown = selectedTeacherFilter === 'all' ? schedules : schedules.filter((s) => s.teacherId === selectedTeacherFilter || s.assistantTeacherId === selectedTeacherFilter);
+    const byDate = new Map();
     shown.forEach((s) => {
-      if (s.status === SCHEDULE_STATUS.STUDENT_LEAVE) return;
-      dayCountMap.set(s.date, (dayCountMap.get(s.date) || 0) + 1);
+      if (!byDate.has(s.date)) byDate.set(s.date, []);
+      byDate.get(s.date).push(s);
     });
+
+    // 学员主题色圆点（与手机版同款：前 3 节去重，请假课不计）
+    const CAL_DOT_COLORS = { amber: '#f59e0b', emerald: '#10b981', sky: '#0284c7', purple: '#9333ea', rose: '#f43f5e' };
 
     grid.innerHTML = '';
     for (let i = 0; i < totalCells; i++) {
@@ -1215,49 +1232,96 @@
       const dateStr = formatDate(d);
       const inMonth = d.getMonth() === month;
       const isToday = dateStr === todayStr;
-      const count = dayCountMap.get(dateStr) || 0;
-      const dowIdx = i % 7; // 列序周一=0
-      const weekend = dowIdx >= 5;
+      const isSel = dateStr === monthSelectedDate;
+      const dayLessons = byDate.get(dateStr) || [];
+
+      const themes = [];
+      dayLessons.forEach((s) => {
+        if (s.status === SCHEDULE_STATUS.STUDENT_LEAVE) return;
+        const t = resolveScheduleTheme(s);
+        if (themes.length < 3 && !themes.includes(t)) themes.push(t);
+      });
 
       const cell = document.createElement(inMonth ? 'button' : 'div');
       if (inMonth) cell.type = 'button';
-      const base = 'relative min-h-[72px] p-1.5 text-left border-b border-r transition select-none ';
-      if (inMonth) {
-        cell.className = base + (isToday
-          ? 'bg-[#faf8f3]/70 border-[#f2ece4] hover:bg-[#f5f2ec]/70 cursor-pointer'
-          : 'bg-white border-[#f2ece4] hover:bg-[#faf8f3] cursor-pointer');
-      } else {
-        cell.className = base + 'bg-[#faf8f3]/60 border-[#f2ece4] opacity-45';
-      }
+      // 无框格子：对齐手机版（选中浅底、hover 反馈、非本月淡显）
+      cell.className = 'flex flex-col items-center pt-1.5 rounded-xl transition select-none ' +
+        (inMonth ? 'cursor-pointer hover:bg-[#faf8f3]' : '') +
+        (isSel ? ' bg-[#faf8f3]' : '') +
+        (inMonth ? '' : ' opacity-30');
 
-      // 圆点标课：最多 3 点，超过 3 节附数字
-      let dotsHtml = '';
-      if (count > 0 && inMonth) {
-        const dot = 'w-1.5 h-1.5 rounded-full bg-[#2b2b2b] inline-block';
-        const shownDots = Math.min(count, 3);
-        let dots = '';
-        for (let k = 0; k < shownDots; k++) dots += `<span class="${dot}"></span>`;
-        dotsHtml = `<div class="flex items-center gap-0.5 mt-1">${dots}${count > 3 ? `<span class="text-[9px] font-bold text-[#78716c] ml-0.5">${count}</span>` : ''}</div>`;
-      }
+      // 数字三态：选中=炭黑圆底白字；今天=橙字+橙描边圈；普通=炭黑
+      let numCls;
+      if (isSel) numCls = 'background:#111111;color:#ffffff;font-weight:800';
+      else if (isToday) numCls = 'color:#fe4c02;font-weight:800;box-shadow:inset 0 0 0 1.5px rgba(254,76,2,.55)';
+      else numCls = inMonth ? 'color:#111111;font-weight:700' : 'color:#a8a29e;font-weight:500';
 
       cell.innerHTML = `
-        <div class="flex items-start justify-between">
-          <span class="text-[11px] ${isToday ? 'w-5 h-5 flex items-center justify-center rounded-full bg-[#111111] text-white font-black' : (weekend ? 'font-bold text-[#a8a29e]' : 'font-semibold text-[#57534e]')}">${d.getDate()}</span>
-          ${count > 0 && inMonth ? `<span class="text-[9px] font-bold ${isToday ? 'text-[#78716c]' : 'text-[#a8a29e]'}">${count}节</span>` : ''}
-        </div>
-        ${dotsHtml}
+        <span class="w-8 h-8 rounded-full flex items-center justify-center text-[13.5px]" style="${numCls}">${d.getDate()}</span>
+        <span class="flex items-center gap-[3px]" style="height:5px;margin-top:3px">${themes.map((t) => `<span class="rounded-full" style="width:5px;height:5px;background:${CAL_DOT_COLORS[t] || CAL_DOT_COLORS.amber}"></span>`).join('')}</span>
       `;
 
       if (inMonth) {
-        cell.title = `${dateStr} ${WEEKDAY_LABELS[dowIdx]} · ${count} 节课，点击查看当周课表`;
+        cell.title = `${dateStr} ${WEEKDAY_LABELS[i % 7]} · ${dayLessons.length} 节课`;
         cell.addEventListener('click', () => {
-          currentWeekStart = getMonday(d);
-          setCalendarViewMode('week');
-          refreshView();
+          monthSelectedDate = dateStr;
+          renderMonthView();
         });
       }
       grid.appendChild(cell);
     }
+
+    renderMonthDayList(byDate, todayStr, WEEKDAY_LABELS);
+  }
+
+  // 月视图右栏：选中日的安排列表（卡片样式对齐手机版当日列表）
+  function renderMonthDayList(byDate, todayStr, WEEKDAY_LABELS) {
+    const titleEl = document.getElementById('monthDayTitle');
+    const listEl = document.getElementById('monthDayList');
+    if (!listEl) return;
+    const selDate = new Date(monthSelectedDate + 'T00:00:00');
+    const dayList = (byDate.get(monthSelectedDate) || []).slice()
+      .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+
+    if (titleEl) {
+      const label = monthSelectedDate === todayStr ? '今日安排' : `${selDate.getMonth() + 1}月${selDate.getDate()}日 ${WEEKDAY_LABELS[(selDate.getDay() + 6) % 7]}`;
+      titleEl.innerHTML = `<span class="inline-block rounded-full align-middle mr-1.5" style="width:6px;height:6px;background:#111111"></span>${label} · ${dayList.length} 节课`;
+    }
+
+    if (dayList.length === 0) {
+      listEl.innerHTML = `
+        <div class="text-center py-10 text-[#a8a29e]">
+          <i class="fa-regular fa-calendar-check text-2xl mb-2 block"></i>
+          <div class="text-xs">这一天还没有排课</div>
+        </div>`;
+      return;
+    }
+
+    listEl.innerHTML = dayList.map((s) => {
+      const done = s.status === SCHEDULE_STATUS.COMPLETED;
+      const leave = s.status === SCHEDULE_STATUS.STUDENT_LEAVE;
+      const [h, m] = (s.startTime || '00:00').split(':').map(Number);
+      const endMins = h * 60 + m + (s.durationMinutes || 45);
+      const endHM = `${String(Math.floor(endMins / 60)).padStart(2, '0')}:${String(endMins % 60).padStart(2, '0')}`;
+      const badge = done
+        ? '<span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-[#f5f2ec] text-[#78716c] shrink-0">已消课</span>'
+        : leave
+          ? '<span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-500 shrink-0">请假</span>'
+          : '<span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-[#111111] text-white shrink-0">待上课</span>';
+      return `
+      <button type="button" data-month-sch="${s.id}" class="w-full text-left bg-white border border-[#efe9e0] rounded-2xl p-3 flex items-center gap-3 hover:border-[#e3dbd0] transition">
+        <div class="text-center shrink-0">
+          <div class="text-sm font-black text-[#111111]">${s.startTime}</div>
+          <div class="text-[9px] lm-t3 mt-0.5">${endHM}</div>
+        </div>
+        <div class="w-px self-stretch bg-[#f2ece4]"></div>
+        <div class="flex-1 min-w-0">
+          <div class="text-xs font-bold text-[#111111] truncate">${s.studentName || ''} · ${s.subject || ''}</div>
+          <div class="text-[10px] lm-t3 mt-0.5 truncate">${s.teacherName || ''} · ${s.room || '—'}</div>
+        </div>
+        ${badge}
+      </button>`;
+    }).join('');
   }
 
   // ==========================================
