@@ -1201,7 +1201,7 @@
       if (sch) openMobileScheduleActionMenu(sch);
     };
 
-    // 周/月日历的左右滑动手势（收起翻周 / 展开翻月），与 3 日视图同手感
+    // 周/月日历的左右滑动手势（收起切换单日 / 展开翻月）
     (function setupCalSwipe() {
       const view = document.getElementById('viewCalweek');
       if (!view) return;
@@ -2286,7 +2286,7 @@
     }
   }
 
-  // 周/月模式翻页：收起=整周平移，展开=整月切换（保持“选中日序号”尽量不变）
+  // 周/月模式翻页：收起=切换单日（周条自动跟随选中日所在周），展开=整月切换（保持“选中日序号”尽量不变）
   function shiftCalPage(dir) {
     const sel = new Date(calSelected + 'T00:00:00');
     if (calExpanded) {
@@ -2295,7 +2295,7 @@
       const d = new Date(targetMonth.getFullYear(), targetMonth.getMonth(), Math.min(sel.getDate(), lastDay));
       calSelected = formatDate(d);
     } else {
-      calSelected = formatDate(addDays(sel, dir * 7));
+      calSelected = formatDate(addDays(sel, dir));
     }
     renderMobileCal();
   }
