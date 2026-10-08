@@ -383,8 +383,9 @@ button, a, select, input, textarea {
       1) 去掉原作 .borde-back 深色底环（本主题浅底，深色环过重）；
       2) 无缝：图标层背景透明、底色由容器贯通，去掉箭头与间隙，
          容器 overflow:hidden 让文字在拉伸过程中被裁切，观感是"伸出"而非"弹出"；
-      3) 容器不再位移，改宽度 52px → 168px；锚点贴右下角，宽度向左生长（右缘不动），
-         展开后左端加号、右端文字。 */
+      3) 容器不再位移，改宽度 52px → 136px；锚点贴右下角，宽度向左生长（右缘不动），
+         展开后左端加号、右端文字（宽度按文字实测收紧，不留大片空白）；
+      4) 容器本身就是 <button>（#fabNewSchedule），展开后整条胶囊都在点击热区内。 */
 
 .lm-fab-anchor {
   position: fixed;
@@ -400,6 +401,8 @@ button, a, select, input, textarea {
   cursor: pointer;
   transition: all 0.2s;
   font-size: 17px;
+  font-family: inherit;
+  padding: 0;
   width: 52px;
   height: 52px;
   border-radius: 50px; /* 与高度一致：收起是圆，展开是胶囊 */
@@ -423,9 +426,9 @@ button, a, select, input, textarea {
   color: #fff;
   border: none;
   font-size: 20px;
-  cursor: pointer;
 }
-.tooltip-container .icon:active { transform: scale(0.94); }
+/* 整条胶囊按下反馈（button 自身就是热区，不再只作用于图标层） */
+.tooltip-container:active { transform: scale(0.97); }
 
 .tooltip {
   position: absolute;
@@ -434,19 +437,20 @@ button, a, select, input, textarea {
   bottom: 0;
   display: flex;
   align-items: center;
-  padding-right: 20px;
+  padding-right: 12px;
   white-space: nowrap;
   color: #fff;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   opacity: 0;
   pointer-events: none;
-  transform: translateX(-14px); /* 初始隐在图标之后，展开时向右滑出 */
-  transition: all 0.6s;
+  transform: translateX(-12px); /* 初始隐在图标之后，展开时向右滑出 */
+  /* 收尾缓冲收小：起步快、落位利落，不再拖尾 */
+  transition: opacity 0.24s ease, transform 0.36s cubic-bezier(0.2, 0.9, 0.2, 1);
 }
 .tooltip-container:hover {
-  width: 168px;
-  transition: 0.5s linear;
+  width: 136px;
+  transition: width 0.32s cubic-bezier(0.2, 0.9, 0.2, 1);
 }
 .tooltip-container:hover .tooltip {
   opacity: 1;

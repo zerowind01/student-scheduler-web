@@ -23,7 +23,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <!-- Custom CSS -->
   <link rel="stylesheet" href="css/tokens.css?v=10">
-  <link rel="stylesheet" href="css/styles.css?v=25">
+  <link rel="stylesheet" href="css/styles.css?v=26">
   <link rel="stylesheet" href="css/legacy-tokens.css?v=10">
   <!-- GSAP 动效 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
@@ -322,12 +322,10 @@
     <!-- 课表页悬浮新增按钮（对齐手机版 FAB）：随 pageSchedule 显隐 -->
     <!-- From Uiverse.io by LightAndy1（MIT）：圆形按钮 + 外围深色底环 + 悬停胶囊标签滑出 -->
     <div class="lm-fab-anchor hidden md:block">
-      <div id="fabNewScheduleWrap" class="tooltip-container">
-        <button id="fabNewSchedule" class="icon" aria-label="新增排课" title="新增排课">
-          <i class="fa-solid fa-plus"></i>
-        </button>
+      <button id="fabNewSchedule" class="tooltip-container" aria-label="新增排课" title="新增排课">
+        <span class="icon"><i class="fa-solid fa-plus"></i></span>
         <span class="tooltip" aria-hidden="true">新增排课</span>
-      </div>
+      </button>
     </div>
 
     <!-- FAB 选学员弹层：桌面排课弹窗需绑定学员，先选人再进排课 -->
