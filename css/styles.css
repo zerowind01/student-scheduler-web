@@ -377,16 +377,16 @@ button, a, select, input, textarea {
 }
 
 /* 16. 新增排课 FAB —— From Uiverse.io by LightAndy1（MIT License）
-      结构与动效数值沿用原作：容器 50px 圆 + 外围深色底环 + 图标层 + 胶囊标签；
-      悬停时容器整体左移 50px（.5s linear），胶囊从按钮后侧滑出淡入（.6s）。
-      仅两处适配：
-      1) 配色：原作紫蓝 → Fin 橙渐变（#ff8a3d → #ff5600），底环改用炭黑 #1c1917；
-      2) 水平镜像：按钮固定贴屏幕右下角，胶囊若落在右侧会出屏，
-         故 left:100% → right:100%、初始 translateX(-32%) → translateX(32%)，
-         容器位移仍保持原作的 translateX(-50px)。 */
+      沿用原作的节奏（容器 .5s linear 变化 / 文字 .6s 滑出淡入），形态改为：
+      圆形按钮「无缝拉长成胶囊」——加号在左端，文字在右端，两者同属一条渐变。
+      三处适配：
+      1) 去掉原作 .borde-back 深色底环（本主题浅底，深色环过重）；
+      2) 无缝：图标层背景透明、底色由容器贯通，去掉箭头与间隙，
+         容器 overflow:hidden 让文字在拉伸过程中被裁切，观感是"伸出"而非"弹出"；
+      3) 容器不再位移，改宽度 52px → 168px；锚点贴右下角，宽度向左生长（右缘不动），
+         展开后左端加号、右端文字。 */
 
 .lm-fab-anchor {
-  --background: #ff5600; /* 原作 .tooltip::before 引用的变量 */
   position: fixed;
   right: 24px;
   bottom: 24px;
@@ -396,40 +396,30 @@ button, a, select, input, textarea {
 .tooltip-container {
   position: relative;
   background-color: #ff5600;
-  background-image: linear-gradient(225deg, #ff8a3d 0%, #ff5600 50%, #f53d00 100%);
+  background-image: linear-gradient(-90deg, #ff8a3d 0%, #ff5600 75%, #ff5600 100%);
   cursor: pointer;
   transition: all 0.2s;
   font-size: 17px;
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
+  width: 52px;
+  height: 52px;
+  border-radius: 50px; /* 与高度一致：收起是圆，展开是胶囊 */
   display: flex;
   align-items: center;
-  justify-content: center;
+  overflow: hidden;
   fill: #fff;
-  box-shadow: rgba(0, 0, 0, 0.1) 0px 4px 25px;
+  box-shadow: rgba(0, 0, 0, 0.1) 0px 4px 25px, 0 10px 26px -12px rgba(255, 86, 0, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.18);
 }
-.tooltip-container .borde-back {
-  width: 60px;
-  height: 60px;
-  background-color: #1c1917;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  box-shadow: none;
-}
 .tooltip-container .icon {
-  width: 50px;
-  height: 50px;
+  flex: 0 0 52px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 10;
-  background-color: #ff5600;
-  background-image: linear-gradient(225deg, #ff8a3d 0%, #ff5600 50%, #f53d00 100%);
+  background: transparent; /* 与容器同色 → 展开后无接缝 */
   color: #fff;
   border: none;
   font-size: 20px;
@@ -439,47 +429,30 @@ button, a, select, input, textarea {
 
 .tooltip {
   position: absolute;
-  top: 50%;
-  right: calc(100% + 6px); /* 镜像原作 left: 100% */
-  transform: translateY(-50%) translateX(32%); /* 镜像原作 translateX(-32%)：初始藏在按钮后侧 */
-  width: 160px;
-  height: 52px;
-  opacity: 0;
-  pointer-events: none;
-  transition: all 0.6s;
-  border-radius: 50px;
-  background-color: #ff5600;
-  background-image: linear-gradient(-90deg, #ff8a3d 0%, #ff5600 75%, #ff5600 100%);
+  left: 52px;
+  top: 0;
+  bottom: 0;
   display: flex;
   align-items: center;
-  justify-content: right;
-  padding-right: 16px;
+  padding-right: 20px;
+  white-space: nowrap;
   color: #fff;
   font-size: 18px;
   font-weight: 600;
-  box-shadow: 0 10px 26px -10px rgba(255, 86, 0, 0.45);
-}
-.tooltip::before {
-  position: absolute;
-  content: "";
-  height: 0.6em;
-  width: 0.6em;
-  right: -0.2em;
-  top: 50%;
-  transform: translateY(-50%) rotate(45deg);
-  background: var(--background);
-}
-.tooltip-container:hover .tooltip {
-  right: calc(100% + 6px);
-  transform: translateY(-50%) translateX(0);
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
-  z-index: -10;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-14px); /* 初始隐在图标之后，展开时向右滑出 */
+  transition: all 0.6s;
 }
 .tooltip-container:hover {
-  transform: translateX(-50px);
+  width: 168px;
   transition: 0.5s linear;
+}
+.tooltip-container:hover .tooltip {
+  opacity: 1;
+  transform: translateX(0);
+  visibility: visible;
+  pointer-events: auto;
 }
 @media (prefers-reduced-motion: reduce) {
   .tooltip-container,
