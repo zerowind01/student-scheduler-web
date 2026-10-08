@@ -132,6 +132,62 @@ function flashSchedule(scheduleId) {
   setTimeout(() => document.removeEventListener('lm:rendered', reflash), 400);
 }
 
+/* ==========================================================================
+   6. 按钮异步三态：idle → loading → done（配套 styles.css 第 17 节）
+   典型调用：消课按钮。work() 是同步的（本地处理），所以必须给 spinner
+   一个最短展示时长 —— 否则一闪而过，用户会以为按钮坏了而不是成功了。
+
+   work():   立即执行，返回 true 表示成功、false 表示被业务拦截（已消课/请假等）
+   onDone(): 成功态停留结束后回调，通常用来重渲染列表
+   ========================================================================== */
+const MIN_SPINNER_MS = 420;  // spinner 至少转 2/3 圈
+const DONE_HOLD_MS = 800;    // 勾描完 320ms，再停一拍供眼部确认
+
+function runAsyncButton(btn, work, onDone) {
+  if (!btn || btn.dataset.lmBusy === '1') return;
+  btn.dataset.lmBusy = '1';
+  btn.setAttribute('aria-busy', 'true');
+  btn.classList.add('is-loading');
+
+  const t0 = Date.now();
+  let ok = false;
+  try {
+    ok = work() === true;
+  } catch (err) {
+    console.error('[uiAnim.runAsyncButton]', err);
+    ok = false;
+  }
+
+  const wait = Math.max(0, MIN_SPINNER_MS - (Date.now() - t0));
+  setTimeout(() => {
+    if (!ok) {
+      // 被拦截：静默回到初态，原因已经由各自的 Toast 说明了
+      btn.classList.remove('is-loading');
+      btn.removeAttribute('aria-busy');
+      btn.dataset.lmBusy = '';
+      return;
+    }
+    btn.classList.remove('is-loading');
+    btn.classList.add('is-done');
+    setTimeout(() => {
+      // 先交给业务去重渲染：列表通常会在这一步把整行替换成「已消课」。
+      // 顺序很重要 —— 若先摘掉 is-done，按钮会在爬回原色的 240ms 里被用户看见，
+      // 出现「绿了又变黑」的反向淡出。
+      if (onDone) onDone();
+      // 若业务方并没有重渲染（按钮还挂在文档里），才把它复位回初态。
+      if (document.body.contains(btn)) {
+        btn.classList.remove('is-done');
+        btn.removeAttribute('aria-busy');
+        btn.dataset.lmBusy = '';
+        return;
+      }
+      // 节点已被替换，无需再复位
+      btn.removeAttribute('aria-busy');
+      btn.dataset.lmBusy = '';
+    }, DONE_HOLD_MS);
+  }, wait);
+}
+
 /* 渲染完成事件：供 flashSchedule 延迟补偿，也方便以后挂别的渲染后逻辑 */
 function emitRendered() {
   document.dispatchEvent(new CustomEvent('lm:rendered'));
@@ -145,5 +201,6 @@ window.uiAnim = {
   cardOut: animateCardOut,
   flash: flash,
   flashSchedule: flashSchedule,
+  runAsyncButton: runAsyncButton,
   emitRendered: emitRendered,
 };

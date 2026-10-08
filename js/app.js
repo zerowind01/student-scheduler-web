@@ -742,16 +742,20 @@
   }
 
   // 消课（签到确认）：状态→completed，记财务流水；课时不足部分记欠课账
-  function executeCheckIn(scheduleId, remarks) {
+  // 返回布尔值供按钮三态动画判断走向；
+  // opts.skipRefresh / opts.silentToast：给「看板一键消课」用，把重渲染推迟到成功动画播完之后，
+  // 否则按钮 DOM 会在洒勾的瞬间被列表重渲染替换掉，动画白做。
+  function executeCheckIn(scheduleId, remarks, opts) {
+    const o = opts || {};
     const sch = schedules.find((s) => s.id === scheduleId);
-    if (!sch) return;
+    if (!sch) return false;
     if (sch.status === SCHEDULE_STATUS.COMPLETED) {
       showToast('该课程已消课，无需重复操作', 'circle-info');
-      return;
+      return false;
     }
     if (sch.status === SCHEDULE_STATUS.STUDENT_LEAVE) {
       showToast('该课程为请假状态，请先撤销请假', 'circle-info');
-      return;
+      return false;
     }
 
     // 快照必须在任何数据变更前拍（下面会改课时、写流水、可能转欠课）
@@ -781,9 +785,10 @@
     sch.status = SCHEDULE_STATUS.COMPLETED;
     recordCheckInLog(sch, deducted, payment, finalRemarks);
     saveData();
-    refreshView();
-    offerUndo(`✅ 已消课：${sch.studentName} · ${sch.subject}（${deducted}节）`, 'circle-check', `消课 ${sch.studentName}`);
+    if (!o.skipRefresh) refreshView();
+    if (!o.silentToast) offerUndo(`✅ 已消课：${sch.studentName} · ${sch.subject}（${deducted}节）`, 'circle-check', `消课 ${sch.studentName}`);
     if (window.uiAnim) window.uiAnim.flashSchedule(sch.id);
+    return true;
   }
 
   // 学员请假（不限课程时间，已消课的也可改为请假）
@@ -1156,6 +1161,10 @@
     renderPageStudents();
     renderPageFinance();
     updateDebtBadges();
+    // 看板可见时才重渲染：消课后「今日时间轴」的行状态要跟着变。
+    // 之前这里漏了，导致在看板一键消课后按钮复位成「消课」而不是「已消课」。
+    const dashPage = document.getElementById('pageDashboard');
+    if (dashPage && !dashPage.classList.contains('hidden')) renderDashboard();
   }
 
   // ==========================================
@@ -1523,7 +1532,11 @@
             ? '<span class="text-[11px] font-bold text-emerald-600 shrink-0">已消课</span>'
             : isLeave
               ? '<span class="text-[10px] font-bold px-2 py-1 rounded-full bg-[#f5f2ec] text-[#78716c] shrink-0">请假待补</span>'
-              : `<button class="dash-checkin-btn shrink-0 text-[11px] font-bold px-3.5 py-1.5 rounded-full bg-[#111111] text-white hover:bg-[#2b2b2b] transition" data-id="${s.id}">消课</button>`;
+              : `<button class="lm-checkin-btn dash-checkin-btn shrink-0 text-[11px] font-bold px-3.5 py-1.5 rounded-full bg-[#111111] text-white transition" data-id="${s.id}">
+                   <span class="lm-cb-label">消课</span>
+                   <span class="lm-cb-spinner" aria-hidden="true"></span>
+                   <svg class="lm-cb-check" viewBox="0 0 24 24" aria-hidden="true"><path pathLength="100" d="M4.5 12.6 L9.7 17.8 L19.5 6.6"/></svg>
+                 </button>`;
           const student = students.find((st) => st.id === s.studentId);
           const debtTag = student ? (debts.find((d) => d.studentId === student.id && d.amount > 0) ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-600 ml-1.5">欠课</span>' : '') : '';
           return `<div class="flex items-center justify-between px-5 py-3 border-t border-[#f2ece4]">
@@ -1538,7 +1551,18 @@
       todayList.querySelectorAll('.dash-checkin-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
           const sch = schedules.find((x) => x.id === btn.getAttribute('data-id'));
-          if (sch) openScheduleActionMenu(sch);
+          if (!sch) return;
+          // 一键直消：这条路径原本要先弹操作菜单再点一次，而 executeCheckIn 自带
+          // 状态守卫 + offerUndo 撤销窗口，误触可在 Toast 里撤回，不需要二次确认。
+          if (!window.uiAnim || !window.uiAnim.runAsyncButton) {
+            executeCheckIn(sch.id);
+            return;
+          }
+          window.uiAnim.runAsyncButton(
+            btn,
+            () => executeCheckIn(sch.id, '', { skipRefresh: true }),
+            () => refreshView()
+          );
         });
       });
     }

@@ -524,3 +524,111 @@ button, a, select, input, textarea {
   .tooltip-container { transition: none; }
   .tooltip { transition: opacity 120ms ease; }
 }
+
+/* ==========================================================================
+   17. 消课按钮三态（看板「今日时间轴」的一键消课）
+   idle → loading（转圈）→ done（绿底 + 勾描出来）
+   目的：Feedback（确认点击被接收）+ State indication（待上课 → 已消课）。
+   约束：
+   - 全程不动 width/height/padding：标签留在文档流里占位，只是淡出，
+     转圈与勾都是绝对定位叠层 → 按钮宽度恒定，行内不抖。
+   - 只过渡 opacity / transform / background-color。
+   - 业务是同步的，因此 spinner 有 420ms 最短展示时长，否则一闪而过像故障。
+   ========================================================================== */
+.lm-checkin-btn {
+  position: relative;
+  overflow: hidden;
+  transition: background-color 240ms var(--ease-out), box-shadow 240ms var(--ease-out);
+}
+.lm-cb-label {
+  transition: opacity 120ms ease, transform 180ms var(--ease-out);
+}
+.lm-cb-spinner,
+.lm-cb-check {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease, transform 180ms var(--ease-out);
+}
+.lm-cb-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  /* 空的 transform 声明会与下面的 rotate 动画冲突，所以 layer 只用 opacity 淡 */
+}
+.lm-cb-check {
+  width: 16px;
+  height: 16px;
+  transform: scale(0.7);
+}
+.lm-cb-check path {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 3.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+}
+
+/* loading：标签淡出，圆环淡入并旋转 */
+.lm-checkin-btn.is-loading { cursor: progress; }
+.lm-checkin-btn.is-loading .lm-cb-label {
+  opacity: 0;
+  transform: scale(0.94);
+}
+.lm-checkin-btn.is-loading .lm-cb-spinner {
+  opacity: 1;
+  animation: lm-spin 640ms linear infinite;
+}
+
+/* done：整枚变绿，勾描出来后停留一拍 */
+.lm-checkin-btn.is-done {
+  background-color: #16a34a !important; /* 压过 Tailwind 的 hover:bg-[#2b2b2b] */
+  pointer-events: none;
+}
+.lm-checkin-btn.is-done .lm-cb-label {
+  opacity: 0;
+  transform: scale(0.94);
+}
+.lm-checkin-btn.is-done .lm-cb-spinner {
+  opacity: 0;
+}
+.lm-checkin-btn.is-done .lm-cb-check {
+  opacity: 1;
+  transform: scale(1);
+}
+.lm-checkin-btn.is-done .lm-cb-check path {
+  animation: lm-check-draw 320ms var(--ease-out) 80ms forwards;
+}
+
+@keyframes lm-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes lm-check-draw {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes lm-cb-breathe {
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 1; }
+}
+
+/* 减弱而非归零：不旋转（旋转是最大的前庭触发源），改用透明度呼吸表示"还在处理"；
+   勾直接淡入，不做描绘。 */
+@media (prefers-reduced-motion: reduce) {
+  /* tokens.css 的全局兜底会把 animation 归零且只播一次，这里必须显式豁免：
+     加载指示是"还在处理"的唯一信号，停下来用户会以为卡死了。 */
+  .lm-checkin-btn.is-loading .lm-cb-spinner {
+    animation: lm-cb-breathe 1.4s ease-in-out infinite;
+    animation-duration: 1.4s !important;
+    animation-iteration-count: infinite !important;
+  }
+  .lm-checkin-btn.is-done .lm-cb-check path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+}
