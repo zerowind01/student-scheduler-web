@@ -376,72 +376,112 @@ button, a, select, input, textarea {
   }
 }
 
-/* 16. 新增排课 FAB：圆形按钮 + 悬停时胶囊标签滑出
-      动效参考 Uiverse「Tooltip by LightAndy1」(MIT License)，配色改为 Fin 橙。
-      原作按钮向左移、胶囊从左侧滑到右位；本按钮贴屏幕右下角，故镜像处理：
-      胶囊落在按钮左侧，按钮顺势右推 4px，保持"被标签顶开"的手感。 */
-#fabNewScheduleWrap {
+/* 16. 新增排课 FAB —— From Uiverse.io by LightAndy1（MIT License）
+      结构与动效数值沿用原作：容器 50px 圆 + 外围深色底环 + 图标层 + 胶囊标签；
+      悬停时容器整体左移 50px（.5s linear），胶囊从按钮后侧滑出淡入（.6s）。
+      仅两处适配：
+      1) 配色：原作紫蓝 → Fin 橙渐变（#ff8a3d → #ff5600），底环改用炭黑 #1c1917；
+      2) 水平镜像：按钮固定贴屏幕右下角，胶囊若落在右侧会出屏，
+         故 left:100% → right:100%、初始 translateX(-32%) → translateX(32%)，
+         容器位移仍保持原作的 translateX(-50px)。 */
+
+.lm-fab-anchor {
+  --background: #ff5600; /* 原作 .tooltip::before 引用的变量 */
   position: fixed;
   right: 24px;
   bottom: 24px;
   z-index: 30;
-  width: 56px;
-  height: 56px;
 }
-.lm-fab-btn {
-  position: absolute;
-  inset: 0;
-  border-radius: 999px;
-  transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease;
-}
-.lm-fab-btn:hover { transform: scale(1.06); }
-.lm-fab-btn:active { transform: scale(0.94); }
 
-.lm-fab-tooltip {
-  --fab-tip-bg: #ff5600;
-  position: absolute;
-  top: 50%;
-  right: calc(100% + 8px);
-  height: 52px;
-  padding: 0 20px;
-  border-radius: 50px;
+.tooltip-container {
+  position: relative;
+  background-color: #ff5600;
+  background-image: linear-gradient(225deg, #ff8a3d 0%, #ff5600 50%, #f53d00 100%);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 17px;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
-  white-space: nowrap;
+  justify-content: center;
+  fill: #fff;
+  box-shadow: rgba(0, 0, 0, 0.1) 0px 4px 25px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+.tooltip-container .borde-back {
+  width: 60px;
+  height: 60px;
+  background-color: #1c1917;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  box-shadow: none;
+}
+.tooltip-container .icon {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  background-color: #ff5600;
+  background-image: linear-gradient(225deg, #ff8a3d 0%, #ff5600 50%, #f53d00 100%);
   color: #fff;
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.3px;
-  background-image: linear-gradient(-90deg, #ff8a3d 0%, #ff5600 72%, #ff5600 100%);
-  box-shadow: 0 14px 28px -12px rgba(255, 86, 0, 0.55), 0 2px 6px rgba(255, 86, 0, 0.22);
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+}
+.tooltip-container .icon:active { transform: scale(0.94); }
+
+.tooltip {
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 6px); /* 镜像原作 left: 100% */
+  transform: translateY(-50%) translateX(32%); /* 镜像原作 translateX(-32%)：初始藏在按钮后侧 */
+  width: 160px;
+  height: 52px;
   opacity: 0;
   pointer-events: none;
-  /* 初始位置偏左（藏在按钮后侧），悬停时滑到按钮左缘 */
-  transform: translateY(-50%) translateX(26px);
-  transition: opacity 0.32s ease, transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: all 0.6s;
+  border-radius: 50px;
+  background-color: #ff5600;
+  background-image: linear-gradient(-90deg, #ff8a3d 0%, #ff5600 75%, #ff5600 100%);
+  display: flex;
+  align-items: center;
+  justify-content: right;
+  padding-right: 16px;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 600;
+  box-shadow: 0 10px 26px -10px rgba(255, 86, 0, 0.45);
 }
-/* 胶囊右侧的小箭头，指向按钮 */
-.lm-fab-tooltip::before {
-  content: "";
+.tooltip::before {
   position: absolute;
-  right: -0.32em;
+  content: "";
+  height: 0.6em;
+  width: 0.6em;
+  right: -0.2em;
   top: 50%;
-  height: 0.7em;
-  width: 0.7em;
   transform: translateY(-50%) rotate(45deg);
-  background: var(--fab-tip-bg);
-  border-radius: 2px;
+  background: var(--background);
 }
-#fabNewScheduleWrap:hover .lm-fab-tooltip,
-.lm-fab-tooltip.is-on {
-  opacity: 1;
+.tooltip-container:hover .tooltip {
+  right: calc(100% + 6px);
   transform: translateY(-50%) translateX(0);
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  z-index: -10;
 }
-/* 按钮被"顶开"：轻微右移 + 放大（贴边处理，位移刻意做小） */
-#fabNewScheduleWrap:hover .lm-fab-btn {
-  transform: translateX(4px) scale(1.04);
+.tooltip-container:hover {
+  transform: translateX(-50px);
+  transition: 0.5s linear;
 }
 @media (prefers-reduced-motion: reduce) {
-  .lm-fab-tooltip,
-  .lm-fab-btn { transition-duration: 0.01ms; }
+  .tooltip-container,
+  .tooltip { transition-duration: 0.01ms; }
 }
