@@ -375,3 +375,73 @@ button, a, select, input, textarea {
     background-color: transparent !important;
   }
 }
+
+/* 16. 新增排课 FAB：圆形按钮 + 悬停时胶囊标签滑出
+      动效参考 Uiverse「Tooltip by LightAndy1」(MIT License)，配色改为 Fin 橙。
+      原作按钮向左移、胶囊从左侧滑到右位；本按钮贴屏幕右下角，故镜像处理：
+      胶囊落在按钮左侧，按钮顺势右推 4px，保持"被标签顶开"的手感。 */
+#fabNewScheduleWrap {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 30;
+  width: 56px;
+  height: 56px;
+}
+.lm-fab-btn {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease;
+}
+.lm-fab-btn:hover { transform: scale(1.06); }
+.lm-fab-btn:active { transform: scale(0.94); }
+
+.lm-fab-tooltip {
+  --fab-tip-bg: #ff5600;
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 8px);
+  height: 52px;
+  padding: 0 20px;
+  border-radius: 50px;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  background-image: linear-gradient(-90deg, #ff8a3d 0%, #ff5600 72%, #ff5600 100%);
+  box-shadow: 0 14px 28px -12px rgba(255, 86, 0, 0.55), 0 2px 6px rgba(255, 86, 0, 0.22);
+  opacity: 0;
+  pointer-events: none;
+  /* 初始位置偏左（藏在按钮后侧），悬停时滑到按钮左缘 */
+  transform: translateY(-50%) translateX(26px);
+  transition: opacity 0.32s ease, transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* 胶囊右侧的小箭头，指向按钮 */
+.lm-fab-tooltip::before {
+  content: "";
+  position: absolute;
+  right: -0.32em;
+  top: 50%;
+  height: 0.7em;
+  width: 0.7em;
+  transform: translateY(-50%) rotate(45deg);
+  background: var(--fab-tip-bg);
+  border-radius: 2px;
+}
+#fabNewScheduleWrap:hover .lm-fab-tooltip,
+.lm-fab-tooltip.is-on {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+/* 按钮被"顶开"：轻微右移 + 放大（贴边处理，位移刻意做小） */
+#fabNewScheduleWrap:hover .lm-fab-btn {
+  transform: translateX(4px) scale(1.04);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lm-fab-tooltip,
+  .lm-fab-btn { transition-duration: 0.01ms; }
+}
