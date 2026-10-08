@@ -352,4 +352,19 @@ button, a, select, input, textarea {
   #sidebarStudent { left: calc(16px + 9rem + 16px) !important; }
   /* 非课表页面隐藏顶栏（品牌已入侧边栏；手机端不受影响） */
   #mainTopbar.header-hide-desktop { display: none !important; }
+
+  /* 15. 课表日历底色：奶白（日历主体/头部行/月视图面板统一奶白，卡片保持纯白衬托）
+         用 body 前缀抬高特异性，压过 legacy-tokens.css 的 transparent !important */
+  body #pageSchedule > main {
+    background: #f7f2ea !important;
+  }
+  #weekHeaderRow,
+  #monthViewWrap > div:first-child,
+  #monthViewWrap > aside {
+    background: transparent !important;
+  }
+  /* 周视图头部日期格（JS 渲染的 bg-white）透出奶白底；今天列头保留自身高亮 */
+  #weekHeaderRow .bg-white {
+    background-color: transparent !important;
+  }
 }
