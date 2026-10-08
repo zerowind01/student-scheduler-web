@@ -1335,7 +1335,9 @@
 
     // ---- 桌面侧栏选中滑块（动效对齐手机版：滑动+沿方向拉伸+过冲回弹） ----
     const navGliderD = document.getElementById('navGliderDesktop');
+    const RM = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let gliderDLastTop = null;
+    let gliderDAnim = null;
     function positionNavGliderD(animate) {
       if (!navGliderD) return;
       const island = navGliderD.parentElement;
@@ -1347,36 +1349,37 @@
       const w = tr.width;
       const toTop = tr.top - ir.top + 3;      // 色块高度比按钮缩小（上下各缩 3px）
       const toH = tr.height - 6;
-      const fromTop = gliderDLastTop;
-      const fromH = parseFloat(navGliderD.style.height) || toH;
-      gliderDLastTop = toTop;
+      // 起点取「当前真实位置」（含进行中的动画）→ 连续快速切页时从眼前的位置继续，不会跳
+      const curTop = navGliderD.getBoundingClientRect().top - ir.top;
+      const dy = toTop - curTop;
       navGliderD.style.left = x + 'px';
       navGliderD.style.width = w + 'px';
-      // 直接落位（首次/无位移/窗口尺寸变化）
-      if (!animate || fromTop === null || Math.abs(toTop - fromTop) < 1) {
-        navGliderD.style.top = toTop + 'px';
-        navGliderD.style.height = toH + 'px';
+      navGliderD.style.height = toH + 'px';
+      // 直接落位（首次 / 无位移 / 窗口尺寸变化 / 用户要求减少动效）
+      if (!animate || gliderDLastTop === null || Math.abs(dy) < 1 || RM) {
+        navGliderD.style.transform = 'translateY(' + toTop + 'px)';
+        gliderDLastTop = toTop;
         return;
       }
-      const dy = toTop - fromTop;
       const dir = dy > 0 ? 1 : -1;
-      const stretch = Math.min(26, Math.abs(dy) * 0.38); // 移动越远拉得越长（封顶 26px）
-      // 中段：前缘先行 → 色块沿移动方向拉长
-      const midTop = fromTop + dy * 0.5 - (dir > 0 ? 0 : stretch);
-      const midH = fromH + stretch;
-      // 过冲：整体越过目标一点，再弹回
-      const overTop = toTop + dir * 7;
-      navGliderD.style.top = toTop + 'px';
-      navGliderD.style.height = toH + 'px';
-      navGliderD.animate(
+      const stretch = Math.min(10, Math.abs(dy) * 0.22); // 拉长幅度收小：装饰性位移不该抢戏
+      const k = (toH + stretch) / toH;
+      // 中段：前缘先行 → 沿移动方向拉长（origin 设在后缘，拉伸只朝前进方向长）
+      const midTop = curTop + dy * 0.5;
+      const overTop = toTop + dir * 3; // 过冲收小到 3px
+      navGliderD.style.transformOrigin = dir > 0 ? 'top center' : 'bottom center';
+      navGliderD.style.transform = 'translateY(' + toTop + 'px)';
+      if (gliderDAnim) gliderDAnim.cancel();
+      gliderDAnim = navGliderD.animate(
         [
-          { top: fromTop + 'px', height: fromH + 'px', offset: 0, easing: 'cubic-bezier(.45,0,.55,1)' },
-          { top: midTop + 'px', height: midH + 'px', offset: 0.52, easing: 'cubic-bezier(.3,0,.2,1)' },
-          { top: overTop + 'px', height: toH + 'px', offset: 0.8, easing: 'cubic-bezier(.34,1.56,.64,1)' },
-          { top: toTop + 'px', height: toH + 'px', offset: 1 }
+          { transform: 'translateY(' + curTop + 'px) scaleY(1)', offset: 0, easing: 'cubic-bezier(.45,0,.55,1)' },
+          { transform: 'translateY(' + midTop + 'px) scaleY(' + k + ')', offset: 0.55, easing: 'cubic-bezier(.3,0,.2,1)' },
+          { transform: 'translateY(' + overTop + 'px) scaleY(1)', offset: 0.82, easing: 'cubic-bezier(.34,1.56,.64,1)' },
+          { transform: 'translateY(' + toTop + 'px) scaleY(1)', offset: 1 }
         ],
-        { duration: 480, fill: 'both' }
+        { duration: 300, fill: 'both' }
       );
+      gliderDLastTop = toTop;
     }
     window.addEventListener('resize', () => positionNavGliderD(false));
     if (document.fonts && document.fonts.ready) {
@@ -1393,10 +1396,6 @@
     // 顶栏只在课表视图保留（品牌已整合进侧边栏；手机端不受影响）
     const topbar = document.getElementById('mainTopbar');
     if (topbar) topbar.classList.toggle('header-hide-desktop', page !== 'schedule');
-    // GSAP：切换后的新页面轻量进场
-    const activeEl = document.getElementById('page' + page.charAt(0).toUpperCase() + page.slice(1));
-    if (window.uiAnim && activeEl) window.uiAnim.viewIn(activeEl);
-
     // 桌面侧栏按钮高亮：只切 active，配色统一由 css/desktop-theme.css 负责
     document.querySelectorAll('.nav-page-btn[data-page]').forEach((btn) => {
       const active = btn.getAttribute('data-page') === page;
@@ -1415,6 +1414,8 @@
       btn.classList.toggle('lm-t2', !active);
     });
 
+    // 切页不做整页淡入：切页是高频操作（tens/day），整页 transform+opacity 又正好撞在
+    // 重渲染开销最大的时刻。翻周/翻月仍有方向感动画（见 weekSlide / renderMonthView）。
     // 课表页隐藏手机浮动栏（因为课表有自己的操作），其他页显示
     const bottomNav = document.getElementById('mobileBottomNav');
     if (bottomNav) bottomNav.classList.toggle('hidden', page === 'schedule');
@@ -4078,29 +4079,26 @@
     downloadAnchor.remove();
   }
 
+  // 弹窗动效由 CSS 单一系统驱动（@starting-style 提供进场起点，.lm-modal-closing 触发退场）。
+  // 不再叠 GSAP：两套系统争同一属性，且 CSS 的 !important 终态会让 GSAP 白跑。
   function showModal(modalId) {
     const el = document.getElementById(modalId);
     if (el) {
+      el.classList.remove('lm-modal-closing');
       el.classList.remove('hidden');
       setTimeout(() => el.classList.add('opacity-100'), 10);
-      // GSAP 进场动效
-      const box = el.querySelector('.modal-content, .bg-white, [class*="rounded"]');
-      if (window.uiAnim) window.uiAnim.modalIn(box, el);
     }
   }
 
   function hideModal(modalId) {
     const el = document.getElementById(modalId);
     if (el) {
-      const finish = () => el.classList.add('hidden');
-      const box = el.querySelector('.modal-content, .bg-white, [class*="rounded"]');
-      if (window.uiAnim) {
-        window.uiAnim.modalOut(box, el, finish);
-        setTimeout(finish, 260); // 兜底
-      } else {
-        el.classList.remove('opacity-100');
-        setTimeout(finish, 200);
-      }
+      el.classList.remove('opacity-100');
+      el.classList.add('lm-modal-closing'); // CSS 退场：160ms（抽屉 200ms）
+      setTimeout(() => {
+        el.classList.add('hidden');
+        el.classList.remove('lm-modal-closing');
+      }, 210);
     }
   }
 
@@ -4143,7 +4141,7 @@
 
       toast.classList.remove('translate-y-10', 'opacity-0', 'pointer-events-none');
       toast.classList.add('translate-y-0', 'opacity-100');
-      if (window.uiAnim) window.uiAnim.toastIn(toast);
+      // Toast 只走 CSS 过渡（见 styles.css #toast）；叠 GSAP 会被 transition-all 二次插值拖慢
 
       // 关键：新 Toast 必须清掉上一条的定时器，否则会提前把这条关掉
       if (toastTimer) clearTimeout(toastTimer);

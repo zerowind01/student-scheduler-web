@@ -104,7 +104,8 @@
 .ui-input:focus {
   outline: none;
   border-color: var(--brand-500);
-  box-shadow: 0 0 0 3px rgb(245 158 11 / 0.15);
+  /* 焦点环用 Fin 橙（禁琥珀） */
+  box-shadow: 0 0 0 3px rgb(255 86 0 / 0.18);
 }
 
 /* 弹窗壳 */
@@ -157,6 +158,14 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
+    /* 不补这条，无限动画会变成 0.01ms 一轮的空转 */
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+  /* 减弱而非归零：弹窗 / Toast 保留 120ms 淡入淡出（帮助理解发生了什么），
+     位移类已经在上面被归零 */
+  .modal-box,
+  #toast {
+    transition: opacity 120ms ease !important;
   }
 }

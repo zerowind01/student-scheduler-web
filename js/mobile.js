@@ -1299,7 +1299,9 @@
 
     // ---- 岛台玻璃胶囊滑块：切换时滑向新 tab，途中沿移动方向拉长，到位弹性回弹 ----
     const navGlider = document.getElementById('navGlider');
+    const RM = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let gliderLastX = null;
+    let gliderAnim = null;
     function positionNavGlider(animate) {
       if (!navGlider) return;
       const island = navGlider.parentElement;
@@ -1311,34 +1313,36 @@
       const tr = active.getBoundingClientRect();
       const x = tr.left - ir.left;
       const w = tr.width;
-      const fromX = gliderLastX;
-      const fromW = parseFloat(navGlider.style.width) || w;
-      gliderLastX = x;
-      // 直接落位（首次/无位移/窗口尺寸变化）
-      if (!animate || fromX === null || Math.abs(x - fromX) < 1) {
-        navGlider.style.left = x + 'px';
-        navGlider.style.width = w + 'px';
+      // 起点取「当前真实位置」（含进行中的动画）→ 连续快速切换时从眼前的位置继续，不会跳
+      const curX = navGlider.getBoundingClientRect().left - ir.left;
+      const dx = x - curX;
+      navGlider.style.left = '0px'; // 位置一律交给 transform
+      navGlider.style.width = w + 'px';
+      // 直接落位（首次 / 无位移 / 窗口尺寸变化 / 用户要求减少动效）
+      if (!animate || gliderLastX === null || Math.abs(dx) < 1 || RM) {
+        navGlider.style.transform = 'translateX(' + x + 'px)';
+        gliderLastX = x;
         return;
       }
-      const dx = x - fromX;
       const dir = dx > 0 ? 1 : -1;
-      const stretch = Math.min(20, Math.abs(dx) * 0.38); // 移动越远拉得越长（封顶 20px）
-      // 中段：前缘先行 → 胶囊沿移动方向拉长
-      const midX = fromX + dx * 0.5 - (dir > 0 ? 0 : stretch);
-      const midW = fromW + stretch;
-      // 过冲：整体越过目标一点，再弹回
-      const overX = x + dir * 7;
-      navGlider.style.left = x + 'px';
-      navGlider.style.width = w + 'px';
-      navGlider.animate(
+      const stretch = Math.min(8, Math.abs(dx) * 0.22); // 拉长幅度收小
+      const k = (w + stretch) / w;
+      // 中段：前缘先行 → 沿移动方向拉长（origin 设在后缘）
+      const midX = curX + dx * 0.5;
+      const overX = x + dir * 3; // 过冲收小到 3px
+      navGlider.style.transformOrigin = dir > 0 ? 'left center' : 'right center';
+      navGlider.style.transform = 'translateX(' + x + 'px)';
+      if (gliderAnim) gliderAnim.cancel();
+      gliderAnim = navGlider.animate(
         [
-          { left: fromX + 'px', width: fromW + 'px', offset: 0, easing: 'cubic-bezier(.45,0,.55,1)' },
-          { left: midX + 'px', width: midW + 'px', offset: 0.52, easing: 'cubic-bezier(.3,0,.2,1)' },
-          { left: overX + 'px', width: w + 'px', offset: 0.8, easing: 'cubic-bezier(.34,1.56,.64,1)' },
-          { left: x + 'px', width: w + 'px', offset: 1 }
+          { transform: 'translateX(' + curX + 'px) scaleX(1)', offset: 0, easing: 'cubic-bezier(.45,0,.55,1)' },
+          { transform: 'translateX(' + midX + 'px) scaleX(' + k + ')', offset: 0.55, easing: 'cubic-bezier(.3,0,.2,1)' },
+          { transform: 'translateX(' + overX + 'px) scaleX(1)', offset: 0.82, easing: 'cubic-bezier(.34,1.56,.64,1)' },
+          { transform: 'translateX(' + x + 'px) scaleX(1)', offset: 1 }
         ],
-        { duration: 480, fill: 'both' }
+        { duration: 300, fill: 'both' }
       );
+      gliderLastX = x;
     }
     window.addEventListener('resize', () => positionNavGlider(false));
     if (document.fonts && document.fonts.ready) {
@@ -1357,9 +1361,7 @@
         const vs = document.getElementById('viewSchedule');
         if (vs) vs.classList.add('hidden');
       }
-      // GSAP：切换后的新视图轻量进场
-      const activeEl = document.getElementById('view' + view.charAt(0).toUpperCase() + view.slice(1));
-      if (window.uiAnim && activeEl) window.uiAnim.viewIn(activeEl);
+      // 底部 tab 切换不做整页淡入（高频操作，且整页动画撞在重渲染开销最大的时刻）
       if (view === 'settings' && typeof updateIdentityDesc === 'function') updateIdentityDesc();
       document.querySelectorAll('.nav-tab').forEach((tab) => {
         const active = tab.getAttribute('data-view') === view;
@@ -3242,29 +3244,26 @@
     });
   }
 
+  // 弹窗动效由 CSS 单一系统驱动（@starting-style 提供进场起点，.lm-modal-closing 触发退场）。
+  // 手机底部抽屉因此有了真正的上滑进场（此前被 CSS !important 终态压掉，是硬弹出）。
   function showModal(id) {
     const el = document.getElementById(id);
     if (el) {
+      el.classList.remove('lm-modal-closing');
       el.classList.remove('hidden');
       setTimeout(() => el.classList.add('opacity-100'), 10);
-      // GSAP 进场动效（底部抽屉上滑）
-      const box = el.querySelector('.bg-white, [class*="rounded"]');
-      if (window.uiAnim) window.uiAnim.modalIn(box, el);
     }
   }
 
   function hideModal(id) {
     const el = document.getElementById(id);
     if (el) {
-      const finish = () => el.classList.add('hidden');
-      const box = el.querySelector('.bg-white, [class*="rounded"]');
-      if (window.uiAnim) {
-        window.uiAnim.modalOut(box, el, finish);
-        setTimeout(finish, 260); // 兜底
-      } else {
-        el.classList.remove('opacity-100');
-        setTimeout(finish, 200);
-      }
+      el.classList.remove('opacity-100');
+      el.classList.add('lm-modal-closing'); // 抽屉下滑退出 200ms
+      setTimeout(() => {
+        el.classList.add('hidden');
+        el.classList.remove('lm-modal-closing');
+      }, 230);
     }
   }
 
@@ -3536,7 +3535,7 @@
 
       toast.classList.remove('translate-y-10', 'opacity-0', 'pointer-events-none');
       toast.classList.add('translate-y-0', 'opacity-100');
-      if (window.uiAnim) window.uiAnim.toastIn(toast);
+      // Toast 只走 CSS 过渡（见 styles.css #toast），不再叠 GSAP
       if (toastTimer) clearTimeout(toastTimer);
       toastTimer = setTimeout(() => {
         toast.style.opacity = '';

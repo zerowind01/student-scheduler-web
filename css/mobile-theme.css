@@ -100,16 +100,18 @@ body:has(#viewHome) {
   left: 12px;
   width: 58px;
   border-radius: 999px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72) 0%, rgba(255, 255, 255, 0.32) 100%);
-  backdrop-filter: blur(14px) saturate(170%);
-  -webkit-backdrop-filter: blur(14px) saturate(170%);
+  /* 移动中的胶囊不带 backdrop-filter：它本来就浮在已经模糊的岛台上，
+     加这一层模糊只是让每帧重算背景（滑动时最贵的一笔）。
+     改为更实的白色渐变，读感不变、成本归零。 */
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.6) 100%);
   box-shadow:
     inset 0 0 0 1.5px rgba(255, 255, 255, 0.9),
     inset 0 2px 1px rgba(255, 255, 255, 0.85),
     0 0 0 1px rgba(255, 255, 255, 0.45),
     0 4px 12px -3px rgba(15, 23, 42, 0.28);
   pointer-events: none;
-  will-change: left, width;
+  /* 现在只动 transform（可合成属性），不再写 left/width */
+  will-change: transform;
 }
 /* 内容避让：不再在 main 上挖一整条全宽色带（那会被看成"长方形"）。
    改为——内容延伸到屏幕最底部，从岛台后面滚过去（毛玻璃透出底下列表）；

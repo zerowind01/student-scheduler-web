@@ -132,12 +132,12 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #92400e;
+  color: #1c1917;
   font-size: 11px;
   font-weight: 700;
   backdrop-filter: blur(4px);
-  box-shadow: 0 4px 12px -2px rgba(245, 158, 11, 0.25);
-  transition: all 0.05s ease-out;
+  box-shadow: 0 4px 12px -2px rgba(28, 25, 23, 0.22);
+  transition: opacity 80ms ease-out, transform 80ms ease-out;
 }
 
 /* 5. 学生可拖拽卡片样式 (Draggable Student Card) */
@@ -146,10 +146,13 @@ body {
   user-select: none;
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease;
 }
-.student-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px -3px rgba(120, 100, 70, 0.16), 0 2px 6px -2px rgba(0, 0, 0, 0.04);
-  border-color: #e3dbd0;
+/* hover 位移只在真正有指针悬停的设备上生效（触屏点击后 :hover 会粘住） */
+@media (hover: hover) and (pointer: fine) {
+  .student-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px -3px rgba(120, 100, 70, 0.16), 0 2px 6px -2px rgba(0, 0, 0, 0.04);
+    border-color: #e3dbd0;
+  }
 }
 .student-card:active {
   cursor: grabbing;
@@ -170,19 +173,22 @@ body {
   line-height: 1.25;
   box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
   cursor: pointer;
-  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease, z-index 0.1s ease, min-height 0.15s ease;
+  /* 只过渡 transform / box-shadow：z-index 是离散值过渡无效，min-height 会触发重排抖动 */
+  transition: transform 0.18s var(--ease-out), box-shadow 0.18s ease;
   user-select: none;
   z-index: 10;
   overflow: hidden;
   border-left-width: 4px;
 }
 
-.schedule-event-card:hover {
-  transform: translateY(-2px) scale(1.03);
-  box-shadow: 0 12px 28px -4px rgba(0, 0, 0, 0.22), 0 4px 10px -2px rgba(0, 0, 0, 0.1);
-  z-index: 50 !important;
-  min-height: max-content !important;
-  overflow: visible !important;
+@media (hover: hover) and (pointer: fine) {
+  .schedule-event-card:hover {
+    transform: translateY(-2px) scale(1.03);
+    box-shadow: 0 12px 28px -4px rgba(0, 0, 0, 0.22), 0 4px 10px -2px rgba(0, 0, 0, 0.1);
+    z-index: 50 !important;
+    min-height: max-content !important;
+    overflow: visible !important;
+  }
 }
 
 /* 颜色主题高级配色 */
@@ -217,29 +223,73 @@ body {
   color: #881337;
 }
 
-/* 时间冲突样式 (Conflict Warning) */
+/* 时间冲突样式 (Conflict Warning)
+   播 3 次就停：无限循环动画会常驻占用渲染，且看久了只剩噪音。
+   静态红边保留作常驻标识，脉冲只负责「刚发现冲突」的注意力。 */
 .schedule-event-card.has-conflict {
   border-right: 3px solid #ef4444;
-  animation: pulse-conflict 2.5s infinite;
+  animation: pulse-conflict 1.5s ease-out 3;
 }
 
 @keyframes pulse-conflict {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-  50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.08); }
+  0%   { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.45); }
+  70%  { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
 }
 
-/* 7. Modal 弹窗显示动画 (自动覆盖所有弹窗) */
+/* 7. Modal 弹窗显示动画（自动覆盖所有弹窗）
+      单一系统：只由 CSS 过渡驱动，不再叠 GSAP（两套系统争同一属性，
+      且 !important 终态会压过 GSAP 内联样式，导致进场/退场都是空操作）。
+      起点用 @starting-style 提供——display:none → 可见的那一帧也有过渡起点，
+      不需要 JS 补帧，也不会出现「JS 挂了弹窗就永远透明」的失败模式。
+      居中弹窗 scale(.97)→1 + 淡入；底部抽屉（.lm-sheet）translateY(100%)→0 上滑。 */
 .modal-box {
-  /* 显式列出过渡属性（Web 界面规范禁 transition: all）；!important 压过 Tailwind 的 transition-all */
-  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease !important;
+  /* 显式列出过渡属性（禁 transition: all）；!important 压过 Tailwind 的 transition-all */
+  transition: transform 240ms var(--ease-out), opacity 180ms ease !important;
   /* 弹窗内滚到边界时不带动底层页面滚动 */
   overscroll-behavior: contain;
+  /* 收起态（隐藏时）：从 0.97 起步，不用 scale(0) */
+  transform: scale(0.97);
+  opacity: 0;
 }
 
-div:not(.hidden) > .modal-box,
-div:not(.hidden) .modal-box {
-  transform: scale(1) translateY(0) !important;
-  opacity: 1 !important;
+/* 展开终态 */
+div:not(.hidden) > .modal-box {
+  transform: none;
+  opacity: 1;
+}
+@starting-style {
+  div:not(.hidden) > .modal-box {
+    transform: scale(0.97);
+    opacity: 0;
+  }
+}
+
+/* 底部抽屉：从屏幕下沿滑入（抽屉就该从下方来） */
+.lm-sheet.modal-box {
+  opacity: 1;
+  transform: translateY(100%);
+}
+div:not(.hidden) > .lm-sheet.modal-box {
+  transform: translateY(0);
+}
+@starting-style {
+  div:not(.hidden) > .lm-sheet.modal-box {
+    transform: translateY(100%);
+    opacity: 1;
+  }
+}
+
+/* 退场：比进场快（进 240 / 出 160），非对称；由 hideModal 加 .lm-modal-closing 触发 */
+div.lm-modal-closing > .modal-box {
+  transform: scale(0.98);
+  opacity: 0;
+  transition-duration: 160ms, 140ms !important;
+}
+div.lm-modal-closing > .lm-sheet.modal-box {
+  transform: translateY(100%);
+  opacity: 1;
+  transition-duration: 200ms !important;
 }
 
 /* 8. 今天日期高亮 */
@@ -272,13 +322,14 @@ button, a, select, input, textarea {
 /* 11. 就地反馈：保存 / 消课 / 撤销后目标卡片高亮回闪一次
        「改到哪儿了」要有落点，不能只有 Toast。CSS 实现，不依赖 GSAP。 */
 @keyframes lm-flash-ring {
-  0%   { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.55); }
-  70%  { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+  0%   { box-shadow: 0 0 0 0 rgba(255, 86, 0, 0.55); }
+  70%  { box-shadow: 0 0 0 6px rgba(255, 86, 0, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 86, 0, 0); }
 }
 
 .lm-flash {
-  animation: lm-flash-ring 620ms ease-out 1;
+  /* 320ms：回闪是一次性反馈，不该拖过 UI 预算；颜色换 Fin 橙（禁琥珀） */
+  animation: lm-flash-ring 320ms ease-out 1;
   border-radius: inherit;
 }
 
@@ -293,6 +344,12 @@ button, a, select, input, textarea {
   font-size: 11px;
   line-height: 1.4;
   transition: background 140ms ease;
+}
+/* Toast 单一系统：只由 CSS 过渡驱动。
+   之前 GSAP 逐帧写 transform，而元素自带 Tailwind transition-all，
+   等于同一属性被二次插值 → 起步被拖慢、回弹被抹平。 */
+#toast {
+  transition: transform 240ms var(--ease-out), opacity 180ms ease !important;
 }
 #toastAction:hover { background: rgba(255, 255, 255, 0.3); }
 #toastAction:active { background: rgba(255, 255, 255, 0.42); }
@@ -330,16 +387,18 @@ button, a, select, input, textarea {
     width: 0;
     height: 0;
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.55);
-    backdrop-filter: blur(10px) saturate(140%);
-    -webkit-backdrop-filter: blur(10px) saturate(140%);
+    /* 移动中的滑块不带 backdrop-filter：它嵌在已经模糊过的侧栏里，
+       视觉上几乎没差别，却要每帧重算背景模糊（逐帧位移时最贵的一笔）。
+       改为更实一点的半透明白，保持「浮起」的读感。 */
+    background: rgba(255, 255, 255, 0.72);
     box-shadow:
       inset 0 0 0 1.5px rgba(255, 255, 255, 1),
       inset 0 2px 3px -1px rgba(255, 255, 255, 0.95),
       0 0 0 1px rgba(226, 218, 206, 0.9),
       0 5px 16px -4px rgba(17, 17, 17, 0.18);
     pointer-events: none;
-    will-change: top, height;
+    /* 现在只动 transform（可合成属性），不再写 top/height */
+    will-change: transform;
   }
   #mainSideNav .nav-page-btn { position: relative; z-index: 1; }
   /* 内容避让：面板左缘 16px + 宽 144px，右侧再留出间隙 */
@@ -399,7 +458,8 @@ button, a, select, input, textarea {
   background-color: #ff5600;
   background-image: linear-gradient(-90deg, #ff8a3d 0%, #ff5600 75%, #ff5600 100%);
   cursor: pointer;
-  transition: all 0.2s;
+  /* 显式列属性：禁 transition: all（width 是刻意的，胶囊要真的变长） */
+  transition: width 0.26s var(--ease-out), transform 0.12s ease, box-shadow 0.2s ease;
   font-size: 17px;
   font-family: inherit;
   padding: 0;
@@ -448,17 +508,19 @@ button, a, select, input, textarea {
   /* 收尾缓冲收小：起步快、落位利落，不再拖尾 */
   transition: opacity 0.24s ease, transform 0.36s cubic-bezier(0.2, 0.9, 0.2, 1);
 }
-.tooltip-container:hover {
-  width: 136px;
-  transition: width 0.32s cubic-bezier(0.2, 0.9, 0.2, 1);
-}
-.tooltip-container:hover .tooltip {
-  opacity: 1;
-  transform: translateX(0);
-  visibility: visible;
-  pointer-events: auto;
+/* hover 展开只在有真实指针的设备上生效（触屏点一下胶囊会一直张着） */
+@media (hover: hover) and (pointer: fine) {
+  .tooltip-container:hover {
+    width: 136px;
+  }
+  .tooltip-container:hover .tooltip {
+    opacity: 1;
+    transform: translateX(0);
+    visibility: visible;
+    pointer-events: auto;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .tooltip-container,
-  .tooltip { transition-duration: 0.01ms; }
+  .tooltip-container { transition: none; }
+  .tooltip { transition: opacity 120ms ease; }
 }

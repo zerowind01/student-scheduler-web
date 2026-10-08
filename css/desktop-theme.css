@@ -258,10 +258,12 @@ body.lm-body {
   box-shadow: var(--lm-card-shadow);
   transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s ease;
 }
-.lm-tile:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--lm-card-shadow-lg);
-  border-color: var(--lm-line-strong) !important;
+@media (hover: hover) and (pointer: fine) {
+  .lm-tile:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--lm-card-shadow-lg);
+    border-color: var(--lm-line-strong) !important;
+  }
 }
 .lm-tile i { color: var(--lm-ink-2); }
 .lm-tile-danger {

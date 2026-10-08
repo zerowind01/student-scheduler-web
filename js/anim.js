@@ -1,11 +1,10 @@
 /* ==========================================================================
-   排课工作台 · GSAP 动效层（Step 4）
-   三类动效，全部 motivated：
-   1. 进场    — 弹窗 fade + slide-up（220ms，--ease-out）
-   2. 反馈    — Toast 弹入 + 课时数字滚动
-   3. 状态变化 — 日历课卡状态色条宽度过渡
+   排课工作台 · 动效层
+   分工（单一系统，避免两套东西争同一属性）：
+   - 弹窗 / Toast / 侧栏滑块 → CSS 过渡与 @starting-style（不依赖 GSAP CDN）
+   - 数字滚动 / 翻周翻月方向感 / 课卡错峰进场 / 就地回闪 → 本文件（GSAP）
    禁止：滚动视差、循环动画、GSAP 粒子类效果
-   全部遵守 prefers-reduced-motion（tokens.css 已有 CSS 兜底）
+   全部遵守 prefers-reduced-motion（tokens.css 有 CSS 兜底，本文件有 RM 兜底）
    ========================================================================== */
 
 /* ---- 0. 环境探测（一次性，能力探测模式） ---- */
@@ -18,42 +17,16 @@ function uiAnimate(fn) {
   fn(window.gsap);
 }
 
-/* ---- 1. 弹窗进场 / 退场 ----
-   目标元素结构（两端一致）：
-   .modal-overlay（遮罩） > .modal-box（内容壳）
-   用法：showModal/hideModal 里在 class 切换后调用 */
-function animateModalIn(boxEl, overlayEl) {
-  uiAnimate((gsap) => {
-    if (overlayEl) gsap.fromTo(overlayEl, { opacity: 0 }, { opacity: 1, duration: 0.18, ease: 'power2.out' });
-    if (boxEl) gsap.fromTo(boxEl,
-      { opacity: 0, y: 24, scale: 0.98 },
-      { opacity: 1, y: 0, scale: 1, duration: 0.28, ease: 'power3.out' }
-    );
-  });
-}
+/* ---- 1. 弹窗 / Toast：交给 CSS 单一系统（详见 styles.css 第 7 节）----
+   曾经这里用 GSAP 驱动弹窗与 Toast，但：
+   - 弹窗：CSS 里 `div:not(.hidden) > .modal-box { transform/opacity !important }`
+     会压过 GSAP 的内联样式，等于整段动画空跑（手机抽屉因此完全没有上滑）；
+   - Toast：元素自带 Tailwind `transition-all`，GSAP 逐帧写 transform 会被二次插值拖慢。
+   两套系统争同一属性本身就是缺陷，所以这里不再提供 modal/toast 动画：
+   弹窗用 @starting-style 进场 + .lm-modal-closing 退场，Toast 用 CSS 过渡。
+   保留的好处是不依赖 GSAP CDN —— CDN 加载失败时弹窗也不会变成透明看不见。 */
 
-function animateModalOut(boxEl, overlayEl, done) {
-  if (RM || !hasGSAP) { if (done) done(); return; }
-  if (!hasGSAP) { if (done) done(); return; }
-  const gsap = window.gsap;
-  const tl = gsap.timeline({ onComplete: done });
-  if (boxEl) tl.to(boxEl, { opacity: 0, y: 16, scale: 0.98, duration: 0.18, ease: 'power2.in' }, 0);
-  if (overlayEl) tl.to(overlayEl, { opacity: 0, duration: 0.18, ease: 'power2.in' }, 0);
-  if (!boxEl && !overlayEl) { if (done) done(); }
-}
-
-/* ---- 2. Toast 弹入 ----
-   showToast 渲染后调用：从底部弹入，1.2s 后由原逻辑移除 */
-function animateToastIn(el) {
-  uiAnimate((gsap) => {
-    gsap.fromTo(el,
-      { opacity: 0, y: 20 },
-      { opacity: 1, y: 0, duration: 0.3, ease: 'back.out(1.6)' }
-    );
-  });
-}
-
-/* ---- 3. 课时数字滚动 ----
+/* ---- 1. 课时数字滚动 ----
    消课/充值/撤销后调用：数字从旧值滚到新值
    用法：animateNumber(el, oldValue, newValue, decimals, suffix)
    suffix 用于带单位的统计（「 节」「 小时」），避免滚动过程中单位丢失 */
@@ -71,23 +44,22 @@ function animateNumber(el, from, to, decimals = 0, suffix = '') {
   });
 }
 
-/* ---- 4. 页面/视图切换 ----
-   tab 切换时对新视图做轻量 fade+rise
-   dirX：翻周时的方向感，-1 上一周（内容从左侧进）、1 下一周（从右侧进）；
-   不传则只做纵向 rise（分页切换场景） */
+/* ---- 2. 翻周 / 翻月方向感 ----
+   只在这里用：底部 tab 切换不做整页淡入（高频操作）。
+   dirX：-1 上一周（内容从左侧进）、1 下一周（从右侧进）；不传则只做纵向 rise。 */
 function animateViewIn(viewEl, dirX = 0) {
   uiAnimate((gsap) => {
     gsap.fromTo(viewEl,
-      { opacity: 0, y: dirX ? 0 : 10, x: dirX ? 26 * dirX : 0 },
-      { opacity: 1, y: 0, x: 0, duration: 0.26, ease: 'power2.out', clearProps: 'opacity,transform' }
+      { opacity: 0, y: dirX ? 0 : 8, x: dirX ? 22 * dirX : 0 },
+      { opacity: 1, y: 0, x: 0, duration: 0.22, ease: 'power2.out', clearProps: 'opacity,transform' }
     );
   });
 }
 
-/* ---- 5. 日历课卡批量进场（周视图 / 月视图 / 3日视图渲染后） ----
-   限流很重要：课表每次保存都会重渲染，长列表若逐个 stagger 会拖沓。
-   规则：超过 MAX_STAGGER 个就整体淡入；数量越多 stagger 步长越小。 */
-const MAX_STAGGER = 24;
+/* ---- 3. 日历课卡批量进场（周视图 / 月视图 / 3日视图渲染后） ----
+   每次保存都会重渲染，所以 stagger 必须收着：数量一多就整体淡入，
+   且步长压到 22ms —— 最多 12 张时尾随也只有 264ms，不会拖尾。 */
+const MAX_STAGGER = 12;
 
 function animateCardsStagger(containerEl, cardSelector = '.schedule-event-card') {
   if (!containerEl) return;
@@ -97,19 +69,18 @@ function animateCardsStagger(containerEl, cardSelector = '.schedule-event-card')
     if (cards.length > MAX_STAGGER) {
       gsap.fromTo(cards,
         { opacity: 0, y: 6 },
-        { opacity: 1, y: 0, duration: 0.22, ease: 'power2.out', clearProps: 'opacity,transform' }
+        { opacity: 1, y: 0, duration: 0.16, ease: 'power2.out', clearProps: 'opacity,transform' }
       );
       return;
     }
-    const step = cards.length > 12 ? 0.018 : 0.03;
     gsap.fromTo(cards,
       { opacity: 0, y: 8 },
-      { opacity: 1, y: 0, duration: 0.26, stagger: step, ease: 'power2.out', clearProps: 'opacity,transform' }
+      { opacity: 1, y: 0, duration: 0.2, stagger: 0.022, ease: 'power2.out', clearProps: 'opacity,transform' }
     );
   });
 }
 
-/* ---- 6. 学员卡删除/移除退场（可选：列表项飞出） ---- */
+/* ---- 4. 学员卡删除/移除退场（可选：列表项飞出） ---- */
 function animateCardOut(el, done) {
   if (RM || !hasGSAP) { if (done) done(); return; }
   window.gsap.to(el, {
@@ -118,7 +89,7 @@ function animateCardOut(el, done) {
   });
 }
 
-/* ---- 7. 就地高亮回闪（保存 / 消课 / 撤销后） ----
+/* ---- 5. 就地高亮回闪（保存 / 消课 / 撤销后） ----
    目的：让「我刚才改的是哪一节」有落点，光靠 Toast 用户找不到目标。
    CSS 动画实现（styles.css 的 .lm-flash），GSAP 挂了也不影响。
    flashSchedule(id) 直接按 data-schedule-id 定位课卡，双端通用。 */
@@ -168,9 +139,6 @@ function emitRendered() {
 
 /* 挂到 window 供 app.js / mobile.js 调用 */
 window.uiAnim = {
-  modalIn: animateModalIn,
-  modalOut: animateModalOut,
-  toastIn: animateToastIn,
   number: animateNumber,
   viewIn: animateViewIn,
   cardsStagger: animateCardsStagger,
