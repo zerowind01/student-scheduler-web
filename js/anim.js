@@ -143,9 +143,16 @@ function flashSchedule(scheduleId) {
 const MIN_SPINNER_MS = 420;  // spinner 至少转 2/3 圈
 const DONE_HOLD_MS = 800;    // 勾描完 320ms，再停一拍供眼部确认
 
+/* 渲染闸门：动画进行中，列表重渲染要绕开按钮所在的行。
+   现实里重渲染的来源很多（云同步轮询、BroadcastChannel、撤销……），
+   只要有一路在动画途中重建 DOM，按钮节点被换掉，三段动效就整个消失。
+   这里用一个计数对外开放，由渲染方（renderDashboard）主动避让。 */
+let busyCount = 0;
+
 function runAsyncButton(btn, work, onDone) {
   if (!btn || btn.dataset.lmBusy === '1') return;
   btn.dataset.lmBusy = '1';
+  busyCount++;
   btn.setAttribute('aria-busy', 'true');
   btn.classList.add('is-loading');
 
@@ -158,21 +165,26 @@ function runAsyncButton(btn, work, onDone) {
     ok = false;
   }
 
+  const finish = () => {
+    btn.removeAttribute('aria-busy');
+    btn.dataset.lmBusy = '';
+    busyCount = Math.max(0, busyCount - 1);
+  };
+
   const wait = Math.max(0, MIN_SPINNER_MS - (Date.now() - t0));
   setTimeout(() => {
     if (!ok) {
       // 被拦截：静默回到初态，原因已经由各自的 Toast 说明了
       btn.classList.remove('is-loading');
-      btn.removeAttribute('aria-busy');
-      btn.dataset.lmBusy = '';
+      finish();
       return;
     }
     btn.classList.remove('is-loading');
     btn.classList.add('is-done');
     setTimeout(() => {
-      // 先交给业务去重渲染：列表通常会在这一步把整行替换成「已消课」。
-      // 顺序很重要 —— 若先摘掉 is-done，按钮会在爬回原色的 240ms 里被用户看见，
-      // 出现「绿了又变黑」的反向淡出。
+      // 顺序：先放开渲染闸门 → 再让业务重渲染 → 最后才复位按钮。
+      // 若先摘 is-done，按钮会在爬回原色的 240ms 里被看见，出现「绿了又变黑」的反向淡出。
+      busyCount = Math.max(0, busyCount - 1);
       if (onDone) onDone();
       // 若业务方并没有重渲染（按钮还挂在文档里），才把它复位回初态。
       if (document.body.contains(btn)) {
@@ -202,5 +214,6 @@ window.uiAnim = {
   flash: flash,
   flashSchedule: flashSchedule,
   runAsyncButton: runAsyncButton,
+  isBusy: () => busyCount > 0,
   emitRendered: emitRendered,
 };

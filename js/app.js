@@ -583,6 +583,10 @@
   // 云端实时跨设备同步引擎
   // ==========================================
   let schoolSyncKey = localStorage.getItem('edu_scheduler_school_key') || '';
+  // 本页实例标识：BroadcastChannel 会把消息投递给同上下文里的其他 channel 对象
+  // （只排除发送者本身，而 push 每次都 new 一个新对象），所以自己的广播会回声到自己的
+  // onmessage → 触发一次多余的 refreshView，把正在播的按钮动效冲掉。加个来源标识过滤掉。
+  const LM_CTX = 'ctx-' + Math.random().toString(36).slice(2) + '-' + Date.now().toString(36);
   let isPushingToCloud = false;
   let isPullingFromCloud = false;
   let cloudSyncFailedOnce = false; // 只提醒一次，避免弹窗轰炸
@@ -602,6 +606,7 @@
       const payload = {
         key: schoolSyncKey,
         updatedAt: now,
+        __ctx: LM_CTX, // 来源标识：本页的 onmessage 据此忽略自己的回声
         students,
         schedules,
         teachers,
@@ -690,6 +695,8 @@
     try {
       const bc = new BroadcastChannel('edu_scheduler_broadcast');
       bc.onmessage = (event) => {
+        // 自己发的广播不处理：数据本就在内存里，再走一遍全量重渲染只会打断进行中的动效
+        if (event.data && event.data.__ctx === LM_CTX) return;
         if (event.data && event.data.updatedAt) {
           students = event.data.students || students;
           schedules = (event.data.schedules || schedules).map(normalizeSchedule);
@@ -1519,7 +1526,11 @@
       if (todayPending) pendingBadge.textContent = `${todayPending} 节待消课`;
     }
     const todayList = document.getElementById('dashTodayList');
-    if (todayList) {
+    // 消课按钮的三段动效进行中时，任何一次重渲染都会换掉按钮节点、让动效整个消失
+    // （云同步轮询 / BroadcastChannel / 撤销都可能在途中触发 refreshView）。
+    // 这段时间里保住「今日时间轴」的 DOM，等动效结束由 onDone 的 refreshView 统一刷新。
+    const dashBusy = !!(window.uiAnim && window.uiAnim.isBusy && window.uiAnim.isBusy());
+    if (todayList && !dashBusy) {
       const sorted = todaySchedules.slice().sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
       if (!sorted.length) {
         todayList.innerHTML = `<div class="text-center py-10 text-[#a8a29e] text-xs"><i class="fa-solid fa-mug-hot text-2xl mb-2 block opacity-40"></i>今天没有排课</div>`;

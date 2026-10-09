@@ -776,6 +776,10 @@
   const CLOUD_SYNC_ENDPOINT = '/api/sync';
 
   let schoolSyncKey = localStorage.getItem('edu_scheduler_school_key') || '';
+  // 本页实例标识：BroadcastChannel 会把消息投递给同上下文里的其他 channel 对象
+  // （只排除发送者本身，而 push 每次都 new 一个新对象），自己的广播会回声到自己的
+  // onmessage → 多余的一次全量重渲染，会把正在播的动效冲掉。据此过滤掉自己的回声。
+  const LM_CTX = 'ctx-' + Math.random().toString(36).slice(2) + '-' + Date.now().toString(36);
   let isPushingToCloud = false;
   let isPullingFromCloud = false;
   let cloudSyncFailedOnce = false; // 只提醒一次，避免弹窗轰炸
@@ -791,6 +795,7 @@
       const payload = {
         key: schoolSyncKey,
         updatedAt: now,
+        __ctx: LM_CTX, // 来源标识：本页的 onmessage 据此忽略自己的回声
         students,
         schedules,
         teachers,
@@ -879,6 +884,8 @@
     try {
       const bc = new BroadcastChannel('edu_scheduler_broadcast');
       bc.onmessage = (event) => {
+        // 自己发的广播不处理：数据已在内存里，再走一遍全量重渲染只会打断进行中的动效
+        if (event.data && event.data.__ctx === LM_CTX) return;
         if (event.data && event.data.updatedAt) {
           students = event.data.students || students;
           schedules = (event.data.schedules || schedules).map(normalizeSchedule);
