@@ -2712,11 +2712,11 @@
 
     // 冲突提示：多列/矮卡只留警示图标（34px 宽、48px 高都放不下整行文案）
     const conflictIcon = hasConflict
-      ? `<span class="shrink-0 inline-flex items-center text-rose-700" title="${conflictReasons.join(' | ')}"><i class="fa-solid fa-triangle-exclamation text-rose-500 text-[9px]"></i></span>`
+      ? `<span class="shrink-0 inline-flex items-center text-rose-700" title="${conflictReasons.join(' | ')}"><i class="lm-cf-warn fa-solid fa-triangle-exclamation text-rose-500 text-[9px]"></i></span>`
       : '';
     const conflictFull = hasConflict
       ? `<div class="text-[9px] font-bold text-rose-700 bg-rose-100/95 border border-rose-300 px-1 py-0.2 rounded truncate flex items-center gap-0.5 shadow-2xs shrink-0 mt-0.5" title="${conflictReasons.join(' | ')}">
-           <i class="fa-solid fa-triangle-exclamation text-rose-500 shrink-0 text-[8px]"></i>
+           <i class="lm-cf-warn fa-solid fa-triangle-exclamation text-rose-500 shrink-0 text-[8px]"></i>
            <span class="truncate leading-normal min-w-0">${conflictReasons.join('; ')}</span>
          </div>`
       : '';

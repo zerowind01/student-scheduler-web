@@ -203,6 +203,10 @@ body {
     min-height: max-content !important;
     overflow: visible !important;
   }
+  /* 悬停时停掉冲突光晕，让 hover 的立体投影生效（动画会优先于 box-shadow 声明） */
+  .schedule-event-card.has-conflict:hover {
+    animation: none;
+  }
 }
 
 /* 颜色主题：定稿色卡六色。--ev-sub 用同色系深字而不是纯黑，底色仍是主角 */
@@ -232,17 +236,31 @@ body {
 }
 
 /* 时间冲突样式 (Conflict Warning)
-   播 3 次就停：无限循环动画会常驻占用渲染，且看久了只剩噪音。
-   静态红边保留作常驻标识，脉冲只负责「刚发现冲突」的注意力。 */
+   原方案「右侧 3px 红 border」在 12px 圆角处被切成一条红色弧线——既挤占卡片横向空间
+   （扑克牌宽度的卡上更明显），又跟主题底色卡争注意力。现已移除。
+   冲突的常驻标识改为两个渠道：卡片内 ⚠ 图标（呼吸闪光）+ 卡片外圈周期性光晕。
+   两者同节奏；光晕每轮只在开头闪一下、其余时间静息，避免长期驻屏变成噪音。 */
 .schedule-event-card.has-conflict {
-  border-right: 3px solid #ef4444;
-  animation: pulse-conflict 1.5s ease-out 3;
+  animation: pulse-conflict 2.4s ease-out infinite;
 }
 
+/* 光晕只在开头闪一下，其余时间保留卡片自身投影（关键帧会整体接管 box-shadow，
+   不写全就会把常态投影一起吃掉） */
 @keyframes pulse-conflict {
-  0%   { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.45); }
-  70%  { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+  0%  { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5), 0 2px 8px -2px rgba(0, 0, 0, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.04); }
+  22% { box-shadow: 0 0 0 5px rgba(239, 68, 68, 0),  0 2px 8px -2px rgba(0, 0, 0, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.04); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0),  0 2px 8px -2px rgba(0, 0, 0, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.04); }
+}
+
+/* ⚠ 警示图标：呼吸闪光。去掉红弧线后它是卡片内唯一的持久冲突信号，
+   窄卡（只剩姓名）尤其依赖它，所以闪光节奏必须够明显但仍循环不停。 */
+.lm-cf-warn {
+  animation: lm-cf-flash 2.4s ease-in-out infinite;
+}
+
+@keyframes lm-cf-flash {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.3; }
 }
 
 /* 7. Modal 弹窗显示动画（自动覆盖所有弹窗）

@@ -2572,11 +2572,11 @@
 
     // 冲突提示：矮卡/窄卡只留警示图标（完整原因走 title），否则 48px 高度必裁切
     const conflictIcon = hasConflict
-      ? `<span class="shrink-0 inline-flex items-center text-rose-700" title="${conflictInfo.reasons.join(' | ')}"><i class="fa-solid fa-triangle-exclamation text-rose-500 text-[9px]"></i></span>`
+      ? `<span class="shrink-0 inline-flex items-center text-rose-700" title="${conflictInfo.reasons.join(' | ')}"><i class="lm-cf-warn fa-solid fa-triangle-exclamation text-rose-500 text-[9px]"></i></span>`
       : '';
     const conflictFull = hasConflict
       ? `<div class="text-[9px] font-bold text-rose-700 bg-rose-100/95 border border-rose-300 px-1 py-0.2 rounded truncate flex items-center gap-0.5 shadow-2xs shrink-0 mt-[2px]" title="${conflictInfo.reasons.join(' | ')}">
-          <i class="fa-solid fa-triangle-exclamation text-rose-500 shrink-0 text-[8px]"></i>
+          <i class="lm-cf-warn fa-solid fa-triangle-exclamation text-rose-500 shrink-0 text-[8px]"></i>
           <span class="truncate leading-normal min-w-0">${conflictInfo.reasons.join('; ')}</span>
          </div>`
       : '';
