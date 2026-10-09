@@ -1356,7 +1356,10 @@
 
     // ---- 桌面侧栏选中滑块（动效对齐手机版：滑动+沿方向拉伸+过冲回弹） ----
     const navGliderD = document.getElementById('navGliderDesktop');
-    const RM = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // 实时跟随系统开关：会话中途改设置也要生效（原来只在加载时取一次快照）
+    const rmQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let RM = rmQuery.matches;
+    if (rmQuery.addEventListener) rmQuery.addEventListener('change', (e) => { RM = e.matches; });
     let gliderDLastTop = null;
     let gliderDAnim = null;
     function positionNavGliderD(animate) {

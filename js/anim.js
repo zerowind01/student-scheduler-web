@@ -7,14 +7,38 @@
    全部遵守 prefers-reduced-motion（tokens.css 有 CSS 兜底，本文件有 RM 兜底）
    ========================================================================== */
 
-/* ---- 0. 环境探测（一次性，能力探测模式） ---- */
-const RM = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-const hasGSAP = typeof window.gsap !== 'undefined';
+/* ---- 0. 环境探测（每次调用时探测，不缓存） ----
+   hasGSAP 以前只在加载时取一次：GSAP 走 CDN 时若晚于本文件到达（或加载失败后由
+   兜底脚本补加载），整个会话的动效就永久失效。改成调用时才读 window.gsap，
+   晚到的也能用上。
+   RM 同理——系统开关是可以在会话中途改的，加监听实时跟随。 */
+const rmQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+let RM = rmQuery.matches;
+if (rmQuery.addEventListener) {
+  rmQuery.addEventListener('change', (e) => { RM = e.matches; });
+}
 
-/* 统一入口：环境不满足时全部退化为即时状态切换 */
 function uiAnimate(fn) {
-  if (RM || !hasGSAP) return; // reduced-motion 或 GSAP 未加载 → 静态
-  fn(window.gsap);
+  if (RM) return;
+  const g = window.gsap;
+  if (!g) return; // GSAP 未就绪 → 静态（功能不受影响）
+  fn(g);
+}
+
+/* 游离 tween 回收：列表每次保存/云同步都会整个重建 DOM，
+   上一次的 tween 还挂在已被替换掉的节点上继续跑。
+   这里按「一批」记录，下一批开始时先 kill 掉上一批。 */
+let trackedTweens = [];
+function trackTween(t) {
+  if (t) trackedTweens.push(t);
+  if (trackedTweens.length > 24) trackedTweens = trackedTweens.slice(-12);
+  return t;
+}
+function killTrackedTweens() {
+  for (const t of trackedTweens) {
+    try { t.kill(); } catch (_) { /* 已结束或目标已卸载 */ }
+  }
+  trackedTweens = [];
 }
 
 /* ---- 1. 弹窗 / Toast：交给 CSS 单一系统（详见 styles.css 第 7 节）----
@@ -30,25 +54,38 @@ function uiAnimate(fn) {
    消课/充值/撤销后调用：数字从旧值滚到新值
    用法：animateNumber(el, oldValue, newValue, decimals, suffix)
    suffix 用于带单位的统计（「 节」「 小时」），避免滚动过程中单位丢失 */
+/* 同一元素上只允许一个滚动 tween：消课→撤销来回点会并发两个 tween 同时写
+   textContent，数字会来回抽。用 WeakMap 记住上一个，开新的前先 kill。 */
+const numberTweens = new WeakMap();
+
 function animateNumber(el, from, to, decimals = 0, suffix = '') {
   const render = (v) => {
     if (el) el.textContent = (decimals ? v.toFixed(decimals) : Math.round(v)) + suffix;
   };
-  if (RM || !hasGSAP || !el) { render(to); return; }
+  if (!el) return;
+  const prev = numberTweens.get(el);
+  if (prev) { try { prev.kill(); } catch (_) {} numberTweens.delete(el); }
+  if (RM) { render(to); return; }
+  const g = window.gsap;
+  if (!g) { render(to); return; }
   const obj = { v: from };
-  window.gsap.to(obj, {
+  numberTweens.set(el, g.to(obj, {
     v: to,
     duration: 0.5,
     ease: 'power2.out',
     onUpdate: () => render(obj.v),
-  });
+    onComplete: () => numberTweens.delete(el),
+  }));
 }
 
 /* ---- 2. 翻周 / 翻月方向感 ----
    只在这里用：底部 tab 切换不做整页淡入（高频操作）。
    dirX：-1 上一周（内容从左侧进）、1 下一周（从右侧进）；不传则只做纵向 rise。 */
 function animateViewIn(viewEl, dirX = 0) {
+  if (!viewEl) return;
   uiAnimate((gsap) => {
+    // 视图容器是常驻节点：不 kill 旧 tween 的话，连点翻周会叠加多个 tween 互相抢同一属性
+    gsap.killTweensOf(viewEl);
     gsap.fromTo(viewEl,
       { opacity: 0, y: dirX ? 0 : 8, x: dirX ? 22 * dirX : 0 },
       { opacity: 1, y: 0, x: 0, duration: 0.22, ease: 'power2.out', clearProps: 'opacity,transform' }
@@ -66,30 +103,23 @@ function animateCardsStagger(containerEl, cardSelector = '.schedule-event-card')
   uiAnimate((gsap) => {
     const cards = containerEl.querySelectorAll(cardSelector);
     if (!cards.length) return;
+    // 上一批卡片已被本次渲染替换掉，先把挂在它们身上的 tween 收掉再起新的
+    killTrackedTweens();
     if (cards.length > MAX_STAGGER) {
-      gsap.fromTo(cards,
+      trackTween(gsap.fromTo(cards,
         { opacity: 0, y: 6 },
         { opacity: 1, y: 0, duration: 0.16, ease: 'power2.out', clearProps: 'opacity,transform' }
-      );
+      ));
       return;
     }
-    gsap.fromTo(cards,
+    trackTween(gsap.fromTo(cards,
       { opacity: 0, y: 8 },
       { opacity: 1, y: 0, duration: 0.2, stagger: 0.022, ease: 'power2.out', clearProps: 'opacity,transform' }
-    );
+    ));
   });
 }
 
-/* ---- 4. 学员卡删除/移除退场（可选：列表项飞出） ---- */
-function animateCardOut(el, done) {
-  if (RM || !hasGSAP) { if (done) done(); return; }
-  window.gsap.to(el, {
-    opacity: 0, x: 24, duration: 0.2, ease: 'power2.in',
-    onComplete: done,
-  });
-}
-
-/* ---- 5. 就地高亮回闪（保存 / 消课 / 撤销后） ----
+/* ---- 4. 就地高亮回闪（保存 / 消课 / 撤销后） ----
    目的：让「我刚才改的是哪一节」有落点，光靠 Toast 用户找不到目标。
    CSS 动画实现（styles.css 的 .lm-flash），GSAP 挂了也不影响。
    flashSchedule(id) 直接按 data-schedule-id 定位课卡，双端通用。 */
@@ -210,7 +240,6 @@ window.uiAnim = {
   number: animateNumber,
   viewIn: animateViewIn,
   cardsStagger: animateCardsStagger,
-  cardOut: animateCardOut,
   flash: flash,
   flashSchedule: flashSchedule,
   runAsyncButton: runAsyncButton,

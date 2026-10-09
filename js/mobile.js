@@ -1344,8 +1344,9 @@
         const grid = document.getElementById('calGridWrap');
         if (grid && typeof window.gsap !== 'undefined') {
           try {
+            window.gsap.killTweensOf(grid); // 连滑时旧 tween 会跟新的抢同一属性
             window.gsap.fromTo(grid, { x: (dx < 0 ? 1 : -1) * 28, opacity: 0.6 },
-              { x: 0, opacity: 1, duration: 0.26, ease: 'power2.out' });
+              { x: 0, opacity: 1, duration: 0.26, ease: 'power2.out', clearProps: 'opacity,transform' });
           } catch (_) { /* 动画失败不影响翻页 */ }
         }
       }, { passive: true });
@@ -1392,8 +1393,9 @@
         const scroller = document.getElementById('mobileCalendarScroll');
         if (scroller && typeof window.gsap !== 'undefined') {
           try {
+            window.gsap.killTweensOf(scroller);
             window.gsap.fromTo(scroller, { x: dir * 28, opacity: 0.6 },
-              { x: 0, opacity: 1, duration: 0.26, ease: 'power2.out' });
+              { x: 0, opacity: 1, duration: 0.26, ease: 'power2.out', clearProps: 'opacity,transform' });
           } catch (_) { /* 动画失败不影响翻页 */ }
         }
       }, { passive: true });
@@ -1417,7 +1419,10 @@
 
     // ---- 岛台玻璃胶囊滑块：切换时滑向新 tab，途中沿移动方向拉长，到位弹性回弹 ----
     const navGlider = document.getElementById('navGlider');
-    const RM = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // 实时跟随系统开关：会话中途改设置也要生效（原来只在加载时取一次快照）
+    const rmQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let RM = rmQuery.matches;
+    if (rmQuery.addEventListener) rmQuery.addEventListener('change', (e) => { RM = e.matches; });
     let gliderLastX = null;
     let gliderAnim = null;
     function positionNavGlider(animate) {
