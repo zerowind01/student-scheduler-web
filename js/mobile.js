@@ -139,6 +139,9 @@
   // ============ 教务扩展（与桌面端 app.js 保持一致） ============
   const SCHEDULE_STATUS = { SCHEDULED: 'scheduled', COMPLETED: 'completed', STUDENT_LEAVE: 'student_leave' };
 
+  // 今日课程列表重排动画的「主角」：请假/撤销时记下这节课 id，下一次渲染播放一次后清空
+  let pendingReorderId = null;
+
   function normalizeSchedule(sch) {
     if (!sch.status) sch.status = SCHEDULE_STATUS.SCHEDULED;
     // 兼容 courseName 字段（部分数据入口只写 courseName）
@@ -653,6 +656,10 @@
 
     sch.status = SCHEDULE_STATUS.STUDENT_LEAVE;
     saveData();
+    // 首页今日列表：让这一行滑到请假区（pendingReorderId 由 renderMobileHome 消费一次）
+    // 放在其它重渲染之前 —— 万一它们抛错，用户看到的滑动也已经发生了
+    pendingReorderId = sch.id;
+    if (typeof renderMobileHome === 'function') renderMobileHome();
     renderMobile3DayView();
     renderMobileStudents();
     offerUndo(leaveMsg, `请假 ${sch.studentName}`);
@@ -679,6 +686,9 @@
 
     sch.status = SCHEDULE_STATUS.SCHEDULED;
     saveData();
+    // 撤销请假：同一套 FLIP，让这一行滑回时间序里原来的位置
+    pendingReorderId = sch.id;
+    if (typeof renderMobileHome === 'function') renderMobileHome();
     renderMobile3DayView();
     renderMobileStudents();
     offerUndo('已撤销状态，还原为待上课', `还原 ${sch.studentName} 的课`);
@@ -2107,6 +2117,65 @@
     });
   }
 
+  /* ------------------------------------------------------------------------
+     今日课程列表：请假 / 撤销后的重排动画（FLIP）
+     目的：空间一致性 —— 被标记请假的那一行要「走」到请假区，
+           而不是在这里消失、又在下面凭空出现。
+     工具：WAAPI（要先量新旧位置，且可能被连续操作打断）；只动 transform + opacity；
+     曲线：位移用 --ease-move（ease-in-out），260ms；减弱动效时退化成 160ms 淡入。
+     ------------------------------------------------------------------------ */
+  const MOVE_EASE = (() => {
+    try {
+      return (getComputedStyle(document.documentElement).getPropertyValue('--ease-move') || '').trim()
+        || 'cubic-bezier(0.77, 0, 0.175, 1)';
+    } catch (_) { return 'cubic-bezier(0.77, 0, 0.175, 1)'; }
+  })();
+  const FLIP_MS = 260;
+  const FLIP_MAX_DY = 420; // 超过这个距离就别飞了（会显得滑稽），改淡入
+  const prefersReduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // 重排前：记下每行当前位置（含分隔条，用固定 key）
+  function snapshotTodayRows(box) {
+    const map = new Map();
+    if (!box) return map;
+    box.querySelectorAll('[data-today-row]').forEach((el) => {
+      map.set(el.getAttribute('data-today-row'), el.getBoundingClientRect());
+    });
+    if (box.querySelector('[data-today-divider]')) map.set('__divider__', true);
+    return map;
+  }
+
+  // 重排后：从旧位置补一段位移回新位置（First-Last-Invert-Play）
+  function playTodayRowFlip(box, prev, highlightId) {
+    if (!box || !prev.size) return; // 首次渲染（无旧位置）不播
+    const reduce = prefersReduced();
+    box.querySelectorAll('[data-today-row]').forEach((el) => {
+      const id = el.getAttribute('data-today-row');
+      const old = prev.get(id);
+      if (!old) return;
+      const now = el.getBoundingClientRect();
+      const dx = old.left - now.left;
+      const dy = old.top - now.top;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+      if (reduce || Math.abs(dy) > FLIP_MAX_DY) {
+        el.animate([{ opacity: 0.35 }, { opacity: 1 }], { duration: 160, easing: 'ease-out' });
+        return;
+      }
+      const isHero = id === highlightId;
+      if (isHero) { el.style.position = 'relative'; el.style.zIndex = '5'; }
+      const anim = el.animate(
+        [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0px, 0px)' }],
+        { duration: FLIP_MS, easing: MOVE_EASE }
+      );
+      if (isHero) anim.finished.then(() => { el.style.position = ''; el.style.zIndex = ''; }).catch(() => {});
+    });
+    // 请假区分隔条首次出现 → 淡入，避免硬生生冒出来
+    if (highlightId && !prev.has('__divider__')) {
+      const div = box.querySelector('[data-today-divider]');
+      if (div) div.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: 'ease-out' });
+    }
+  }
+
   // 首页：hero 工作台卡 + 数据看板卡（今天/明天课数、欠费、待续费）+ 今日课程列表
   function renderMobileHome() {
     const hero = document.getElementById('mobileHomeHero');
@@ -2277,7 +2346,7 @@
       else if (nowHM >= endHM) badge = '<button class="lm-tag lm-tag-due" data-home-checkin="' + s.id + '">待消课 ›</button>';
       else badge = '<button class="lm-tag lm-tag-todo" data-home-checkin="' + s.id + '">待上课 ›</button>';
       return `
-        <div class="lm-card px-5 py-4 flex items-center gap-3.5">
+        <div class="lm-card px-5 py-4 flex items-center gap-3.5" data-today-row="${s.id}">
           <div class="text-center shrink-0 min-w-[52px]">
             <div class="font-bold text-[18px] text-[#111111]">${s.startTime}</div>
             <div class="text-[10.5px] text-[#9c9fa5] mt-0.5">${s.durationMinutes || 45}分钟</div>
@@ -2294,16 +2363,23 @@
     const todaysLeave = todaysAll.filter(isLeaveSch);
     const todays = todaysNormal.concat(todaysLeave);
     const leaveDivider = todaysLeave.length
-      ? `<div class="flex items-center gap-2 px-1 py-0.5" style="margin:2px 0">
+      ? `<div class="flex items-center gap-2 px-1 py-0.5" data-today-divider style="margin:2px 0">
            <span class="flex-1 h-px" style="background:#efe9e0"></span>
            <span class="text-[10px] font-semibold text-[#b3aea6] tracking-wide">请假 ${todaysLeave.length} 节</span>
            <span class="flex-1 h-px" style="background:#efe9e0"></span>
          </div>`
       : '';
+    // 先量旧位置，再换 DOM，最后把每行从旧位置滑到新位置（请假沉底时看得见「它去了哪」）
+    const prevRowRects = snapshotTodayRows(todayBox);
+    const reorderId = pendingReorderId;
+    pendingReorderId = null;
+
     todayBox.innerHTML = `
       <div class="font-bold text-[13px] text-[#111111] px-1 pt-1">今日课程（${todays.length}）</div>
       ${todays.length === 0 ? '<div class="text-center text-[12px] text-[#9c9fa5] py-6 lm-card mt-1">今天没有课程安排</div>' : ''}
       ${todaysNormal.map(renderTodayRow).join('')}${leaveDivider}${todaysLeave.map(renderTodayRow).join('')}`;
+
+    playTodayRowFlip(todayBox, prevRowRects, reorderId);
 
     // 续费跟进清单已移至财务页（renderMobileFinancePanel）
     void lowList; void lowCount;
@@ -3653,6 +3729,7 @@
     debts = undoState.debts;
     clearUndo();
     saveData();
+    pendingReorderId = flashId || null; // 撤销请假时这一行滑回原位
     refreshMobileAll();
     showToast(`↩️ 已撤销：${label}`);
     if (window.uiAnim && flashId) window.uiAnim.flashSchedule(flashId);
