@@ -2135,12 +2135,16 @@
       const tomorrowAllH = schedules.filter((s) => s.date === tomorrowStr && inScope(s));
       const todayDoneH = todayAllH.filter((s) => s.status === SCHEDULE_STATUS.COMPLETED).length;
       const todayPendH = todayAllH.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).length;
+      // 今日课时不计请假：请假那节实际没上课，算进总数会把「今天要上多少节」报多
+      const todayLeaveH = todayAllH.filter((s) => s.status === SCHEDULE_STATUS.STUDENT_LEAVE).length;
+      const todayCountH = todayAllH.length - todayLeaveH;
+      const leaveTag = todayLeaveH ? ` · 请假 ${todayLeaveH}` : '';
       const nowHM = `${String(nowD.getHours()).padStart(2, '0')}:${String(nowD.getMinutes()).padStart(2, '0')}`;
       const nextUpH = todayPendH ? todayAllH.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED && s.startTime > nowHM).sort((a, b) => a.startTime.localeCompare(b.startTime))[0] : null;
       hero.innerHTML = `
         <div class="lm-card lm-hero" style="border-radius:22px 22px 0 0;position:relative;z-index:2;padding:20px 20px 12px">
           <div class="lm-eyebrow">今日课时</div>
-          <div class="lm-bignum">${todayAllH.length}<small>节课 · 已消 ${todayDoneH}</small></div>
+          <div class="lm-bignum">${todayCountH}<small>节课 · 已消 ${todayDoneH}${leaveTag}</small></div>
           ${nextUpH ? `
           <div class="mt-2 pt-1.5" style="border-top:1px solid #f0ebe2;display:flex;align-items:center;gap:8px">
             <span class="text-[11px] font-medium text-[#9c9fa5]" style="flex-shrink:0">下一节</span>
@@ -2160,6 +2164,10 @@
     } else {
       const myToday = schedules.filter((s) => s.date === todayStr && inScope(s)).sort((a, b) => a.startTime.localeCompare(b.startTime));
       const myTodayDone = myToday.filter((s) => s.status === SCHEDULE_STATUS.COMPLETED).length;
+      // 同上：今日课时不含请假（请假节次单独在右侧标出）
+      const myTodayLeave = myToday.filter((s) => s.status === SCHEDULE_STATUS.STUDENT_LEAVE).length;
+      const myTodayCount = myToday.length - myTodayLeave;
+      const myLeaveTag = myTodayLeave ? ` · 请假 ${myTodayLeave}` : '';
       const nowHM = `${String(nowD.getHours()).padStart(2, '0')}:${String(nowD.getMinutes()).padStart(2, '0')}`;
       const myNext = myToday.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED && s.startTime > nowHM)[0] || null;
       const myTomorrow = schedules.filter((s) => s.date === tomorrowStr && inScope(s)).sort((a, b) => a.startTime.localeCompare(b.startTime));
@@ -2169,7 +2177,7 @@
             <div class="lm-eyebrow" style="margin-bottom:0">${teacherSession.name.endsWith('老师') ? teacherSession.name : teacherSession.name + '老师'} · 今日课时</div>
             <button id="btnTeacherExitHome" class="text-[11px] bg-white rounded-full px-2.5 py-1 font-bold text-[#626260] shadow-xs active:bg-[#f1ece3]">退出</button>
           </div>
-          <div class="lm-bignum mt-1.5">${myToday.length}<small>节课 · 已消 ${myTodayDone}</small></div>
+          <div class="lm-bignum mt-1.5">${myTodayCount}<small>节课 · 已消 ${myTodayDone}${myLeaveTag}</small></div>
           ${myNext ? `
           <div class="mt-2 pt-1.5" style="border-top:1px solid #f0ebe2;display:flex;align-items:center;gap:8px">
             <span class="text-[11px] font-medium text-[#9c9fa5]" style="flex-shrink:0">下一节</span>

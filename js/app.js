@@ -1495,6 +1495,10 @@
     const todaySchedules = schedules.filter((s) => s.date === todayStr);
     const todayDone = todaySchedules.filter((s) => s.status === SCHEDULE_STATUS.COMPLETED).length;
     const todayPending = todaySchedules.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).length;
+    // 今日课时不计请假：请假那节实际没上课，算进总数会虚高
+    const todayLeave = todaySchedules.filter((s) => s.status === SCHEDULE_STATUS.STUDENT_LEAVE).length;
+    const todayLessonCount = todaySchedules.length - todayLeave;
+    const todayLeaveTag = todayLeave ? ` · 请假 ${todayLeave}` : '';
     const monthPrefix = todayStr.slice(0, 7);
     const monthLogs = checkInLogs.filter((l) => (l.checkInTime || '').startsWith(monthPrefix));
     const monthLessons = monthLogs.reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
@@ -1507,8 +1511,8 @@
       kpiRow.innerHTML = `
         <div class="bg-white border border-[#efe9e0] rounded-2xl p-5">
           <div class="text-[11px] text-[#a8a29e] font-bold">今日课程</div>
-          <div class="text-3xl font-black text-[#111111] mt-1.5">${todaySchedules.length} <span class="text-sm font-bold text-[#a8a29e]">节</span></div>
-          <div class="text-[11px] font-semibold mt-1.5 text-[#78716c]"><i class="fa-solid fa-circle-check mr-1"></i>已消 ${todayDone} · 待上 ${todayPending}</div>
+          <div class="text-3xl font-black text-[#111111] mt-1.5">${todayLessonCount} <span class="text-sm font-bold text-[#a8a29e]">节</span></div>
+          <div class="text-[11px] font-semibold mt-1.5 text-[#78716c]"><i class="fa-solid fa-circle-check mr-1"></i>已消 ${todayDone}${todayLeaveTag} · 待上 ${todayPending}</div>
         </div>
         <div class="bg-white border border-[#efe9e0] rounded-2xl p-5">
           <div class="text-[11px] text-[#a8a29e] font-bold">本月课消</div>
