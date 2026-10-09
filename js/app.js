@@ -2513,10 +2513,13 @@
     const endTimeStr = `${String(endHour).padStart(2, '0')}:${String(endMin).padStart(2, '0')}`;
 
     // 空间分层策略（break-ui 压测结论）：
-    //   宽：1 列=宽敞 / 2 列=中等 / ≥3 列=窄（时间、课程行整体退场，只留姓名）
+    //   宽：1 列=宽敞（时间+课程+老师课室全给）/ 2 列=中等（只留姓名+课程，
+    //       时间、老师、课室一律退场——格子被并排挤窄后，姓名和课程是唯一必须完整的信息）
+    //       / ≥3 列=窄（只剩姓名）
     //   高：<56px=矮卡（30 分钟，去角标底、课程改裸文本）/ ≥96px=高卡（信息分行铺开）
     //   老师·课室合并为一行点隔文本，去掉 👩‍🏫/📍 emoji（一张卡最多省 ~30px 横向空间）
     //   状态角标从绝对定位改为随行内联——压测里「✓消」角标正好盖住时间徽章
+    //   被挤掉的信息一律进 title 悬浮提示，不丢失
     const isNarrow = totalCols >= 3;
     const isMedium = totalCols === 2;
     const isSpacious = totalCols === 1;
@@ -2535,7 +2538,7 @@
     const metaText = metaParts.join(' · ');
 
     // 状态徽章内联化：矮卡窄卡只留单字（完整文案走 title）
-    const statusCompact = isShort || isNarrow;
+    const statusCompact = isShort || isNarrow || isMedium;
     let statusChip = '';
     if (schedule.status === SCHEDULE_STATUS.COMPLETED) {
       statusChip = `<span class="shrink-0 ${statusCompact ? 'text-[9px] px-0.5' : 'text-[8px] px-1'} font-black text-white bg-emerald-500 rounded-md leading-none py-[3px]" title="已消课">✓${statusCompact ? '' : ' 消'}</span>`;
@@ -2556,7 +2559,10 @@
 
     // 第二行内容：矮卡用裸文本（去掉徽章边框底色的 9px 高度开销）；
     // 高卡把老师·课室单独成行，用足纵向空间；窄卡整行退场。
-    const subjectPlain = `<span class="truncate opacity-90 ${isSpacious ? 'text-[10px] font-semibold' : 'text-[9px] font-medium'} min-w-0">${schedule.subject || ''}</span>`;
+    // 中等卡（两节并排）：姓名和课程各允许换两行——格子被挤窄后这两项是唯一必须完整的信息，
+    // 用宽度换行数，64px 高度实测放得下；超两行才截断（悬浮提示有全文）。
+    const canWrap = isMedium && !isShort;
+    const subjectPlain = `<span class="${canWrap ? 'line-clamp-2' : 'truncate'} opacity-90 ${isSpacious ? 'text-[10px] font-semibold' : 'text-[9px] font-medium'} min-w-0">${schedule.subject || ''}</span>`;
     const subjectBadge = `<span class="shrink-0 ${isSpacious ? 'text-[11px]' : 'text-[10px]'} font-bold px-1.5 py-0.5 bg-[#f5f2ec] lm-t1 rounded-md border border-[#efe9e0] truncate min-w-0 max-w-full">${schedule.subject || ''}</span>`;
     const metaLine = metaText ? `<span class="truncate opacity-80 ${isSpacious ? 'text-[10px] font-semibold' : 'text-[9px] font-medium'} min-w-0">${metaText}</span>` : '';
 
@@ -2579,10 +2585,11 @@
     if (isNarrow) {
       // 窄卡（≥3 节同段重叠）：一格只放得下姓名，其余全走悬浮提示
       bodyRows = '';
-    } else if (isShort) {
-      bodyRows = `<div class="leading-none flex items-center gap-1 shrink-0 min-w-0">${subjectPlain}${conflictIcon}</div>`;
+    } else if (isMedium || isShort) {
+      // 中等（两节并排）/ 矮卡：只保姓名 + 课程，课程用裸文本（不套徽章边框，省出空间给文字）
+      bodyRows = `<div class="leading-none flex items-center gap-1 shrink-0 min-w-0">${subjectPlain}${(isMedium || isShort) ? conflictIcon : ''}</div>`;
     } else {
-      // 高卡：课程徽章一行、老师·课室单独一行，用足纵向空间且不重复
+      // 宽敞卡：高卡课程徽章一行、老师·课室单独一行，用足纵向空间且不重复
       bodyRows = `<div class="leading-none flex items-center gap-1 min-w-0 shrink-0">${subjectBadge}${isTall ? '' : metaLine}</div>` +
         (isTall && metaLine ? `<div class="leading-none truncate opacity-80 ${isSpacious ? 'text-[10px] font-semibold' : 'text-[9px] font-medium'} min-w-0 shrink-0">${metaText}</div>` : '') +
         conflictFull;
@@ -2591,8 +2598,8 @@
     card.innerHTML = `
       <div class="flex flex-col ${vDist} h-full pointer-events-none px-2 py-1 min-w-0">
         <div class="flex items-center justify-between gap-1 leading-none shrink-0 min-w-0">
-          <span class="truncate text-[#111111] ${nameFontSize} flex-1 min-w-0 tracking-normal font-sans">${schedule.studentName}</span>
-          ${!isNarrow ? `<span class="${timeFontSize} shrink-0 bg-[#faf8f3] px-1 py-0.2 rounded border border-[#efe9e0] lm-t2">${schedule.startTime}</span>` : ''}
+          <span class="${canWrap ? 'line-clamp-2' : 'truncate'} text-[#111111] ${nameFontSize} flex-1 min-w-0 tracking-normal font-sans">${schedule.studentName}</span>
+          ${isSpacious ? `<span class="${timeFontSize} shrink-0 bg-[#faf8f3] px-1 py-0.2 rounded border border-[#efe9e0] lm-t2">${schedule.startTime}</span>` : ''}
           ${statusChip}
           ${isNarrow ? conflictIcon : ''}
         </div>
@@ -4290,6 +4297,9 @@
       S({ date: lmDay(3), startTime: '09:00', durationMinutes: 60, studentId: 's5', studentName: '李', subject: '声乐' }),
       S({ date: lmDay(3), startTime: '11:00', durationMinutes: 120, studentId: 's7', studentName: '🎵林晓彤', subject: '架子鼓', teacherId: 't1', teacherName: '欧阳老师', room: 'A-301' }),
       S({ date: lmDay(3), startTime: '14:00', durationMinutes: 60, studentId: 's6', studentName: 'Nguyễn Thị Minh Khai', subject: 'Ghi-ta cổ điển', teacherId: 't3', teacherName: '王老师', room: 'C-102' }),
+      // 周四 17:00：两节 60 分钟并排（中等宽度）——验证「只留姓名+课程」
+      S({ date: lmDay(3), startTime: '17:00', durationMinutes: 60, studentId: 's2', studentName: '欧阳梓萱', subject: '成人零基础钢琴速成班（VIP）', teacherId: 't1', teacherName: '欧阳老师', room: 'A-301' }),
+      S({ date: lmDay(3), startTime: '17:00', durationMinutes: 60, studentId: 's3', studentName: 'Anastasia Kowalczyk-Wiśniewska', subject: 'Violin Masterclass Grade 8', teacherId: 't1', teacherName: '欧阳老师', room: 'A-301' }),
       // 周五：常态课对照
       S({ date: lmDay(4), startTime: '10:00', durationMinutes: 60, studentId: 's2', studentName: '欧阳梓萱', subject: '钢琴', teacherId: 't1', teacherName: '欧阳老师', room: 'A-301' }),
       S({ date: lmDay(4), startTime: '15:00', durationMinutes: 45, studentId: 's8', studentName: '司马相如', subject: '小提琴', teacherId: 't2', teacherName: '司马老师' }),
