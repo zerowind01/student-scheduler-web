@@ -909,6 +909,7 @@
   }
 
   function saveDataLocalOnly() {
+    if (window.__lmFixtures) return; // break-ui 压测模式：测试数据绝不写入 localStorage
     localStorage.setItem(STORAGE_KEY_STUDENTS, JSON.stringify(students));
     localStorage.setItem(STORAGE_KEY_SCHEDULES, JSON.stringify(schedules));
     localStorage.setItem(STORAGE_KEY_TEACHERS, JSON.stringify(teachers));
@@ -1024,9 +1025,118 @@
     document.body.appendChild(ov);
   }
 
+  // ==========================================
+  // break-ui 压测模式（dev-only，与桌面端同款）
+  // URL 带 ?lmData=worst / ?lmData=demo：worst=把「最坏但真实」的数据灌进内存渲染手机课表卡，
+  // demo=常态对照组。只在内存里换数据：不落盘、不云同步、不动 localStorage。
+  // ==========================================
+  const LM_FIXTURE_MODE = (location.search.match(/[?&]lmData=(worst|demo)/) || [])[1] || '';
+
+  function lmDay(offset) {
+    const mon = getMonday(new Date());
+    return formatDate(addDays(mon, offset));
+  }
+
+  function lmFixtureStudents() {
+    return [
+      { id: 's1', name: '丁一', colorTheme: 'amber' },
+      { id: 's2', name: '欧阳梓萱', colorTheme: 'emerald' },
+      { id: 's3', name: 'Anastasia Kowalczyk-Wiśniewska', colorTheme: 'sky' },
+      { id: 's4', name: 'Christopher', colorTheme: 'purple' },
+      { id: 's5', name: '李', colorTheme: 'rose' },
+      { id: 's6', name: 'Nguyễn Thị Minh Khai', colorTheme: 'amber' },
+      { id: 's7', name: '🎵林晓彤', colorTheme: 'emerald' },
+      { id: 's8', name: '司马相如', colorTheme: 'sky' },
+    ];
+  }
+  function lmFixtureTeachers() {
+    return [
+      { id: 't1', name: '欧阳老师', subject: '钢琴', colorTheme: 'amber' },
+      { id: 't2', name: '司马老师', subject: '小提琴', colorTheme: 'emerald' },
+      { id: 't3', name: '王老师', subject: '声乐', colorTheme: 'sky' },
+    ];
+  }
+  function lmFixtureScheduleSet() {
+    let n = 0;
+    const S = (o) => ({ id: 'mf' + ++n, status: 'scheduled', durationMinutes: 60, ...o });
+    // 手机默认从「今天」起显示 3 日：样本铺在今天起的窗口，保证一定在屏幕上
+    const todayIdx = Math.round((new Date() - getMonday(new Date())) / 86400000);
+    const base = [0, 1, 2].map((k) => todayIdx + k);
+    return [
+      S({ date: lmDay(base[0]), startTime: '08:00', durationMinutes: 30, studentId: 's1', studentName: '丁一', subject: '钢琴' }),
+      S({ date: lmDay(base[0]), startTime: '09:00', durationMinutes: 60, studentId: 's2', studentName: '欧阳梓萱', subject: '成人零基础钢琴速成班（VIP一对一）', teacherId: 't1', teacherName: '欧阳老师', assistantTeacherId: 't2', assistantTeacherName: '司马老师', room: '音乐教室A-301（三角钢琴房）' }),
+      // 四节同段重叠：34px 窄列极限
+      S({ date: lmDay(base[0]), startTime: '10:00', durationMinutes: 45, studentId: 's2', studentName: '欧阳梓萱', subject: '钢琴', teacherId: 't1', teacherName: '欧阳老师', room: 'A-301' }),
+      S({ date: lmDay(base[0]), startTime: '10:15', durationMinutes: 45, studentId: 's3', studentName: 'Anastasia Kowalczyk-Wiśniewska', subject: 'Violin Masterclass Grade 8', teacherId: 't1', teacherName: '欧阳老师', room: 'A-301' }),
+      S({ date: lmDay(base[0]), startTime: '10:30', durationMinutes: 60, studentId: 's4', studentName: 'Christopher', subject: '声乐', teacherId: 't1', teacherName: '欧阳老师', room: 'A-301' }),
+      S({ date: lmDay(base[0]), startTime: '10:45', durationMinutes: 30, studentId: 's7', studentName: '🎵林晓彤', subject: '架子鼓', teacherId: 't1', teacherName: '欧阳老师', room: 'A-301' }),
+      S({ date: lmDay(base[0]), startTime: '13:00', durationMinutes: 120, studentId: 's7', studentName: '🎵林晓彤', subject: '架子鼓', teacherId: 't1', teacherName: '欧阳老师', room: 'A-301' }),
+      // 两节并排：53px 列宽 + 两种状态角标
+      S({ date: lmDay(base[0]), startTime: '17:00', durationMinutes: 60, studentId: 's2', studentName: '欧阳梓萱', subject: '成人零基础钢琴速成班（VIP）', teacherId: 't1', teacherName: '欧阳老师', room: 'A-301', status: 'completed' }),
+      S({ date: lmDay(base[0]), startTime: '17:00', durationMinutes: 60, studentId: 's3', studentName: 'Anastasia Kowalczyk-Wiśniewska', subject: 'Violin Masterclass Grade 8', teacherId: 't1', teacherName: '欧阳老师', room: 'A-301', status: 'student_leave' }),
+      S({ date: lmDay(base[1]), startTime: '09:00', durationMinutes: 60, studentId: 's3', studentName: 'Anastasia Kowalczyk-Wiśniewska', subject: 'Violin Masterclass Grade 8', teacherId: 't2', teacherName: '司马老师', room: 'B-205' }),
+      S({ date: lmDay(base[1]), startTime: '14:00', durationMinutes: 60, studentId: 's6', studentName: 'Nguyễn Thị Minh Khai', subject: 'Ghi-ta cổ điển', teacherId: 't3', teacherName: '王老师', room: 'C-102' }),
+      S({ date: lmDay(base[2]), startTime: '10:00', durationMinutes: 60, studentId: 's5', studentName: '李', subject: '声乐', teacherId: 't3', teacherName: '王老师', room: 'C-102' }),
+      S({ date: lmDay(base[2]), startTime: '15:00', durationMinutes: 45, studentId: 's8', studentName: '司马相如', subject: '小提琴', teacherId: 't2', teacherName: '司马老师' }),
+    ];
+  }
+  function lmDemoScheduleSet() {
+    let n = 0;
+    const S = (o) => ({ id: 'md' + ++n, status: 'scheduled', durationMinutes: 60, ...o });
+    const todayIdx = Math.round((new Date() - getMonday(new Date())) / 86400000);
+    return [
+      S({ date: lmDay(todayIdx), startTime: '09:00', durationMinutes: 60, studentId: 's1', studentName: '丁一', subject: '钢琴', teacherId: 't1', teacherName: '欧阳老师', room: 'A-301' }),
+      S({ date: lmDay(todayIdx), startTime: '15:00', durationMinutes: 45, studentId: 's2', studentName: '欧阳梓萱', subject: '声乐', teacherId: 't3', teacherName: '王老师' }),
+      S({ date: lmDay(todayIdx + 1), startTime: '10:00', durationMinutes: 60, studentId: 's3', studentName: 'Anastasia Kowalczyk', subject: '小提琴', teacherId: 't2', teacherName: '司马老师', room: 'B-205' }),
+      S({ date: lmDay(todayIdx + 2), startTime: '14:00', durationMinutes: 30, studentId: 's4', studentName: 'Christopher', subject: '吉他', teacherId: 't3', teacherName: '王老师', room: 'C-102' }),
+    ];
+  }
+
+  function applyLmFixtures() {
+    if (!LM_FIXTURE_MODE) return;
+    window.__lmFixtures = true;
+    if (LM_FIXTURE_MODE === 'worst') {
+      students = lmFixtureStudents();
+      schedules = lmFixtureScheduleSet();
+    } else {
+      students = lmFixtureStudents().slice(0, 4);
+      schedules = lmDemoScheduleSet();
+    }
+    // teachers 不动：压测只换学员与排课。老师的 accessPin 是本地字段，
+    // 替换它会让已登录的老师会话失效 → 平白弹出访问码登录门
+    if (!teachers || teachers.length === 0) teachers = lmFixtureTeachers();
+    schedules.forEach((s) => { if (!s.status) s.status = SCHEDULE_STATUS.SCHEDULED; });
+    schoolSyncKey = ''; // 双保险：压测数据严禁写云端
+    console.info(`[break-ui] lmData=${LM_FIXTURE_MODE} 已注入（仅内存，不落盘）`);
+  }
+
+  function renderLmFixtureToggle() {
+    if (!LM_FIXTURE_MODE) return;
+    const bar = document.createElement('div');
+    bar.style.cssText = 'position:fixed;bottom:calc(96px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:9999;background:#fff;border:1px solid #e5e0d5;border-radius:999px;padding:3px;display:flex;gap:2px;box-shadow:0 4px 14px rgba(0,0,0,.14);font-size:12px;font-family:inherit;';
+    [
+      ['demo', '示例数据'],
+      ['worst', '最坏数据'],
+    ].forEach(([key, label]) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      const active = key === LM_FIXTURE_MODE;
+      b.style.cssText = `border:0;border-radius:999px;padding:5px 12px;cursor:pointer;font:inherit;${active ? 'background:#111;color:#fff;font-weight:700;' : 'background:transparent;color:#626260;'}`;
+      b.onclick = () => {
+        const u = new URL(location.href);
+        u.searchParams.set('lmData', key);
+        location.href = u.toString();
+      };
+      bar.appendChild(b);
+    });
+    document.body.appendChild(bar);
+  }
+
   function initMobileApp() {
     checkUrlSyncData();
     loadData();
+    applyLmFixtures();
     syncScheduleColors();
     loadTeacherSession();
     if (typeof updateHeaderIdentity === 'function') updateHeaderIdentity();
@@ -1041,7 +1151,8 @@
       if (typeof renderMobileHome === 'function') renderMobileHome();
     });
     // 新设备无同步码 → 弹出创建/登录引导（最高层，处理完才能用）
-    if (!schoolSyncKey) showSyncGate();
+    if (!schoolSyncKey && !LM_FIXTURE_MODE) showSyncGate();
+    renderLmFixtureToggle();
   }
 
   // 老师访问码登录门：有未过期会话则不拦；无会话则先遮住页面再等输入
@@ -2572,51 +2683,68 @@
     if (schedule.room) tooltipParts.push(`课室:${schedule.room}`);
     card.setAttribute('title', tooltipParts.join(' · '));
 
-    // 冲突拆分：课室冲突跟在科目徽章旁边，其余（老师/学员撞课）仍独占一行
+    // 冲突拆分废弃前的旧写法保留在注释里：窄列放不下两行冲突文案，统一走「图标 + title」
     const conflictReasons = hasConflict ? conflictInfo.reasons : [];
-    const roomConflict = conflictReasons.includes('课室冲突');
-    const otherReasons = conflictReasons.filter((r) => r !== '课室冲突');
 
-    // 状态角标 + 视觉弱化（与桌面端一致）
-    let statusBadge = '';
+    // 空间分层（与桌面端同一套策略，阈值按手机实际列宽重定）：
+    //   手机 3 日视图：单列 ≈110px（只相当于桌面两节并排的卡宽）、两列 ≈53px、四列 ≈34px
+    //   单列      → 姓名 + 课程（时间徽章退场，完整时间进 title）
+    //   多列(≥2)  → 只留姓名（+冲突图标/状态单字），课程及以下全部退场
+    //   矮卡(<56px) → 单行截断不换行；普通/高卡 → 姓名、课程各允许两行，尽量完整显示
+    //   状态角标从绝对定位改内联——压测里「✓消/假」正好盖住姓名
+    const isNarrow = totalCols >= 2;
+    const isShort = heightPx < 56;
+    const isTall = heightPx >= 96;
+    const canWrap = !isNarrow && !isShort;
+    const statusCompact = isNarrow || isShort;
+
+    // 状态徽章内联化（紧凑态只留单字，完整文案走 title）
+    let statusChip = '';
     if (schedule.status === SCHEDULE_STATUS.COMPLETED) {
-      statusBadge = `<span class="absolute top-0.5 right-1 text-[8px] font-black text-white bg-emerald-500 px-1 py-0.2 rounded-md shadow-xs z-10" title="已消课">✓ 消</span>`;
+      statusChip = `<span class="shrink-0 ${statusCompact ? 'text-[9px] px-0.5' : 'text-[8px] px-1'} font-black text-white bg-emerald-500 rounded-md leading-none py-[3px]" title="已消课">✓${statusCompact ? '' : ' 消'}</span>`;
       card.style.opacity = '0.65';
     } else if (schedule.status === SCHEDULE_STATUS.STUDENT_LEAVE) {
-      statusBadge = `<span class="absolute top-0.5 right-1 text-[8px] font-black text-white bg-rose-400 px-1 py-0.2 rounded-md shadow-xs z-10" title="学员请假">假</span>`;
+      statusChip = `<span class="shrink-0 ${statusCompact ? 'text-[9px] px-0.5' : 'text-[8px] px-1'} font-black text-white bg-rose-400 rounded-md leading-none py-[3px]" title="学员请假">假</span>`;
       card.style.opacity = '0.5';
       card.classList.add('grayscale');
     }
 
+    // 冲突提示：多列/矮卡只留警示图标（34px 宽、48px 高都放不下整行文案）
+    const conflictIcon = hasConflict
+      ? `<span class="shrink-0 inline-flex items-center text-rose-700" title="${conflictReasons.join(' | ')}"><i class="fa-solid fa-triangle-exclamation text-rose-500 text-[9px]"></i></span>`
+      : '';
+    const conflictFull = hasConflict
+      ? `<div class="text-[9px] font-bold text-rose-700 bg-rose-100/95 border border-rose-300 px-1 py-0.2 rounded truncate flex items-center gap-0.5 shadow-2xs shrink-0 mt-0.5" title="${conflictReasons.join(' | ')}">
+           <i class="fa-solid fa-triangle-exclamation text-rose-500 shrink-0 text-[8px]"></i>
+           <span class="truncate leading-normal min-w-0">${conflictReasons.join('; ')}</span>
+         </div>`
+      : '';
+
+    // 课程：矮卡/多列用裸文本（省掉徽章边框的高度开销），单列普通卡保留徽章
+    const subjectText = schedule.subject || schedule.courseName || '课程';
+    const subjectPlain = `<span class="${canWrap ? 'line-clamp-2' : 'truncate'} opacity-90 text-[10px] font-semibold min-w-0">${subjectText}</span>`;
+    const subjectBadge = `<span class="text-[11px] font-bold px-1.5 py-0.5 bg-slate-100 lm-t1 rounded-md border border-slate-200 truncate min-w-0 max-w-full">${subjectText}</span>`;
+
+    // 纵向分布：多列/矮卡居中收紧；高卡顶部起排（justify-between 会在中间拉出大空洞）
+    const vDist = isNarrow ? 'justify-center' : (isShort ? 'justify-center gap-[2px]' : (isTall ? 'justify-start gap-1' : 'justify-between'));
+
+    let bodyRows;
+    if (isNarrow) {
+      bodyRows = '';
+    } else if (isShort) {
+      bodyRows = `<div class="leading-none flex items-center gap-1 shrink-0 min-w-0">${subjectPlain}${conflictIcon}</div>`;
+    } else {
+      bodyRows = `<div class="leading-none flex items-center gap-1 min-w-0 shrink-0">${subjectBadge}</div>` + conflictFull;
+    }
+
     card.innerHTML = `
-      ${statusBadge}
-      <div class="flex flex-col justify-between h-full space-y-0.5 pointer-events-none px-1.5 py-1">
-        <div class="flex items-center justify-between font-extrabold text-[12px] text-slate-900 leading-tight">
-          <span class="truncate flex-1">${schedule.studentName}</span>
-          ${
-            totalCols === 1
-              ? `<span class="text-[9px] font-mono shrink-0 bg-slate-50 px-1 py-0.2 rounded border border-slate-200 text-slate-500">${schedule.startTime}</span>`
-              : ''
-          }
+      <div class="flex flex-col ${vDist} h-full pointer-events-none px-1.5 py-1 min-w-0">
+        <div class="flex items-center justify-between gap-1 leading-tight shrink-0 min-w-0">
+          <span class="${canWrap ? 'line-clamp-2' : 'truncate'} flex-1 min-w-0 font-extrabold text-[12px] text-slate-900">${schedule.studentName}</span>
+          ${statusChip}
+          ${isNarrow ? conflictIcon : ''}
         </div>
-        <div class="leading-none flex items-center gap-1 min-w-0 -mt-[2px]">
-          <span class="text-[11px] font-bold px-1.5 py-0.5 bg-slate-100 lm-t1 rounded-md border border-slate-200 truncate min-w-0 max-w-[68%]">${schedule.subject || schedule.courseName || '课程'}</span>
-          ${
-            roomConflict
-              ? `<span class="text-[9px] font-bold text-rose-700 bg-rose-100 border border-rose-300 px-1 py-0.2 rounded shrink-0 shadow-2xs flex items-center gap-0.5 whitespace-nowrap" title="课室冲突">
-                   <i class="fa-solid fa-triangle-exclamation text-rose-500 animate-pulse text-[8px]"></i>课室冲突
-                 </span>`
-              : ''
-          }
-        </div>
-        ${
-          otherReasons.length
-            ? `<div class="text-[9px] font-bold text-rose-700 bg-rose-100/95 border border-rose-300 px-1 py-0.2 rounded truncate flex items-center gap-0.5 shadow-2xs shrink-0 mt-0.5" title="${otherReasons.join(' | ')}">
-                <i class="fa-solid fa-triangle-exclamation text-rose-500 animate-pulse shrink-0 text-[8px]"></i>
-                <span class="truncate leading-normal">${otherReasons.join('; ')}</span>
-               </div>`
-            : ''
-        }
+        ${bodyRows}
       </div>
     `;
 
