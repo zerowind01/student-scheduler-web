@@ -107,24 +107,10 @@ body {
   background-color: rgba(253, 251, 248, 0.75) !important;
 }
 
-/* ---- 课表卡片：纯白底 + 中性细边，不再按学员主题填彩色 ----
-   覆盖 styles.css 里 .event-amber / .event-emerald / … 的渐变与有色边框，
-   仅作用于电脑端（本文件只有 index.html 加载），手机端配色不受影响。
-   状态色（消课绿、请假红、冲突红边）属语义提示，予以保留。 */
-.schedule-event-card {
-  background: #ffffff !important;
-  border-top: 1px solid #efe9e0 !important;
-  border-right: 1px solid #efe9e0 !important;
-  border-bottom: 1px solid #efe9e0 !important;
-  /* 左侧弧形色条：只定宽与样式，颜色沿用 .event-amber / .event-emerald / … 的主题色，
-     卡片 12px 圆角会把它切成弧形状 */
-  border-left-width: 4px !important;
-  border-left-style: solid !important;
-  color: #111111 !important;
-}
-.schedule-event-card.has-conflict {
-  border-right: 3px solid #ef4444 !important;
-}
+/* ---- 课表卡片：改版说明（2026-10） ----
+   旧的「纯白底 + 左侧 4px 弧形色条」覆盖已移除：课卡改用整卡主题底色
+   （见 styles.css 的 .event-* 变量方案），左侧色条方案废弃。
+   状态色（消课绿、请假灰、冲突红边）属语义提示，仍由 styles.css 定义。 */
 
 /* ---- 学员卡选中态（批量排课拖拽时） ---- */
 .student-card.lm-picked {

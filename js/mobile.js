@@ -30,7 +30,7 @@
   const CAL_CELL_H = 46;                       // 单行日期格高度（px，用于展开/收起过渡）
 
   // 随机卡片颜色主题（app.js 里有同名函数，但手机端不加载 app.js，需本地实现）
-  const MOBILE_COLOR_THEMES = ['amber', 'emerald', 'sky', 'purple', 'rose'];
+  const MOBILE_COLOR_THEMES = ['amber', 'emerald', 'sky', 'purple', 'rose', 'mint'];
   function getRandomColorTheme() {
     return MOBILE_COLOR_THEMES[Math.floor(Math.random() * MOBILE_COLOR_THEMES.length)];
   }
@@ -1046,7 +1046,7 @@
       { id: 's5', name: '李', colorTheme: 'rose' },
       { id: 's6', name: 'Nguyễn Thị Minh Khai', colorTheme: 'amber' },
       { id: 's7', name: '🎵林晓彤', colorTheme: 'emerald' },
-      { id: 's8', name: '司马相如', colorTheme: 'sky' },
+      { id: 's8', name: '司马相如', colorTheme: 'mint' },
     ];
   }
   function lmFixtureTeachers() {
@@ -2316,7 +2316,8 @@
   }
 
   // ============ 周/月日历视图（收起=一周条 / 展开=整月网格 + 当日日程列表） ============
-  const CAL_DOT_COLORS = { amber: '#f59e0b', emerald: '#10b981', sky: '#0284c7', purple: '#9333ea', rose: '#f43f5e' };
+  // 学员主题色圆点：色卡色的深化版（白底上可见；底色本身太浅）
+  const CAL_DOT_COLORS = { amber: '#D9985F', emerald: '#7E9271', sky: '#4E93A8', purple: '#657166', rose: '#D08168', mint: '#7FA495' };
 
   function calInView(s) {
     return selectedTeacherFilter === 'all' ||
@@ -2723,7 +2724,7 @@
     // 课程：矮卡/多列用裸文本（省掉徽章边框的高度开销），单列普通卡保留徽章
     const subjectText = schedule.subject || schedule.courseName || '课程';
     const subjectPlain = `<span class="${canWrap ? 'line-clamp-2' : 'truncate'} opacity-90 text-[10px] font-semibold min-w-0">${subjectText}</span>`;
-    const subjectBadge = `<span class="text-[11px] font-bold px-1.5 py-0.5 bg-slate-100 lm-t1 rounded-md border border-slate-200 truncate min-w-0 max-w-full">${subjectText}</span>`;
+    const subjectBadge = `<span class="ev-chip text-[11px] font-bold px-1.5 py-0.5 rounded-md truncate min-w-0 max-w-full">${subjectText}</span>`;
 
     // 纵向分布：多列/矮卡居中收紧；高卡顶部起排（justify-between 会在中间拉出大空洞）
     const vDist = isNarrow ? 'justify-center' : (isShort ? 'justify-center gap-[2px]' : (isTall ? 'justify-start gap-1' : 'justify-between'));
@@ -2740,7 +2741,7 @@
     card.innerHTML = `
       <div class="flex flex-col ${vDist} h-full pointer-events-none px-1.5 py-1 min-w-0">
         <div class="flex items-center justify-between gap-1 leading-tight shrink-0 min-w-0">
-          <span class="${canWrap ? 'line-clamp-2' : 'truncate'} flex-1 min-w-0 font-extrabold text-[12px] text-slate-900">${schedule.studentName}</span>
+          <span class="event-name ${canWrap ? 'line-clamp-2' : 'truncate'} flex-1 min-w-0 font-extrabold text-[12px]">${schedule.studentName}</span>
           ${statusChip}
           ${isNarrow ? conflictIcon : ''}
         </div>
@@ -2826,19 +2827,19 @@
     return conflictsMap;
   }
 
-  // 按姓名稳定取色：同名学员永远同色，不同学员错开（6 色柔和板，配 tinted 背景）
+  // 按姓名稳定取色：同名学员永远同色，不同学员错开（定稿色卡六色，2026-10）
   const AVATAR_PALETTE = [
-    { bg: 'bg-rose-400',  ring: 'ring-rose-100',  solid: 'bg-rose-100',  text: 'text-rose-700' },
-    { bg: 'bg-sky-400',   ring: 'ring-sky-100',   solid: 'bg-sky-100',   text: 'text-sky-700' },
-    { bg: 'bg-emerald-400', ring: 'ring-emerald-100', solid: 'bg-emerald-100', text: 'text-emerald-700' },
-    { bg: 'bg-violet-400',  ring: 'ring-violet-100',  solid: 'bg-violet-100',  text: 'text-violet-700' },
-    { bg: 'bg-amber-400',   ring: 'ring-amber-100',   solid: 'bg-amber-100',   text: 'text-amber-700' },
-    { bg: 'bg-teal-400',    ring: 'ring-teal-100',    solid: 'bg-teal-100',    text: 'text-teal-700' },
+    { bg: 'bg-[#F3C3B2]', ring: 'ring-[#F3C3B2]/40',  solid: 'bg-[#F3C3B2]', text: 'text-[#7A4231]' },
+    { bg: 'bg-[#99CDD8]', ring: 'ring-[#99CDD8]/40',  solid: 'bg-[#99CDD8]', text: 'text-[#2E5D68]' },
+    { bg: 'bg-[#CFD6C4]', ring: 'ring-[#CFD6C4]/40',  solid: 'bg-[#CFD6C4]', text: 'text-[#47523C]' },
+    { bg: 'bg-[#657166]', ring: 'ring-[#657166]/40',  solid: 'bg-[#657166]', text: 'text-[#FFFFFF]' },
+    { bg: 'bg-[#FDE8D3]', ring: 'ring-[#FDE8D3]/40',  solid: 'bg-[#FDE8D3]', text: 'text-[#8A5A28]' },
+    { bg: 'bg-[#DAE9E3]', ring: 'ring-[#DAE9E3]/40',  solid: 'bg-[#DAE9E3]', text: 'text-[#3F6257]' },
   ];
-  // 学员自选 colorTheme（桌面端编辑弹窗可设）→ 头像色
+  // 学员自选 colorTheme → 头像色（与色卡主题一一对应）
   const THEME_TO_AVATAR = {
     amber: AVATAR_PALETTE[4], emerald: AVATAR_PALETTE[2], sky: AVATAR_PALETTE[1],
-    purple: AVATAR_PALETTE[3], rose: AVATAR_PALETTE[0],
+    purple: AVATAR_PALETTE[3], rose: AVATAR_PALETTE[0], mint: AVATAR_PALETTE[5],
   };
   function avatarColorFor(st) {
     if (st.colorTheme && THEME_TO_AVATAR[st.colorTheme]) return THEME_TO_AVATAR[st.colorTheme];

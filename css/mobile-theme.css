@@ -158,30 +158,44 @@ body:has(.lm-island) .toast-safe-bottom {
   box-shadow: var(--lm-card-shadow);
 }
 
-/* ---- 课表课程方格：扁平化配色（手机端专属，桌面端保持 styles.css 原样） ----
-   纯色底 + 发丝描边 + 左侧主色竖条，对齐 Intercom 扁平语言。
-   选择器带 .schedule-event-card 提高优先级，确保压过 styles.css 的渐变底。 */
-/* 与电脑端统一：卡片纯白底 + 中性细边，不填主题色；
-   左侧 4px 弧形色条保留，颜色沿用各学员主题色（styles.css 圆角自然成弧形） */
+/* ---- 课表课程方格：整卡主题底色（与桌面端同一套定稿色卡，2026-10 改版） ----
+   旧的「纯白底 + 左侧 4px 弧形色条」方案废弃。色卡：
+   #FDE8D3 奶油杏 / #CFD6C4 灰绿 / #99CDD8 雾蓝 / #657166 深灰绿 / #F3C3B2 陶粉 / #DAE9E3 青白
+   选择器带 .schedule-event-card 提高优先级，确保压过 styles.css。 */
 .schedule-event-card {
-  background: #ffffff;
-  border-color: #e2e8f0;
-  color: #1e293b;
+  background: var(--ev-bg, #ffffff);
+  color: var(--ev-sub, #1e293b);
+  border: 0;
+}
+.schedule-event-card .event-name { color: var(--ev-strong, #0f172a); }
+.schedule-event-card .ev-chip {
+  background: var(--ev-chip-bg, rgba(255, 255, 255, 0.6));
+  border: 1px solid var(--ev-chip-bd, rgba(15, 23, 42, 0.12));
+  color: var(--ev-strong, #0f172a);
 }
 .schedule-event-card.event-amber {
-  border-left-color: #f59e0b;
+  --ev-bg: #FDE8D3; --ev-strong: #111111; --ev-sub: #6B4A2B;
+  --ev-chip-bg: rgba(255, 255, 255, 0.55); --ev-chip-bd: rgba(107, 74, 43, 0.22);
 }
 .schedule-event-card.event-emerald {
-  border-left-color: #10b981;
+  --ev-bg: #CFD6C4; --ev-strong: #111111; --ev-sub: #47523C;
+  --ev-chip-bg: rgba(255, 255, 255, 0.5); --ev-chip-bd: rgba(71, 82, 60, 0.22);
 }
 .schedule-event-card.event-sky {
-  border-left-color: #0284c7;
+  --ev-bg: #99CDD8; --ev-strong: #111111; --ev-sub: #2E5D68;
+  --ev-chip-bg: rgba(255, 255, 255, 0.5); --ev-chip-bd: rgba(46, 93, 104, 0.22);
 }
 .schedule-event-card.event-purple {
-  border-left-color: #9333ea;
+  --ev-bg: #657166; --ev-strong: #FFFFFF; --ev-sub: rgba(255, 255, 255, 0.85);
+  --ev-chip-bg: rgba(255, 255, 255, 0.14); --ev-chip-bd: rgba(255, 255, 255, 0.28);
 }
 .schedule-event-card.event-rose {
-  border-left-color: #f43f5e;
+  --ev-bg: #F3C3B2; --ev-strong: #111111; --ev-sub: #7A4231;
+  --ev-chip-bg: rgba(255, 255, 255, 0.5); --ev-chip-bd: rgba(122, 66, 49, 0.22);
+}
+.schedule-event-card.event-mint {
+  --ev-bg: #DAE9E3; --ev-strong: #111111; --ev-sub: #3F6257;
+  --ev-chip-bg: rgba(255, 255, 255, 0.55); --ev-chip-bd: rgba(63, 98, 87, 0.22);
 }
 
 /* ---- 触控热区：手机上小图标按钮必须够大才点得准（44×44 为 iOS HIG 下限） ----

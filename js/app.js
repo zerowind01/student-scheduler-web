@@ -16,7 +16,8 @@
   const STORAGE_KEY_CHECKIN_LOGS = 'edu_scheduler_checkin_logs_v2';
   const STORAGE_KEY_DEBTS = 'edu_scheduler_debts_v2';
 
-  const COLOR_THEMES = ['amber', 'emerald', 'sky', 'purple', 'rose'];
+  // 学员主题色：2026-10 定稿色卡六色（键名是数据层约定不能改，渲染色已全端换新）
+  const COLOR_THEMES = ['amber', 'emerald', 'sky', 'purple', 'rose', 'mint'];
 
   function getRandomColorTheme() {
     return COLOR_THEMES[Math.floor(Math.random() * COLOR_THEMES.length)];
@@ -1243,7 +1244,8 @@
     });
 
     // 学员主题色圆点（与手机版同款：前 3 节去重，请假课不计）
-    const CAL_DOT_COLORS = { amber: '#f59e0b', emerald: '#10b981', sky: '#0284c7', purple: '#9333ea', rose: '#f43f5e' };
+    // 学员主题色圆点：色卡色的深化版（5px 小点在白底上必须够深才可见，底色本身太浅）
+    const CAL_DOT_COLORS = { amber: '#D9985F', emerald: '#7E9271', sky: '#4E93A8', purple: '#657166', rose: '#D08168', mint: '#7FA495' };
 
     grid.innerHTML = '';
     for (let i = 0; i < totalCells; i++) {
@@ -2250,12 +2252,14 @@
   }
 
   function getThemeBadgeStyle(theme) {
+    // 色卡系浅底 + 同系深字（白底页面上的头像徽章）；深灰绿用白字
     const map = {
-      amber: { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-300' },
-      emerald: { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-300' },
-      sky: { bg: 'bg-sky-100', text: 'text-sky-700', border: 'border-sky-300' },
-      purple: { bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-300' },
-      rose: { bg: 'bg-rose-100', text: 'text-rose-700', border: 'border-rose-300' },
+      amber:   { bg: 'bg-[#FDE8D3]', text: 'text-[#8A5A28]', border: 'border-[#EBC9A5]' },
+      emerald: { bg: 'bg-[#CFD6C4]', text: 'text-[#47523C]', border: 'border-[#B4BFA5]' },
+      sky:     { bg: 'bg-[#99CDD8]', text: 'text-[#2E5D68]', border: 'border-[#7EB6C3]' },
+      purple:  { bg: 'bg-[#657166]', text: 'text-[#FFFFFF]', border: 'border-[#4E5A50]' },
+      rose:    { bg: 'bg-[#F3C3B2]', text: 'text-[#7A4231]', border: 'border-[#E3A78F]' },
+      mint:    { bg: 'bg-[#DAE9E3]', text: 'text-[#3F6257]', border: 'border-[#B7D2C8]' },
     };
     return map[theme] || map.amber;
   }
@@ -2563,7 +2567,7 @@
     // 用宽度换行数，64px 高度实测放得下；超两行才截断（悬浮提示有全文）。
     const canWrap = isMedium && !isShort;
     const subjectPlain = `<span class="${canWrap ? 'line-clamp-2' : 'truncate'} opacity-90 ${isSpacious ? 'text-[10px] font-semibold' : 'text-[9px] font-medium'} min-w-0">${schedule.subject || ''}</span>`;
-    const subjectBadge = `<span class="shrink-0 ${isSpacious ? 'text-[11px]' : 'text-[10px]'} font-bold px-1.5 py-0.5 bg-[#f5f2ec] lm-t1 rounded-md border border-[#efe9e0] truncate min-w-0 max-w-full">${schedule.subject || ''}</span>`;
+    const subjectBadge = `<span class="ev-chip shrink-0 ${isSpacious ? 'text-[11px]' : 'text-[10px]'} font-bold px-1.5 py-0.5 rounded-md truncate min-w-0 max-w-full">${schedule.subject || ''}</span>`;
     const metaLine = metaText ? `<span class="truncate opacity-80 ${isSpacious ? 'text-[10px] font-semibold' : 'text-[9px] font-medium'} min-w-0">${metaText}</span>` : '';
 
     // 冲突提示：矮卡/窄卡只留警示图标（完整原因走 title），否则 48px 高度必裁切
@@ -2571,7 +2575,7 @@
       ? `<span class="shrink-0 inline-flex items-center text-rose-700" title="${conflictInfo.reasons.join(' | ')}"><i class="fa-solid fa-triangle-exclamation text-rose-500 text-[9px]"></i></span>`
       : '';
     const conflictFull = hasConflict
-      ? `<div class="text-[9px] font-bold text-rose-700 bg-rose-100/95 border border-rose-300 px-1 py-0.2 rounded truncate flex items-center gap-0.5 shadow-2xs shrink-0 mt-0.5" title="${conflictInfo.reasons.join(' | ')}">
+      ? `<div class="text-[9px] font-bold text-rose-700 bg-rose-100/95 border border-rose-300 px-1 py-0.2 rounded truncate flex items-center gap-0.5 shadow-2xs shrink-0 mt-[2px]" title="${conflictInfo.reasons.join(' | ')}">
           <i class="fa-solid fa-triangle-exclamation text-rose-500 shrink-0 text-[8px]"></i>
           <span class="truncate leading-normal min-w-0">${conflictInfo.reasons.join('; ')}</span>
          </div>`
@@ -2598,8 +2602,8 @@
     card.innerHTML = `
       <div class="flex flex-col ${vDist} h-full pointer-events-none px-2 py-1 min-w-0">
         <div class="flex items-center justify-between gap-1 leading-none shrink-0 min-w-0">
-          <span class="${canWrap ? 'line-clamp-2' : 'truncate'} text-[#111111] ${nameFontSize} flex-1 min-w-0 tracking-normal font-sans">${schedule.studentName}</span>
-          ${isSpacious ? `<span class="${timeFontSize} shrink-0 bg-[#faf8f3] px-1 py-0.2 rounded border border-[#efe9e0] lm-t2">${schedule.startTime}</span>` : ''}
+          <span class="event-name ${canWrap ? 'line-clamp-2' : 'truncate'} ${nameFontSize} flex-1 min-w-0 tracking-normal font-sans">${schedule.studentName}</span>
+          ${isSpacious ? `<span class="ev-chip ${timeFontSize} shrink-0 px-1 py-0.2 rounded lm-t2">${schedule.startTime}</span>` : ''}
           ${statusChip}
           ${isNarrow ? conflictIcon : ''}
         </div>
@@ -4260,7 +4264,7 @@
       { id: 's5', name: '李', colorTheme: 'rose' },
       { id: 's6', name: 'Nguyễn Thị Minh Khai', colorTheme: 'amber' },
       { id: 's7', name: '🎵林晓彤', colorTheme: 'emerald' },
-      { id: 's8', name: '司马相如', colorTheme: 'sky' },
+      { id: 's8', name: '司马相如', colorTheme: 'mint' },
     ];
   }
   function lmFixtureTeachers() {

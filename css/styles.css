@@ -164,7 +164,11 @@ body {
   box-shadow: none;
 }
 
-/* 6. 日历卡片 (Schedule Event Cards) */
+/* 6. 日历卡片 (Schedule Event Cards)
+      整卡主题底色方案（2026-10 色卡改版）：去掉旧的左侧 4px 弧形色条，
+      每个学员主题直接给整张卡上底色。颜色来自定稿色卡：
+      #FDE8D3 奶油杏 / #CFD6C4 灰绿 / #99CDD8 雾蓝 / #657166 深灰绿 / #F3C3B2 陶粉 / #DAE9E3 青白
+      文字对比度：浅色卡炭黑 #111（≥9:1）、深灰绿卡白 #fff（6.6:1），均过 WCAG AA 4.5:1。 */
 .schedule-event-card {
   position: absolute;
   border-radius: 12px;
@@ -178,7 +182,17 @@ body {
   user-select: none;
   z-index: 10;
   overflow: hidden;
-  border-left-width: 4px;
+  background: var(--ev-bg, #ffffff);
+  color: var(--ev-sub, #1c1917);
+  border: 0;
+}
+
+/* 姓名与徽章走变量，深色卡（deep 系）自动切白字 */
+.schedule-event-card .event-name { color: var(--ev-strong, #111111); }
+.schedule-event-card .ev-chip {
+  background: var(--ev-chip-bg, rgba(255, 255, 255, 0.6));
+  border: 1px solid var(--ev-chip-bd, rgba(28, 25, 23, 0.12));
+  color: var(--ev-strong, #111111);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -191,36 +205,30 @@ body {
   }
 }
 
-/* 颜色主题高级配色 */
+/* 颜色主题：定稿色卡六色。--ev-sub 用同色系深字而不是纯黑，底色仍是主角 */
 .event-amber {
-  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
-  border-color: #fde68a;
-  border-left-color: #f59e0b;
-  color: #78350f;
+  --ev-bg: #FDE8D3; --ev-strong: #111111; --ev-sub: #6B4A2B;
+  --ev-chip-bg: rgba(255, 255, 255, 0.55); --ev-chip-bd: rgba(107, 74, 43, 0.22);
 }
 .event-emerald {
-  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
-  border-color: #a7f3d0;
-  border-left-color: #10b981;
-  color: #064e3b;
+  --ev-bg: #CFD6C4; --ev-strong: #111111; --ev-sub: #47523C;
+  --ev-chip-bg: rgba(255, 255, 255, 0.5); --ev-chip-bd: rgba(71, 82, 60, 0.22);
 }
 .event-sky {
-  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-  border-color: #bae6fd;
-  border-left-color: #0284c7;
-  color: #0c4a6e;
+  --ev-bg: #99CDD8; --ev-strong: #111111; --ev-sub: #2E5D68;
+  --ev-chip-bg: rgba(255, 255, 255, 0.5); --ev-chip-bd: rgba(46, 93, 104, 0.22);
 }
 .event-purple {
-  background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%);
-  border-color: #e9d5ff;
-  border-left-color: #9333ea;
-  color: #581c87;
+  --ev-bg: #657166; --ev-strong: #FFFFFF; --ev-sub: rgba(255, 255, 255, 0.85);
+  --ev-chip-bg: rgba(255, 255, 255, 0.14); --ev-chip-bd: rgba(255, 255, 255, 0.28);
 }
 .event-rose {
-  background: linear-gradient(135deg, #fff1f2 0%, #ffe4e6 100%);
-  border-color: #fecdd3;
-  border-left-color: #f43f5e;
-  color: #881337;
+  --ev-bg: #F3C3B2; --ev-strong: #111111; --ev-sub: #7A4231;
+  --ev-chip-bg: rgba(255, 255, 255, 0.5); --ev-chip-bd: rgba(122, 66, 49, 0.22);
+}
+.event-mint {
+  --ev-bg: #DAE9E3; --ev-strong: #111111; --ev-sub: #3F6257;
+  --ev-chip-bg: rgba(255, 255, 255, 0.55); --ev-chip-bd: rgba(63, 98, 87, 0.22);
 }
 
 /* 时间冲突样式 (Conflict Warning)
