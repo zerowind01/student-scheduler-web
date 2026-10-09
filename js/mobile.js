@@ -2621,6 +2621,12 @@
     return card;
   }
 
+  // 请假的课不参与冲突判定：它不会真的发生，占用的资源实际是空的。
+  // 状态字段可能是历史数据里缺失的，缺省按 scheduled 处理。
+  function isLeaveStatus(sch) {
+    return (sch.status || SCHEDULE_STATUS.SCHEDULED) === SCHEDULE_STATUS.STUDENT_LEAVE;
+  }
+
   function detectScheduleConflicts() {
     const conflictsMap = new Map();
     const mapByDate = {};
@@ -2639,6 +2645,11 @@
         for (let j = i + 1; j < items.length; j++) {
           const a = items[i];
           const b = items[j];
+
+          // 请假 = 这节课实际上不会发生：学员不来，老师和课室也没被真正占用。
+          // 所以配对里只要有一节是请假，这一对就不构成冲突（两节都请假同理）。
+          if (isLeaveStatus(a) || isLeaveStatus(b)) continue;
+
           if (a.start < b.end && a.end > b.start) {
             const reasonsA = [];
             const reasonsB = [];
