@@ -2261,23 +2261,22 @@
       </div>`;
 
     // ---- 今日课程列表 ----
-    const todays = todayAll.slice().sort((a, b) => a.startTime.localeCompare(b.startTime));
-    todayBox.innerHTML = `
-      <div class="font-bold text-[13px] text-[#111111] px-1 pt-1">今日课程（${todays.length}）</div>
-      ${todays.length === 0 ? '<div class="text-center text-[12px] text-[#9c9fa5] py-6 lm-card mt-1">今天没有课程安排</div>' : ''}
-      ${todays.map((s) => {
-        const done = s.status === SCHEDULE_STATUS.COMPLETED;
-        const leave = s.status === SCHEDULE_STATUS.STUDENT_LEAVE;
-        // 按当前时间分态：待上课(黑) → 正在上课(橙) → 待消课(黄)
-        const nowHM = `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`;
-        const endHM = (() => { const [h, m] = (s.startTime || '00:00').split(':').map(Number); const d = new Date(); d.setHours(h, m + (s.durationMinutes || 45), 0, 0); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; })();
-        let badge;
-        if (done) badge = '<span class="lm-tag lm-tag-done">已消课</span>';
-        else if (leave) badge = '<span class="lm-tag lm-tag-leave">请假</span>';
-        else if (nowHM >= (s.startTime || '00:00') && nowHM < endHM) badge = '<span class="lm-tag lm-tag-live">正在上课</span>';
-        else if (nowHM >= endHM) badge = '<button class="lm-tag lm-tag-due" data-home-checkin="' + s.id + '">待消课 ›</button>';
-        else badge = '<button class="lm-tag lm-tag-todo" data-home-checkin="' + s.id + '">待上课 ›</button>';
-        return `
+    // 排序：正常课按时间在前，请假课沉到最后（请假的不用盯，别混在时间轴里占位），
+    // 两组之间插一条细分隔条，避免「为什么这节不按顺序」的困惑。
+    const isLeaveSch = (s) => s.status === SCHEDULE_STATUS.STUDENT_LEAVE;
+    const renderTodayRow = (s) => {
+      const done = s.status === SCHEDULE_STATUS.COMPLETED;
+      const leave = isLeaveSch(s);
+      // 按当前时间分态：待上课(黑) → 正在上课(橙) → 待消课(黄)
+      const nowHM = `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`;
+      const endHM = (() => { const [h, m] = (s.startTime || '00:00').split(':').map(Number); const d = new Date(); d.setHours(h, m + (s.durationMinutes || 45), 0, 0); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; })();
+      let badge;
+      if (done) badge = '<span class="lm-tag lm-tag-done">已消课</span>';
+      else if (leave) badge = '<span class="lm-tag lm-tag-leave">请假</span>';
+      else if (nowHM >= (s.startTime || '00:00') && nowHM < endHM) badge = '<span class="lm-tag lm-tag-live">正在上课</span>';
+      else if (nowHM >= endHM) badge = '<button class="lm-tag lm-tag-due" data-home-checkin="' + s.id + '">待消课 ›</button>';
+      else badge = '<button class="lm-tag lm-tag-todo" data-home-checkin="' + s.id + '">待上课 ›</button>';
+      return `
         <div class="lm-card px-5 py-4 flex items-center gap-3.5">
           <div class="text-center shrink-0 min-w-[52px]">
             <div class="font-bold text-[18px] text-[#111111]">${s.startTime}</div>
@@ -2289,7 +2288,22 @@
           </div>
           ${badge}
         </div>`;
-      }).join('')}`;
+    };
+    const todaysAll = todayAll.slice().sort((a, b) => a.startTime.localeCompare(b.startTime));
+    const todaysNormal = todaysAll.filter((s) => !isLeaveSch(s));
+    const todaysLeave = todaysAll.filter(isLeaveSch);
+    const todays = todaysNormal.concat(todaysLeave);
+    const leaveDivider = todaysLeave.length
+      ? `<div class="flex items-center gap-2 px-1 py-0.5" style="margin:2px 0">
+           <span class="flex-1 h-px" style="background:#efe9e0"></span>
+           <span class="text-[10px] font-semibold text-[#b3aea6] tracking-wide">请假 ${todaysLeave.length} 节</span>
+           <span class="flex-1 h-px" style="background:#efe9e0"></span>
+         </div>`
+      : '';
+    todayBox.innerHTML = `
+      <div class="font-bold text-[13px] text-[#111111] px-1 pt-1">今日课程（${todays.length}）</div>
+      ${todays.length === 0 ? '<div class="text-center text-[12px] text-[#9c9fa5] py-6 lm-card mt-1">今天没有课程安排</div>' : ''}
+      ${todaysNormal.map(renderTodayRow).join('')}${leaveDivider}${todaysLeave.map(renderTodayRow).join('')}`;
 
     // 续费跟进清单已移至财务页（renderMobileFinancePanel）
     void lowList; void lowCount;
