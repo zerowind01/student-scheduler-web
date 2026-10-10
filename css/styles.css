@@ -167,8 +167,9 @@ body {
 /* 6. 日历卡片 (Schedule Event Cards)
       整卡主题底色方案（2026-10 色卡改版）：去掉旧的左侧 4px 弧形色条，
       每个学员主题直接给整张卡上底色。颜色来自定稿色卡：
-      #FDE8D3 奶油杏 / #CFD6C4 灰绿 / #99CDD8 雾蓝 / #657166 深灰绿 / #F3C3B2 陶粉 / #DAE9E3 青白
-      文字对比度：浅色卡炭黑 #111（≥9:1）、深灰绿卡白 #fff（6.6:1），均过 WCAG AA 4.5:1。 */
+      #FDE8D3 奶油杏 / #CFD6C4 灰绿 / #99CDD8 雾蓝 / #A7B2A4 鼠尾草 / #F3C3B2 陶粉 / #DAE9E3 青白
+      文字对比度：全部六色均为浅底 + 炭黑/同系深字（≥8:1），过 WCAG AA 4.5:1。
+      （purple 曾用 #657166 深灰绿 + 白字：整页上太沉太突兀，且白底时间徽章看不清，已提亮） */
 .schedule-event-card {
   position: absolute;
   border-radius: 12px;
@@ -221,8 +222,8 @@ body {
   --ev-chip-bg: rgba(255, 255, 255, 0.5); --ev-chip-bd: rgba(46, 93, 104, 0.22);
 }
 .event-purple {
-  --ev-bg: #657166; --ev-strong: #FFFFFF; --ev-sub: rgba(255, 255, 255, 0.85);
-  --ev-chip-bg: rgba(255, 255, 255, 0.14); --ev-chip-bd: rgba(255, 255, 255, 0.28);
+  --ev-bg: #A7B2A4; --ev-strong: #111111; --ev-sub: #414C40;
+  --ev-chip-bg: rgba(255, 255, 255, 0.55); --ev-chip-bd: rgba(65, 76, 64, 0.22);
 }
 .event-rose {
   --ev-bg: #F3C3B2; --ev-strong: #111111; --ev-sub: #7A4231;
@@ -231,6 +232,24 @@ body {
 .event-mint {
   --ev-bg: #DAE9E3; --ev-strong: #111111; --ev-sub: #3F6257;
   --ev-chip-bg: rgba(255, 255, 255, 0.55); --ev-chip-bd: rgba(63, 98, 87, 0.22);
+}
+
+/* 请假的课卡：整卡更透 + 去饱和（保留一点主题色，不用全灰度——灰度会把卡片压成脏灰），
+   文字转灰白弱化，跟「已消课」的绿勾状态区分开来一眼可辨 */
+/* 选择器带两个类（0,3,0）而不是改变量：手机端 mobile-theme.css 后加载，
+   它的 .event-* 变量声明会盖掉这里的同名变量，直接写属性则不受加载顺序影响 */
+.schedule-event-card.is-leave {
+  opacity: 0.45;
+  filter: saturate(0.35);
+}
+.schedule-event-card.is-leave,
+.schedule-event-card.is-leave .event-name,
+.schedule-event-card.is-leave .ev-chip {
+  color: #5C635F;
+}
+.schedule-event-card.is-leave .ev-chip {
+  background: rgba(255, 255, 255, 0.4);
+  border-color: rgba(92, 99, 95, 0.2);
 }
 
 /* 时间冲突样式 (Conflict Warning)

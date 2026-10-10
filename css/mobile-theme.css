@@ -160,7 +160,7 @@ body:has(.lm-island) .toast-safe-bottom {
 
 /* ---- 课表课程方格：整卡主题底色（与桌面端同一套定稿色卡，2026-10 改版） ----
    旧的「纯白底 + 左侧 4px 弧形色条」方案废弃。色卡：
-   #FDE8D3 奶油杏 / #CFD6C4 灰绿 / #99CDD8 雾蓝 / #657166 深灰绿 / #F3C3B2 陶粉 / #DAE9E3 青白
+   #FDE8D3 奶油杏 / #CFD6C4 灰绿 / #99CDD8 雾蓝 / #A7B2A4 鼠尾草 / #F3C3B2 陶粉 / #DAE9E3 青白
    选择器带 .schedule-event-card 提高优先级，确保压过 styles.css。 */
 .schedule-event-card {
   background: var(--ev-bg, #ffffff);
@@ -186,8 +186,8 @@ body:has(.lm-island) .toast-safe-bottom {
   --ev-chip-bg: rgba(255, 255, 255, 0.5); --ev-chip-bd: rgba(46, 93, 104, 0.22);
 }
 .schedule-event-card.event-purple {
-  --ev-bg: #657166; --ev-strong: #FFFFFF; --ev-sub: rgba(255, 255, 255, 0.85);
-  --ev-chip-bg: rgba(255, 255, 255, 0.14); --ev-chip-bd: rgba(255, 255, 255, 0.28);
+  --ev-bg: #A7B2A4; --ev-strong: #111111; --ev-sub: #414C40;
+  --ev-chip-bg: rgba(255, 255, 255, 0.55); --ev-chip-bd: rgba(65, 76, 64, 0.22);
 }
 .schedule-event-card.event-rose {
   --ev-bg: #F3C3B2; --ev-strong: #111111; --ev-sub: #7A4231;

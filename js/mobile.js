@@ -2420,7 +2420,7 @@
 
   // ============ 周/月日历视图（收起=一周条 / 展开=整月网格 + 当日日程列表） ============
   // 学员主题色圆点：色卡色的深化版（白底上可见；底色本身太浅）
-  const CAL_DOT_COLORS = { amber: '#D9985F', emerald: '#7E9271', sky: '#4E93A8', purple: '#657166', rose: '#D08168', mint: '#7FA495' };
+  const CAL_DOT_COLORS = { amber: '#D9985F', emerald: '#7E9271', sky: '#4E93A8', purple: '#6F7C6C', rose: '#D08168', mint: '#7FA495' };
 
   function calInView(s) {
     return selectedTeacherFilter === 'all' ||
@@ -2809,8 +2809,8 @@
       card.style.opacity = '0.65';
     } else if (schedule.status === SCHEDULE_STATUS.STUDENT_LEAVE) {
       statusChip = `<span class="shrink-0 ${statusCompact ? 'text-[9px] px-0.5' : 'text-[8px] px-1'} font-black text-white bg-rose-400 rounded-md leading-none py-[3px]" title="学员请假">假</span>`;
-      card.style.opacity = '0.5';
-      card.classList.add('grayscale');
+      // 弱化交给 .is-leave（更透 + 去饱和 + 灰白字），不再用内联 opacity/灰度
+      card.classList.add('is-leave');
     }
 
     // 冲突提示：多列/矮卡只留警示图标（34px 宽、48px 高都放不下整行文案）
@@ -2935,7 +2935,7 @@
     { bg: 'bg-[#F3C3B2]', ring: 'ring-[#F3C3B2]/40',  solid: 'bg-[#F3C3B2]', text: 'text-[#7A4231]' },
     { bg: 'bg-[#99CDD8]', ring: 'ring-[#99CDD8]/40',  solid: 'bg-[#99CDD8]', text: 'text-[#2E5D68]' },
     { bg: 'bg-[#CFD6C4]', ring: 'ring-[#CFD6C4]/40',  solid: 'bg-[#CFD6C4]', text: 'text-[#47523C]' },
-    { bg: 'bg-[#657166]', ring: 'ring-[#657166]/40',  solid: 'bg-[#657166]', text: 'text-[#FFFFFF]' },
+    { bg: 'bg-[#A7B2A4]', ring: 'ring-[#A7B2A4]/40',  solid: 'bg-[#A7B2A4]', text: 'text-[#2F3A2E]' },
     { bg: 'bg-[#FDE8D3]', ring: 'ring-[#FDE8D3]/40',  solid: 'bg-[#FDE8D3]', text: 'text-[#8A5A28]' },
     { bg: 'bg-[#DAE9E3]', ring: 'ring-[#DAE9E3]/40',  solid: 'bg-[#DAE9E3]', text: 'text-[#3F6257]' },
   ];

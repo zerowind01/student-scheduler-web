@@ -1245,7 +1245,7 @@
 
     // 学员主题色圆点（与手机版同款：前 3 节去重，请假课不计）
     // 学员主题色圆点：色卡色的深化版（5px 小点在白底上必须够深才可见，底色本身太浅）
-    const CAL_DOT_COLORS = { amber: '#D9985F', emerald: '#7E9271', sky: '#4E93A8', purple: '#657166', rose: '#D08168', mint: '#7FA495' };
+    const CAL_DOT_COLORS = { amber: '#D9985F', emerald: '#7E9271', sky: '#4E93A8', purple: '#6F7C6C', rose: '#D08168', mint: '#7FA495' };
 
     grid.innerHTML = '';
     for (let i = 0; i < totalCells; i++) {
@@ -2264,7 +2264,7 @@
       amber:   { bg: 'bg-[#FDE8D3]', text: 'text-[#8A5A28]', border: 'border-[#EBC9A5]' },
       emerald: { bg: 'bg-[#CFD6C4]', text: 'text-[#47523C]', border: 'border-[#B4BFA5]' },
       sky:     { bg: 'bg-[#99CDD8]', text: 'text-[#2E5D68]', border: 'border-[#7EB6C3]' },
-      purple:  { bg: 'bg-[#657166]', text: 'text-[#FFFFFF]', border: 'border-[#4E5A50]' },
+      purple:  { bg: 'bg-[#A7B2A4]', text: 'text-[#2F3A2E]', border: 'border-[#8E9A8B]' },
       rose:    { bg: 'bg-[#F3C3B2]', text: 'text-[#7A4231]', border: 'border-[#E3A78F]' },
       mint:    { bg: 'bg-[#DAE9E3]', text: 'text-[#3F6257]', border: 'border-[#B7D2C8]' },
     };
@@ -2559,8 +2559,8 @@
     if (schedule.status === SCHEDULE_STATUS.COMPLETED) {
       card.style.opacity = '0.65';
     } else if (schedule.status === SCHEDULE_STATUS.STUDENT_LEAVE) {
-      card.style.opacity = '0.5';
-      card.classList.add('grayscale');
+      // 弱化交给 .is-leave（更透 + 去饱和 + 灰白字），不再用内联 opacity/灰度
+      card.classList.add('is-leave');
     }
 
     card.setAttribute(
@@ -2610,7 +2610,7 @@
       <div class="flex flex-col ${vDist} h-full pointer-events-none px-2 py-1 min-w-0">
         <div class="flex items-center justify-between gap-1 leading-none shrink-0 min-w-0">
           <span class="event-name ${canWrap ? 'line-clamp-2' : 'truncate'} ${nameFontSize} flex-1 min-w-0 tracking-normal font-sans">${schedule.studentName}</span>
-          ${isSpacious ? `<span class="ev-chip ${timeFontSize} shrink-0 px-1 py-0.2 rounded lm-t2">${schedule.startTime}</span>` : ''}
+          ${isSpacious ? `<span class="ev-chip ${timeFontSize} shrink-0 px-1 py-0.2 rounded">${schedule.startTime}</span>` : ''}
           ${statusChip}
           ${isNarrow ? conflictIcon : ''}
         </div>
