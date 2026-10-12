@@ -2756,7 +2756,10 @@
 
       const cell = document.createElement('button');
       cell.type = 'button';
-      cell.className = 'cal-cell flex flex-col items-center justify-start rounded-xl transition select-none active:bg-black/5';
+      // 不带 Tailwind 的 `transition`：那是个 9 属性子集（含 transform/filter/backdrop-filter），
+      // 拖过分界点让 14 个格子一起切 .is-month 时，等于同时重置一堆图层。
+      // 需要的只有 background-color（按下反馈）和 opacity（跨月压暗），在 mobile-theme.css 里显式列。
+      cell.className = 'cal-cell flex flex-col items-center justify-start rounded-xl select-none active:bg-black/5';
       cell.style.height = CAL_CELL_H + 'px';
       cell.setAttribute('data-date', dateStr);
       // 跨月日期不在这里压暗：周档看到的那一行可能整行跨月（月初/月末），
@@ -4019,8 +4022,10 @@
             if (!ok) closeActionMenu(); // 被拦下（状态守卫）：菜单别赖着不走
             return ok;
           },
-          // 刷新立即做（在退场动画底下重渲染），弹层自己滑自己的
-          () => { closeActionMenu(); refreshMobileAll(); }
+          // 刷新排在退场之后：refreshMobileAll 是一次同步的整站重渲染（日历 35 格 + 名单 + 首页），
+          // 和退场补间抢同一帧 —— 实测冷态下这段能造出 100ms+ 的长任务，正好砸在退场起步那几帧上。
+          // 排在 done 里还有个额外好处：数据不会在面板底下"当场变脸"。
+          () => { closeActionMenu(() => refreshMobileAll()); }
         );
         return;
       }

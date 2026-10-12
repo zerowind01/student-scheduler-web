@@ -339,7 +339,15 @@ button.w-8.h-8::after {
 
 /* 跨月日期压暗只发生在"整月"态：周档看到的那一行可能整行跨月
    （月初/月末），那时按格压暗会把整行都变灰，所以改由 #calGrid.is-month 决定。
-   默认 opacity:1，切换时借 .cal-cell 自带的 transition 淡入淡出。 */
+   默认 opacity:1，切换时借这里的 opacity 过渡淡入淡出。
+   ---------------------------------------------------------------
+   显式列出过渡属性（不用 Tailwind 的 `transition` —— 那是 9 个属性的子集，
+   含 transform/filter/backdrop-filter）。拖动时跨过分界点会让十几格同时切
+   .is-month，多列的属性一项都不需要，白付图层重置的钱。 */
+.cal-cell {
+  transition: background-color .15s ease, opacity .18s ease;
+  -webkit-tap-highlight-color: transparent;
+}
 #calGrid.is-month .cal-cell[data-out="1"] {
   opacity: 0.32;
 }

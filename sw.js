@@ -1,7 +1,7 @@
 // LessonMate PWA Service Worker
 // 策略：页面导航 network-first（保更新，断网回退缓存）；静态资源 SWR；/api/* 永不缓存
 // 更新版本号 CACHE 即可让全量客户端刷新
-const CACHE = 'lessonmate-v91';
+const CACHE = 'lessonmate-v92';
 const CORE = [
   '/', '/mobile', '/index.html', '/mobile.html', '/manifest.json',
   '/icons/icon-192.png?v=6', '/icons/icon-512.png?v=6', '/icons/apple-touch-icon.png?v=6',
@@ -27,7 +27,7 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;        // POST /api/sync 等永远直连网络
   if (url.pathname.startsWith('/api/')) return;  // 同步与 ICS 不缓存
-  if (url.origin !== location.origin) return;    // CDN（tailwind/gsap/fontawesome）直连
+  if (url.origin !== location.origin) return;    // 外域（gsap/fontawesome 的 CDN）直连
 
   // 页面导航：network-first，断网回退缓存
   if (e.request.mode === 'navigate') {

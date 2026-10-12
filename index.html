@@ -17,8 +17,6 @@
       location.href = 'mobile.html';
     }
   </script>
-  <!-- Tailwind CSS CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <!-- Custom CSS -->
@@ -33,7 +31,12 @@
       document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"><\/script>');
     }
   </script>
-  <script src="js/anim.js?v=11"></script>
+  <script src="js/anim.js?v=12"></script>
+  <!-- Tailwind：预生成的静态样式（替代 cdn.tailwindcss.com 的运行时 JIT）。
+       改完 class 要重新生成：tools\build-tailwind.cmd
+       ⚠ 必须留在 </head> 之前（即所有自有样式之后），复刻 Play CDN 把 <style>
+       append 到 head 末尾的层叠顺序；挪到前面会翻转优先级。 -->
+  <link rel="stylesheet" href="css/tailwind.css?v=1">
 </head>
 <body class="text-[#111111] font-sans h-screen flex flex-col overflow-hidden select-none" style="background: var(--surface-page);">
 

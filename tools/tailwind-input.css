@@ -1,0 +1,8 @@
+/* Tailwind 入口（唯一用途：生成 css/tailwind.css，替掉 cdn.tailwindcss.com）
+   生成命令：
+     npx -y tailwindcss@3.4.17 -c tailwind.config.js -i tools/tailwind-input.css -o css/tailwind.css --minify
+   产出必须排在 tools/tokens.css 等自有样式**之前**（preflight 要先落），
+   所以两个 HTML 里 <link href="css/tailwind.css"> 的位置就是原来 CDN script 的位置。 */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

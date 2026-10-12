@@ -177,8 +177,12 @@ function flashSchedule(scheduleId) {
    killTrackedTweens 是给「会被整体重建的列表节点」用的；把弹层补间并进去，
    列表一重渲染就会连进场动画一起掐掉（补间停在 yPercent:100 上 = 面板消失）。 */
 
-const SHEET_ENTER_S = 0.34;   // 进场：稍慢，有「落定」感
-const SHEET_EXIT_S = 0.22;    // 退场：比进场快（非对称，收起来要干脆）
+/* 进场 0.34s / 退场 0.20s —— 刻意非对称：进场是「落定」，退场是「让开」。
+   行程约 420px（4~6 个动作按钮），power3.out 让前 150ms 就走掉 2/3，
+   所以 340ms 的进场属于抽屉/模态的合理区间，不需要再砍。
+   退场必须比进场快，且**不能用 ease-in**（见 sheetOut 里的实测注释）。 */
+const SHEET_ENTER_S = 0.34;
+const SHEET_EXIT_S = 0.20;
 
 // 遮罩：约定的子节点 [data-sheet-backdrop]；找不到就只动面板（不报错）
 function sheetBackdrop(overlay, panel) {
@@ -197,7 +201,7 @@ function sheetIn(overlay, panel, opts) {
     if (bd) gsap.set(bd, { opacity: 0 });
 
     const tl = gsap.timeline();
-    if (bd) tl.to(bd, { opacity: 1, duration: 0.2, ease: 'power1.out' }, 0);
+    if (bd) tl.to(bd, { opacity: 1, duration: 0.18, ease: 'power2.out' }, 0);
     // 终态用 clearProps 把内联 transform 摘掉，交回 CSS（面板将来还要被其它逻辑复用）
     tl.to(panel, { yPercent: 0, duration: SHEET_ENTER_S, ease: 'power3.out', clearProps: 'transform' }, 0);
 
@@ -205,10 +209,14 @@ function sheetIn(overlay, panel, opts) {
     if (sel) {
       const items = panel.querySelectorAll(sel);
       if (items.length) {
+        // 错峰必须收在面板「落定」之前，否则会出现「面板停了、按钮还在往下飘」的尾巴。
+        // 6 个按钮：50 + 5*22 + 200 = 360ms ≈ 面板 340ms 落地。
+        // 按钮很多时（编辑类长菜单）把步长再压一半，避免整条菜单的进场被拉长。
+        const stagger = items.length > 8 ? 0.012 : 0.022;
         tl.fromTo(items,
           { y: 10, opacity: 0 },
-          { y: 0, opacity: 1, duration: 0.24, stagger: 0.028, ease: 'power2.out', clearProps: 'transform,opacity' },
-          0.06
+          { y: 0, opacity: 1, duration: 0.2, stagger, ease: 'power2.out', clearProps: 'transform,opacity' },
+          0.05
         );
       }
     }
@@ -236,9 +244,12 @@ function sheetOut(overlay, panel, done) {
   let called = false;
   const once = () => { if (called) return; called = true; finish(); };
   const tl = g.timeline({ onComplete: once, onInterrupt: once });
-  // 退场用 power1.in：起步就给位移（power2.in 的立方起步太黏，手会觉得"卡了半拍才走"）
-  if (bd) tl.to(bd, { opacity: 0, duration: SHEET_EXIT_S, ease: 'power1.in' }, 0);
-  tl.to(panel, { yPercent: 100, duration: SHEET_EXIT_S, ease: 'power1.in' }, 0);
+  /* 退场曲线必须是 ease-out 家族 —— 退出时用户盯的就是「第一帧有没有动」。
+     实测（面板高 420px、退场 220ms）：power1.in 前 70ms 只走 134px（32%），
+     power2.out 走 225px（54%）。用 ease-in 会让面板先「黏半拍」再走，
+     手感就是卡顿；这里同时把时长收到 0.20s，退场比进场快是刻意的非对称。 */
+  if (bd) tl.to(bd, { opacity: 0, duration: SHEET_EXIT_S, ease: 'power2.out' }, 0);
+  tl.to(panel, { yPercent: 100, duration: SHEET_EXIT_S, ease: 'power2.out' }, 0);
   // 兜底：补间若被外部 kill 掉，done 也得放出去，否则节点永远摘不掉
   setTimeout(once, (SHEET_EXIT_S + 0.15) * 1000);
 }
