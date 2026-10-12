@@ -20,7 +20,8 @@
   let courseTypes = [];
   let checkInLogs = [];
   let debts = [];
-  let selectedTeacherFilter = 'all';
+  let selectedTeacherFilter = 'all';           // 课表筛选范围：'all' | 老师 id
+  let teacherFilterAutoApplied = false;        // 老师身份下「默认只看自己」是否已应用（每次登录仅一次）
   let mobileStartDate = getToday(); // 默认从今天开始显示 3 日日历（周末也能直接看到今天）
 
   // 课表三档视图：一个状态 + 一个分段控件，各自分派到自己的渲染器
@@ -80,6 +81,10 @@
   function teacherLogout() {
     teacherSession = null;
     localStorage.removeItem('edu_teacher_session_v1');
+    // 课表筛选是「跟着身份走的视图范围」：退出老师身份就该回到全校，
+    // 否则管理员接手后课表还卡在上一位老师的范围里。
+    selectedTeacherFilter = 'all';
+    teacherFilterAutoApplied = false;
   }
 
   function isTeacherView() { return !!teacherSession; }
@@ -1723,6 +1728,9 @@
           if (typeof renderMobileFinance === 'function') renderMobileFinance();
           updateIdentityDesc();
       if (typeof updateHeaderIdentity === 'function') updateHeaderIdentity();
+          // 身份换了，课表范围也跟着换：管理员=全校，筛选框与课表立刻同步
+          renderMobileTeacherSelect();
+          renderCalendar();
           showToast('已切换到管理员身份');
           return;
         }
@@ -1736,6 +1744,12 @@
         if (typeof renderMobileFinance === 'function') renderMobileFinance();
         updateIdentityDesc();
       if (typeof updateHeaderIdentity === 'function') updateHeaderIdentity();
+        // 老师身份 = 课表默认只看自己的课，切换后立刻生效。
+        // 这里要显式清掉"已应用"标记：老师A → 老师B 是换了人，不能沿用上一位的范围
+        // （同一位老师重进也按"重新进入这个身份"处理，语义更可预期）。
+        teacherFilterAutoApplied = false;
+        renderMobileTeacherSelect();
+        renderCalendar();
         showToast(`已切换到 ${t.name} 老师视角`);
       });
       document.body.appendChild(ov);
@@ -2880,23 +2894,33 @@
     if (shown && window.uiAnim && window.uiAnim.viewIn) window.uiAnim.viewIn(shown);
   }
 
+  // 老师视角：进课表默认只看自己的课（三档视图共用，所以必须放在门面里 ——
+  // 默认档是「周」，写死在某个渲染器里就只对那一档生效，等于没做）。
+  // 每次老师会话只应用一次：之后老师手动切到别的老师 / 全部老师都尊重其选择，
+  // 不会被强行拉回来；退出老师身份（teacherLogout）后重置，下次登录再默认选中本人。
+  function applyTeacherScopeDefault() {
+    if (!isTeacherView()) { teacherFilterAutoApplied = false; return; }
+    if (teacherFilterAutoApplied) return;
+    teacherFilterAutoApplied = true;
+    const sel = document.getElementById('mobileTeacherSelect');
+    // 选项里没有这位老师（老师已被删 / 数据还没加载完）时不锁死，否则课表会空成一片
+    const known = !sel || [...sel.options].some((o) => o.value === teacherSession.teacherId);
+    selectedTeacherFilter = known ? teacherSession.teacherId : 'all';
+    if (sel && known) {
+      // 选项已在 renderMobileTeacherSelect 里建好，这里只同步选中值（重建 innerHTML 会白刷一遍）
+      sel.value = selectedTeacherFilter;
+    }
+  }
+
   // 渲染门面：所有刷新点只认这一个入口，内部按 calView 分派到各自的渲染器
   function renderCalendar() {
+    applyTeacherScopeDefault();
     renderMobileHomeCard();
     if (calView === 'day3') renderTimeline3();
     else renderCalGrid();
   }
 
   function renderTimeline3() {
-    // 老师视角：课表默认先看自己的课，但保留筛选框可切换（登录成为老师后的首次渲染时选中自己）
-    if (isTeacherView()) {
-      if (!window.__teacherFilterInit) {
-        window.__teacherFilterInit = true;
-        if (selectedTeacherFilter === 'all') selectedTeacherFilter = teacherSession.teacherId;
-      }
-    } else {
-      window.__teacherFilterInit = false; // 退出老师身份后重置，下次登录再默认选中
-    }
     const headerContainer = document.getElementById('mobileHeaderDays');
     const gridContainer = document.getElementById('mobileGridColumns');
     if (!headerContainer || !gridContainer) return;

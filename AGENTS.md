@@ -76,3 +76,4 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
 9. 周/月网格只有一份 DOM：`renderCalGrid` 永远渲染「选中日所在整月」，周档只是把 `#calGridWrap` 裁剪到一行（高度）+ 把 `#calGrid` 上移（位移）。**任何周↔月的视觉差异都必须由 `applyCalGridHeight(单一标量)` 推出**，不要在 calView 上分叉 DOM；跨月日期压暗也归 `#calGrid.is-month` 状态类管（周档那一行可能整行跨月）
 10. 切档只有 `setCalView()` 一个入口（分段控件 / `#calGrabber` 手势滑条 / 键盘共用）；周↔月的高度动画由 GSAP 驱动（`animateCalGridHeight`），**不要**再往 `#calGridWrap` 上写 CSS `transition:max-height`（那条过渡无法跟手、也无法从中途接管）
 11. `#calGrabber` 的拖动方向**固定为「下滑展开整月 / 上滑收起为周」**（`move` 里是 `h0 + dy`，`end` 里 `v > 0.5 → month`，键盘 `ArrowDown → month`）。滑条贴在日历底边，往下拉才跟着手指走；写成 `h0 - dy` 会变成「手指往下、滑条往上跑」的倒挂手感
+12. 「老师进课表默认只看自己的课」由 `applyTeacherScopeDefault()` 负责，且**只能在渲染门面 `renderCalendar()` 里调用**（三档视图共用，写进 `renderTimeline3`/`renderCalGrid` 就只对那一档生效）。它每次老师会话只应用一次，之后用户手动改的筛选范围不被覆盖；`teacherLogout()` 负责把范围重置回 `all`，设置页「切换身份」进出都要调它，否则课表会卡在上一位老师的范围里
