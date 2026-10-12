@@ -68,6 +68,8 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
 1. 改 `js/mobile.js` 后必须跑 `node --check js/mobile.js`
 2. `mobile.js` 是单 IIFE，函数间作用域私有；跨作用域用 `window.__switchMobileView` 桥
 3. 云同步会覆盖本地 localStorage（2秒轮询）——本地测试种子数据会被冲掉，注意时序
-4. 渲染函数：`renderMobileHome` / `renderMobile3DayView` / `renderMobileStudents` / `renderMobileFinance`
-5. 弹窗用真按钮弹窗（`lm-sheet`），**不要用 `prompt()`**
-6. 每次改完端到端验证真实用户操作路径，再部署
+4. 渲染函数：`renderMobileHome` / `renderCalendar`（课表渲染门面，按 `calView` 分派到 `renderTimeline3` 或 `renderCalGrid`）/ `renderMobileStudents` / `renderMobileFinance`
+5. 课表三档视图由**单一状态** `calView('day3'|'week'|'month')` 驱动，入口只有一个分段控件（`[data-calview]`）；旧的双入口 `calMode`+`calExpanded` 已移除，不要再加回来
+6. 状态徽章（已消课/请假/正在上课/待消课/待上课）统一走 `buildStatusBadge(s, {isToday, interactive})`，判定口径在 `resolveStatusKey`，不要在别处重写一份
+7. 弹窗用真按钮弹窗（`lm-sheet`），**不要用 `prompt()`**
+8. 每次改完端到端验证真实用户操作路径，再部署

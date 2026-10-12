@@ -23,11 +23,13 @@
   let selectedTeacherFilter = 'all';
   let mobileStartDate = getToday(); // 默认从今天开始显示 3 日日历（周末也能直接看到今天）
 
-  // 周/月日历（系统日历风格：收起=一周条，点标题展开整月，下方挂选中日日程）
-  let calMode = 'grid3';                       // 'grid3' 3日时间轴 | 'cal' 周/月
-  let calSelected = formatDate(getToday());    // 选中的日期
-  let calExpanded = false;                     // 是否展开整月网格
-  const CAL_CELL_H = 46;                       // 单行日期格高度（px，用于展开/收起过渡）
+  // 课表三档视图：一个状态 + 一个分段控件，各自分派到自己的渲染器
+  // 'day3' 3日时间轴 | 'week' 一周条 + 当天清单 | 'month' 整月格 + 当天清单
+  // 默认「周」：进课表先看这一周全貌，比 3 日窗口更适合快速定位。
+  let calView = 'week';
+  let calSelected = formatDate(getToday());    // 当前选中日期（周/月档共用）
+  const CAL_CELL_H = 46;                       // 单行日期格高度（px，用于月格高度过渡）
+  const isMonthView = () => calView === 'month';
 
   // 随机卡片颜色主题（app.js 里有同名函数，但手机端不加载 app.js，需本地实现）
   const MOBILE_COLOR_THEMES = ['amber', 'emerald', 'sky', 'purple', 'rose', 'mint'];
@@ -531,7 +533,7 @@
       purchaseCoursePack(student.id, courseName, lessons, price);
       showToast(`💳 ${student.name} 充值「${courseName}」${lessons} 节`);
       renderMobileStudents();
-      renderMobile3DayView();
+      renderCalendar();
     });
   }
 
@@ -665,7 +667,7 @@
     // 放在其它重渲染之前 —— 万一它们抛错，用户看到的滑动也已经发生了
     pendingReorderId = sch.id;
     if (typeof renderMobileHome === 'function') renderMobileHome();
-    renderMobile3DayView();
+    renderCalendar();
     renderMobileStudents();
     offerUndo(leaveMsg, `请假 ${sch.studentName}`);
     if (window.uiAnim) window.uiAnim.flashSchedule(sch.id);
@@ -694,7 +696,7 @@
     // 撤销请假：同一套 FLIP，让这一行滑回时间序里原来的位置
     pendingReorderId = sch.id;
     if (typeof renderMobileHome === 'function') renderMobileHome();
-    renderMobile3DayView();
+    renderCalendar();
     renderMobileStudents();
     offerUndo('已撤销状态，还原为待上课', `还原 ${sch.studentName} 的课`);
     if (window.uiAnim) window.uiAnim.flashSchedule(sch.id);
@@ -879,7 +881,7 @@
             localStorage.setItem('edu_scheduler_last_sync_time', String(remoteData.updatedAt));
             saveDataLocalOnly();
             renderMobileTeacherSelect();
-            renderMobile3DayView();
+            renderCalendar();
             renderMobileStudents();
 
             if (!force) {
@@ -910,7 +912,7 @@
           debts = (event.data.debts || []).map(normalizeDebt);
           saveDataLocalOnly();
           renderMobileTeacherSelect();
-          renderMobile3DayView();
+          renderCalendar();
           renderMobileStudents();
         }
       };
@@ -1160,7 +1162,7 @@
     mRenderCourseTypesDatalist();
     bindSeriesHintUpdates();
     renderMobileTeacherSelect();
-    renderMobile3DayView();
+    renderCalendar();
     renderMobileStudents();
     pullFromCloudSync(true).then(() => {
       if (typeof renderMobileHome === 'function') renderMobileHome();
@@ -1184,7 +1186,7 @@
       err.textContent = '';
       gate.classList.add('hidden');
       showToast(`欢迎，${t.name.endsWith('老师') ? t.name : t.name + '老师'}`);
-      renderMobile3DayView();
+      renderCalendar();
       renderMobileStudents();
       if (typeof renderMobileHome === 'function') renderMobileHome();
       if (typeof renderMobileFinance === 'function') renderMobileFinance();
@@ -1197,7 +1199,7 @@
     const adminBtn = document.getElementById('btnAdminBypass');
     if (adminBtn) adminBtn.addEventListener('click', () => {
       gate.classList.add('hidden');
-      renderMobile3DayView();
+      renderCalendar();
       renderMobileStudents();
       if (typeof renderMobileFinance === 'function') renderMobileFinance();
       if (typeof updateHeaderIdentity === 'function') updateHeaderIdentity();
@@ -1283,7 +1285,7 @@
           teachers = mergeTeachersKeepPin(data.teachers, teachers);
           saveData();
           renderMobileTeacherSelect();
-          renderMobile3DayView();
+          renderCalendar();
           renderMobileStudents();
           hideModal('modalSyncKey');
           showToast('⚡ 排课代码解析成功，已同步！');
@@ -1296,36 +1298,37 @@
     });
 
     safeBind('btnMobilePrev', 'click', () => {
-      if (calMode === 'cal') { shiftCalPage(-1); return; }
-      mobileStartDate = addDays(mobileStartDate, -3);
-      renderMobile3DayView();
+      if (calView === 'day3') { mobileStartDate = addDays(mobileStartDate, -3); renderCalendar(); return; }
+      shiftCalPage(-1);
     });
 
     safeBind('btnMobileNext', 'click', () => {
-      if (calMode === 'cal') { shiftCalPage(1); return; }
-      mobileStartDate = addDays(mobileStartDate, 3);
-      renderMobile3DayView();
+      if (calView === 'day3') { mobileStartDate = addDays(mobileStartDate, 3); renderCalendar(); return; }
+      shiftCalPage(1);
     });
 
     safeBind('btnMobileToday', 'click', () => {
-      // 以今天为窗口起点，保证今天永远在3日视图内（旧逻辑回到周一，周末时看不到今天）
+      // 两个游标一起回今天：3日窗口起点 + 周/月档选中日
       mobileStartDate = getToday();
-      if (calMode === 'cal') calSelected = formatDate(getToday());
-      renderMobile3DayView();
+      calSelected = formatDate(getToday());
+      renderCalendar();
     });
 
-    // 3日时间轴 ↔ 周/月日历 切换
-    safeBind('btnMobileCalMode', 'click', () => {
-      calMode = calMode === 'grid3' ? 'cal' : 'grid3';
-      if (calMode === 'cal') calSelected = formatDate(getToday());
-      applyCalModeUI();
+    // 三档视图切换：一个分段控件，点哪档到哪档（取代原来的「切换按钮 + 展开箭头」两个入口）
+    document.querySelectorAll('[data-calview]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const next = btn.getAttribute('data-calview');
+        if (!next || next === calView) return;
+        // 两套游标互相接力，切档位置连续（不会从"翻到下周的3日"又跳回今天）
+        if (next === 'day3') mobileStartDate = new Date(calSelected + 'T00:00:00');
+        else calSelected = formatDate(mobileStartDate);
+        calView = next;
+        applyCalViewUI();
+      });
     });
+    syncCalViewChrome(); // 首帧同步分段控件选中态与翻页文案
 
-    // ============ 周/月日历：展开收起 + 当日列表点击（翻页走日期条/滑动手势） ============
-    safeBind('btnCalExpand', 'click', () => {
-      calExpanded = !calExpanded;
-      renderMobileCal();
-    });
+    // ============ 周/月日历：当日列表点击（翻页走日期条/滑动手势） ============
     const calListEl = document.getElementById('calDayList');
     if (calListEl) calListEl.onclick = (e) => {
       const item = e.target.closest('[data-cal-item]');
@@ -1402,7 +1405,7 @@
         const dir = dx < 0 ? 1 : -1;                            // 左滑看后面，右滑看前面
         mobileStartDate = addDays(mobileStartDate, dir * 3);
         justSwiped = true;
-        renderMobile3DayView();
+        renderCalendar();
 
         // 轻微位移反馈：新窗口从滑动方向滑入
         const scroller = document.getElementById('mobileCalendarScroll');
@@ -1426,7 +1429,7 @@
 
     safeBind('mobileTeacherSelect', 'change', (e) => {
       selectedTeacherFilter = e.target.value;
-      renderMobile3DayView();
+      renderCalendar();
     });
 
     // ============ 四视图切换（课表/学员/财务/设置） ============
@@ -1492,13 +1495,12 @@
         const el = document.getElementById('view' + v.charAt(0).toUpperCase() + v.slice(1));
         if (el) el.classList.toggle('hidden', v !== view);
       });
-      // 周/月日历是课表的子模式：进课表时按 calMode 决定显示哪个容器，离开课表时一并隐藏
+      // 课表三档视图是同一 tab 的不同档位：按 calView 决定显示哪个容器，离开课表时一并隐藏
       const calweekEl = document.getElementById('viewCalweek');
-      if (calweekEl) calweekEl.classList.toggle('hidden', view !== 'schedule' || calMode !== 'cal');
-      if (view === 'schedule' && calMode === 'cal') {
-        const vs = document.getElementById('viewSchedule');
-        if (vs) vs.classList.add('hidden');
-      }
+      const vsEl = document.getElementById('viewSchedule');
+      const timelineOn = calView === 'day3';
+      if (calweekEl) calweekEl.classList.toggle('hidden', view !== 'schedule' || timelineOn);
+      if (vsEl) vsEl.classList.toggle('hidden', view !== 'schedule' || !timelineOn);
       // 底部 tab 切换不做整页淡入（高频操作，且整页动画撞在重渲染开销最大的时刻）
       if (view === 'settings' && typeof updateIdentityDesc === 'function') updateIdentityDesc();
       document.querySelectorAll('.nav-tab').forEach((tab) => {
@@ -2044,7 +2046,7 @@
     saveData();
     hideModal('modalMobileCourseMerge');
     mRenderCourseTypesList();
-    renderMobile3DayView();
+    renderCalendar();
     renderMobileStudents();
     offerUndo(`已归并 ${picked} 个课程名（${touchedPackages} 个课程包 / ${touchedLessons} 节排课）`, `课程名归并 ${picked} 项`);
   }
@@ -2374,22 +2376,10 @@
     const isLeaveSch = (s) => s.status === SCHEDULE_STATUS.STUDENT_LEAVE;
     const renderTodayRow = (s) => {
       const done = s.status === SCHEDULE_STATUS.COMPLETED;
-      const leave = isLeaveSch(s);
-      // 按当前时间分态：待上课(黑) → 正在上课(橙) → 待消课(黄)
-      const nowHM = `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`;
-      const endHM = (() => { const [h, m] = (s.startTime || '00:00').split(':').map(Number); const d = new Date(); d.setHours(h, m + (s.durationMinutes || 45), 0, 0); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; })();
-      let badge;
-      if (done) badge = '<span class="lm-tag lm-tag-done">已消课</span>';
-      else if (leave) badge = '<span class="lm-tag lm-tag-leave">请假</span>';
-      else if (nowHM >= (s.startTime || '00:00') && nowHM < endHM) badge = '<span class="lm-tag lm-tag-live"><i class="lm-live-dot" aria-hidden="true"></i>正在上课</span>';
-      // 待消课 = 一键消课，徽章自带 转圈 → 绿底打勾 三态（对齐桌面看板）；
-      // 待上课（课还没到）仍开操作菜单 —— 先看选项比直接扣课时更稳妥。
-      else if (nowHM >= endHM) badge = '<button class="lm-tag lm-tag-due lm-checkin-btn" data-home-checkin="' + s.id + '">' +
-        '<span class="lm-cb-label">待消课 ›</span>' +
-        '<span class="lm-cb-spinner" aria-hidden="true"></span>' +
-        '<svg class="lm-cb-check" viewBox="0 0 24 24" aria-hidden="true"><path pathLength="100" d="M4.5 12.6 L9.7 17.8 L19.5 6.6"/></svg>' +
-        '</button>';
-      else badge = '<button class="lm-tag lm-tag-todo" data-home-checkin="' + s.id + '">待上课 ›</button>';
+      // 状态口径与日历共用 resolveStatusKey：待上课(黑) → 正在上课(橙) → 待消课(黄)。
+      // 首页是「今天」，所以 interactive=true：待消课=一键消课按钮（转圈→绿底打勾三态），
+      // 待上课仍开操作菜单（课没到，先看选项比直接扣课时稳妥）。
+      const badge = buildStatusBadge(s, { isToday: true, interactive: true });
       return `
         <div class="lm-card px-5 py-4 flex items-center gap-3.5" data-today-row="${s.id}">
           <div class="text-center shrink-0 min-w-[52px]">
@@ -2486,20 +2476,67 @@
     };
   }
 
-  // ============ 周/月日历视图（收起=一周条 / 展开=整月网格 + 当日日程列表） ============
+  // ============ 课表三档共用逻辑（状态判定 / 老师筛选 / 圆点色） ============
   // 学员主题色圆点：色卡色的深化版（白底上可见；底色本身太浅）
   const CAL_DOT_COLORS = { amber: '#D9985F', emerald: '#7E9271', sky: '#4E93A8', purple: '#6F7C6C', rose: '#D08168', mint: '#7FA495' };
 
-  function calInView(s) {
-    return selectedTeacherFilter === 'all' ||
-      s.teacherId === selectedTeacherFilter || s.assistantTeacherId === selectedTeacherFilter;
+  // 老师范围筛选（3日时间轴 / 周条 / 整月格 共用一份口径）
+  function filterByTeacher(list) {
+    if (selectedTeacherFilter === 'all') return list;
+    return list.filter((s) => s.teacherId === selectedTeacherFilter || s.assistantTeacherId === selectedTeacherFilter);
   }
 
-  function renderMobileCal() {
+  // 状态判定：done / leave / live / due / todo（首页今日课时与日历共用一份口径）。
+  // isToday=false（在看别的日期）时不标「待消课」——那些课只是还没走到，标了会误导。
+  function resolveStatusKey(s, isToday) {
+    if (s.status === SCHEDULE_STATUS.COMPLETED) return 'done';
+    if (s.status === SCHEDULE_STATUS.STUDENT_LEAVE) return 'leave';
+    const now = new Date();
+    const nowHM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const [h, m] = (s.startTime || '00:00').split(':').map(Number);
+    const end = new Date();
+    end.setHours(h, m + (s.durationMinutes || 45), 0, 0);
+    const endHM = `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`;
+    if (nowHM >= (s.startTime || '00:00') && nowHM < endHM) return 'live';
+    if (isToday && nowHM >= endHM) return 'due';
+    return 'todo';
+  }
+
+  const STATUS_BADGE_TEXT = { done: '已消课', leave: '请假', live: '正在上课', due: '待消课', todo: '待上课' };
+
+  // 状态徽章 HTML。interactive=true 时「待消课 / 待上课」渲染成一键消课按钮（首页看板用）。
+  function buildStatusBadge(s, opts) {
+    opts = opts || {};
+    const key = resolveStatusKey(s, opts.isToday);
+    if (opts.interactive && (key === 'due' || key === 'todo')) {
+      if (key === 'due') {
+        return '<button class="lm-tag lm-tag-due lm-checkin-btn" data-home-checkin="' + s.id + '">' +
+          '<span class="lm-cb-label">待消课 ›</span>' +
+          '<span class="lm-cb-spinner" aria-hidden="true"></span>' +
+          '<svg class="lm-cb-check" viewBox="0 0 24 24" aria-hidden="true"><path pathLength="100" d="M4.5 12.6 L9.7 17.8 L19.5 6.6"/></svg>' +
+          '</button>';
+      }
+      return '<button class="lm-tag lm-tag-todo" data-home-checkin="' + s.id + '">待上课 ›</button>';
+    }
+    const dot = key === 'live' ? '<i class="lm-live-dot" aria-hidden="true"></i>' : '';
+    return '<span class="lm-tag lm-tag-' + key + '">' + dot + STATUS_BADGE_TEXT[key] + '</span>';
+  }
+
+  // 日历圆点色：取前 3 节不同学员主题色（请假课不计圆点，与桌面月视图同口径）
+  function dotColorsFor(list) {
+    const themes = [];
+    (list || []).forEach((s) => {
+      if (s.status === SCHEDULE_STATUS.STUDENT_LEAVE) return;
+      const t = resolveScheduleTheme(s);
+      if (themes.length < 3 && !themes.includes(t)) themes.push(t);
+    });
+    return themes.map((t) => CAL_DOT_COLORS[t] || CAL_DOT_COLORS.amber);
+  }
+
+  function renderCalGrid() {
     const grid = document.getElementById('calGrid');
     const wrap = document.getElementById('calGridWrap');
     const titleEl = document.getElementById('calTitle');
-    const chevron = document.getElementById('calChevron');
     const listEl = document.getElementById('calDayList');
     const dayTitleEl = document.getElementById('calDayTitle');
     if (!grid || !listEl || !wrap) return;
@@ -2507,20 +2544,19 @@
     const selDate = new Date(calSelected + 'T00:00:00');
     const todayStr = formatDate(getToday());
     if (titleEl) titleEl.textContent = `${selDate.getFullYear()}年${selDate.getMonth() + 1}月`;
-    if (chevron) chevron.style.transform = calExpanded ? 'rotate(180deg)' : '';
 
     // 每天的课（按老师筛选；请假不计圆点，与桌面月视图同口径）
     const byDate = new Map();
-    schedules.filter(calInView).forEach((s) => {
+    filterByTeacher(schedules).forEach((s) => {
       if (!byDate.has(s.date)) byDate.set(s.date, []);
       byDate.get(s.date).push(s);
     });
 
-    // 网格范围：收起=选中日所在周；展开=选中日所在月（按周一对齐，补足整周）
-    const anchor = calExpanded ? new Date(selDate.getFullYear(), selDate.getMonth(), 1) : selDate;
+    // 网格范围：周档=选中日所在周（1 行）；月档=选中日所在月（按周一对齐，补足整周）
+    const anchor = isMonthView() ? new Date(selDate.getFullYear(), selDate.getMonth(), 1) : selDate;
     const start = getMonday(anchor);
     let weeks = 1;
-    if (calExpanded) {
+    if (isMonthView()) {
       const last = new Date(selDate.getFullYear(), selDate.getMonth() + 1, 0);
       weeks = Math.ceil((Math.round((last - start) / 86400000) + 1) / 7);
     }
@@ -2535,18 +2571,13 @@
     for (let i = 0; i < totalCells; i++) {
       const d = addDays(start, i);
       const dateStr = formatDate(d);
-      const inMonth = !calExpanded || d.getMonth() === anchorMonth;
+      const inMonth = !isMonthView() || d.getMonth() === anchorMonth;
       const isToday = dateStr === todayStr;
       const isSel = dateStr === calSelected;
       const dayLessons = byDate.get(dateStr) || [];
 
       // 圆点标课：取前 3 节的学员主题色，去重（请假课不计圆点，与桌面月视图同口径）
-      const themes = [];
-      dayLessons.forEach((s) => {
-        if (s.status === SCHEDULE_STATUS.STUDENT_LEAVE) return;
-        const t = resolveScheduleTheme(s);
-        if (themes.length < 3 && !themes.includes(t)) themes.push(t);
-      });
+      const dots = dotColorsFor(dayLessons);
 
       const cell = document.createElement('button');
       cell.type = 'button';
@@ -2561,12 +2592,12 @@
       else numCls = inMonth ? 'color:#111111;font-weight:700' : 'color:#9c9fa5;font-weight:500';
       cell.innerHTML = `
         <span class="w-8 h-8 rounded-full flex items-center justify-center text-[13.5px]" style="${numCls}">${d.getDate()}</span>
-        <span class="flex items-center gap-[3px]" style="height:5px;margin-top:2px">${themes.map((t) => `<span class="rounded-full" style="width:4px;height:4px;background:${CAL_DOT_COLORS[t] || CAL_DOT_COLORS.amber}"></span>`).join('')}</span>
+        <span class="flex items-center gap-[3px]" style="height:5px;margin-top:2px">${dots.map((c) => `<span class="rounded-full" style="width:4px;height:4px;background:${c}"></span>`).join('')}</span>
       `;
       cell.addEventListener('click', () => {
-        if (calSelected === dateStr && !calExpanded) return;
+        if (calSelected === dateStr && !isMonthView()) return;
         calSelected = dateStr;
-        renderMobileCal();
+        renderCalGrid();
       });
       grid.appendChild(cell);
     }
@@ -2582,7 +2613,6 @@
         ${label} · ${dayList.length} 节课`;
     }
 
-    const nowHM = `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`;
     if (dayList.length === 0) {
       listEl.innerHTML = `
         <div class="text-center py-10 text-[#9c9fa5]">
@@ -2592,18 +2622,7 @@
     } else {
       listEl.innerHTML = dayList.map((s) => {
         const done = s.status === SCHEDULE_STATUS.COMPLETED;
-        const leave = s.status === SCHEDULE_STATUS.STUDENT_LEAVE;
-        const endMins = (() => {
-          const [h, m] = (s.startTime || '00:00').split(':').map(Number);
-          return h * 60 + m + (s.durationMinutes || 45);
-        })();
-        const endHM = `${String(Math.floor(endMins / 60)).padStart(2, '0')}:${String(endMins % 60).padStart(2, '0')}`;
-        let badge;
-        if (done) badge = '<span class="lm-tag lm-tag-done">已消课</span>';
-        else if (leave) badge = '<span class="lm-tag lm-tag-leave">请假</span>';
-        else if (nowHM >= (s.startTime || '00:00') && nowHM < endHM) badge = '<span class="lm-tag lm-tag-live"><i class="lm-live-dot" aria-hidden="true"></i>正在上课</span>';
-        else if (calSelected === todayStr && nowHM >= endHM) badge = '<span class="lm-tag lm-tag-due">待消课</span>';
-        else badge = '<span class="lm-tag lm-tag-todo">待上课</span>';
+        const badge = buildStatusBadge(s, { isToday: calSelected === todayStr });
         return `
         <div class="lm-card px-5 py-4 flex items-center gap-3.5 ${done ? 'opacity-60' : ''}" data-cal-item="${s.id}">
           <div class="text-center shrink-0 min-w-[52px]">
@@ -2622,59 +2641,64 @@
     // dateBar 文字与标题同步
     const dateTextEl = document.getElementById('mobileDateText');
     if (dateTextEl) {
-      dateTextEl.textContent = calExpanded
+      dateTextEl.textContent = isMonthView()
         ? `${selDate.getFullYear()}年${selDate.getMonth() + 1}月`
-        : `${selDate.getMonth() + 1}月${selDate.getDate()}日 ${weekdayNames[selDate.getDay()]}`;
+        : `${selDate.getMonth() + 1}/${selDate.getDate()} ${weekdayNames[selDate.getDay()]}`;
     }
   }
 
-  // 周/月模式翻页：收起=切换单日（周条自动跟随选中日所在周），展开=整月切换（保持“选中日序号”尽量不变）
+  // 周/月翻页：周档平移一周；月档翻月（保持"选中日序号"尽量不变）
   function shiftCalPage(dir) {
     const sel = new Date(calSelected + 'T00:00:00');
-    if (calExpanded) {
+    if (isMonthView()) {
       const targetMonth = new Date(sel.getFullYear(), sel.getMonth() + dir, 1);
       const lastDay = new Date(targetMonth.getFullYear(), targetMonth.getMonth() + 1, 0).getDate();
       const d = new Date(targetMonth.getFullYear(), targetMonth.getMonth(), Math.min(sel.getDate(), lastDay));
       calSelected = formatDate(d);
     } else {
-      calSelected = formatDate(addDays(sel, dir));
+      calSelected = formatDate(addDays(sel, dir * 7));
     }
-    renderMobileCal();
+    renderCalGrid();
   }
 
-  // 课表模式切换：3日时间轴 ↔ 周/月日历
-  function applyCalModeUI() {
-    const vs = document.getElementById('viewSchedule');
-    const vc = document.getElementById('viewCalweek');
-    const icon = document.getElementById('calModeIcon');
-    if (vs) vs.classList.toggle('hidden', calMode === 'cal');
-    if (vc) vc.classList.toggle('hidden', calMode !== 'cal');
-    if (icon) icon.className = calMode === 'cal'
-      ? 'fa-solid fa-table-columns text-[12px]'
-      : 'fa-solid fa-calendar-days text-[12px]';
+  // 分段控件外观同步：选中态 + 翻页按钮文案（不动容器显隐，避免与 tab 切换打架）
+  function syncCalViewChrome() {
+    document.querySelectorAll('[data-calview]').forEach((btn) => {
+      const on = btn.getAttribute('data-calview') === calView;
+      btn.classList.toggle('is-on', on);
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
     const p = document.getElementById('btnMobilePrev');
     const n = document.getElementById('btnMobileNext');
-    if (calMode === 'cal') {
-      if (p) p.innerHTML = '<i class="fa-solid fa-chevron-left text-[10px]"></i> 前周';
-      if (n) n.innerHTML = '后周 <i class="fa-solid fa-chevron-right text-[10px]"></i>';
-    } else {
-      if (p) p.innerHTML = '<i class="fa-solid fa-chevron-left text-[10px]"></i> 前3天';
-      if (n) n.innerHTML = '后3天 <i class="fa-solid fa-chevron-right text-[10px]"></i>';
-    }
-    if (calMode === 'cal') renderMobileCal();
-    // 模式切换进场：低频切换（一天几次），给一个轻微位移说明「换了一整套视图」。
+    const prevLabel = calView === 'day3' ? '前3天' : (calView === 'week' ? '前周' : '前月');
+    const nextLabel = calView === 'day3' ? '后3天' : (calView === 'week' ? '后周' : '后月');
+    if (p) p.innerHTML = '<i class="fa-solid fa-chevron-left text-[10px]"></i> ' + prevLabel;
+    if (n) n.innerHTML = nextLabel + ' <i class="fa-solid fa-chevron-right text-[10px]"></i>';
+  }
+
+  // 课表视图切换：3日时间轴 / 周条 / 整月格（分段控件驱动）
+  function applyCalViewUI() {
+    const vs = document.getElementById('viewSchedule');
+    const vc = document.getElementById('viewCalweek');
+    const isTimeline = calView === 'day3';
+    if (vs) vs.classList.toggle('hidden', !isTimeline);
+    if (vc) vc.classList.toggle('hidden', isTimeline);
+    syncCalViewChrome();
+    renderCalendar();
+    // 视图切换进场：低频切换（一天几次），给一个轻微位移说明「换了一整套视图」。
     // 底部 tab 切换仍刻意不做整页淡入（高频操作 + 正撞重渲染开销最大的时刻）。
-    const shown = calMode === 'cal' ? vc : vs;
+    const shown = isTimeline ? vs : vc;
     if (shown && window.uiAnim && window.uiAnim.viewIn) window.uiAnim.viewIn(shown);
   }
 
-  function renderMobile3DayView() {
-    // 周/月日历模式下，所有既有刷新点统一分流到月历渲染
-    if (calMode === 'cal') {
-      renderMobileHomeCard();
-      renderMobileCal();
-      return;
-    }
+  // 渲染门面：所有刷新点只认这一个入口，内部按 calView 分派到各自的渲染器
+  function renderCalendar() {
+    renderMobileHomeCard();
+    if (calView === 'day3') renderTimeline3();
+    else renderCalGrid();
+  }
+
+  function renderTimeline3() {
     // 老师视角：课表默认先看自己的课，但保留筛选框可切换（登录成为老师后的首次渲染时选中自己）
     if (isTeacherView()) {
       if (!window.__teacherFilterInit) {
@@ -2689,12 +2713,16 @@
     if (!headerContainer || !gridContainer) return;
     headerContainer.innerHTML = '';
     gridContainer.innerHTML = '';
-    renderMobileHomeCard();
 
     const endDate = addDays(mobileStartDate, 2);
     const dateTextEl = document.getElementById('mobileDateText');
     if (dateTextEl) {
-      dateTextEl.textContent = `${mobileStartDate.getMonth() + 1}月${mobileStartDate.getDate()}日 - ${endDate.getMonth() + 1}月${endDate.getDate()}日`;
+      // 紧凑格式，给右侧三档分段控件让宽度（日期栏在窄屏上很挤）
+      // 同月省掉第二个月份（"10/12 - 14"），跨月才写全（"10/30 - 11/1"）
+      const fromLabel = `${mobileStartDate.getMonth() + 1}/${mobileStartDate.getDate()}`;
+      dateTextEl.textContent = mobileStartDate.getMonth() === endDate.getMonth()
+        ? `${fromLabel} - ${endDate.getDate()}`
+        : `${fromLabel} - ${endDate.getMonth() + 1}/${endDate.getDate()}`;
     }
 
     const weekdayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
@@ -2734,10 +2762,7 @@
         }
       });
 
-      let daySchedules = schedules.filter((s) => s.date === dateStr);
-      if (selectedTeacherFilter !== 'all') {
-        daySchedules = daySchedules.filter((s) => s.teacherId === selectedTeacherFilter || s.assistantTeacherId === selectedTeacherFilter);
-      }
+      const daySchedules = filterByTeacher(schedules.filter((s) => s.date === dateStr));
 
       const layoutItems = layoutOverlapEvents(daySchedules);
       layoutItems.forEach((sch) => {
@@ -3493,7 +3518,7 @@
 
     saveData();
     closeMobileScheduleModal();
-    renderMobile3DayView();
+    renderCalendar();
     // 保存后高亮刚改/刚建的那一节，让改动有落点
     const mobileSavedId = schId || (schedules.length ? schedules[schedules.length - 1].id : '');
     if (window.uiAnim && mobileSavedId) window.uiAnim.flashSchedule(mobileSavedId);
@@ -3562,7 +3587,7 @@
     if (!sch) return;
     deleteMobileScheduleWithScope(sch, () => {
       closeMobileScheduleModal();
-      renderMobile3DayView();
+      renderCalendar();
     });
   }
 
@@ -3772,7 +3797,7 @@
       else if (act === 'edit') openMobileScheduleModalForEdit(schedule);
       else if (act === 'delete') {
         deleteMobileScheduleWithScope(schedule, () => {
-          renderMobile3DayView();
+          renderCalendar();
           renderMobileStudents();
         });
       }
@@ -3805,7 +3830,7 @@
   }
 
   function refreshMobileAll() {
-    renderMobile3DayView();
+    renderCalendar();
     renderMobileStudents();
     if (typeof renderMobileHome === 'function') renderMobileHome();
   }
@@ -4089,7 +4114,7 @@
     saveData();
     closeMobileStudentModal();
     renderMobileStudents();
-    renderMobile3DayView();
+    renderCalendar();
   }
 
   function handleDeleteMobileStudent() {
@@ -4106,7 +4131,7 @@
       saveData();
       closeMobileStudentModal();
       renderMobileStudents();
-      renderMobile3DayView();
+      renderCalendar();
       offerUndo('已删除学员记录', `删除学员 ${victim ? victim.name : ''}`);
     }
   }

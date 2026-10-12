@@ -20,7 +20,7 @@
   <link rel="stylesheet" href="css/intercom-tokens.css?v=1">
   <link rel="stylesheet" href="css/styles.css?v=32">
   <!-- 手机端 Intercom 主题（岛台导航/奶油渐变/软陶卡） -->
-  <link rel="stylesheet" href="css/mobile-theme.css?v=30">
+  <link rel="stylesheet" href="css/mobile-theme.css?v=31">
   <!-- GSAP 动效：本地内置优先；缺失才回落 CDN，都失败也只是动效变静态 -->
   <script src="js/vendor/gsap.min.js?v=1"></script>
   <script>
@@ -60,25 +60,25 @@
     </div>
   </header>
 
-  <!-- 手机版 日期导航栏 (3日/1日 滚动控制) -->
-  <div id="mobileDateBar" class="lm-datebar px-3 py-2 flex items-center justify-between text-xs shrink-0 z-10">
-    <div class="flex items-center space-x-1">
-      <button id="btnMobilePrev" class="lm-btn-ghost px-2.5 py-1.5 font-semibold transition flex items-center gap-1">
-        <i class="fa-solid fa-chevron-left text-[10px]"></i> 前3天
-      </button>
-      <button id="btnMobileToday" class="lm-btn-ink px-3.5 py-1.5 font-bold transition">
-        今天
-      </button>
-      <button id="btnMobileNext" class="lm-btn-ghost px-2.5 py-1.5 font-semibold transition flex items-center gap-1">
-        后3天 <i class="fa-solid fa-chevron-right text-[10px]"></i>
-      </button>
-    </div>
-    <span id="mobileDateText" class="font-bold text-[#111111] text-xs text-right truncate">
-      9月1日 - 9月3日
-    </span>
-    <button id="btnMobileCalMode" aria-label="切换周月视图" title="切换 周·月视图 / 3日课表" class="lm-btn-ghost ml-1 shrink-0 w-8 h-8 flex items-center justify-center transition">
-      <i id="calModeIcon" class="fa-solid fa-calendar-days text-[12px]"></i>
+  <!-- 手机版 日期导航栏：翻页 + 日期文案 + 三档视图分段控件 -->
+  <div id="mobileDateBar" class="lm-datebar px-3 py-2 flex items-center gap-1.5 text-xs shrink-0 z-10">
+    <button id="btnMobilePrev" class="lm-btn-ghost px-1.5 py-1.5 font-semibold transition flex items-center gap-0.5 shrink-0">
+      <i class="fa-solid fa-chevron-left text-[10px]"></i> 前周
     </button>
+    <button id="btnMobileToday" class="lm-btn-ink px-2 py-1.5 font-bold transition shrink-0">
+      今天
+    </button>
+    <button id="btnMobileNext" class="lm-btn-ghost px-1.5 py-1.5 font-semibold transition flex items-center gap-0.5 shrink-0">
+      后周 <i class="fa-solid fa-chevron-right text-[10px]"></i>
+    </button>
+    <span id="mobileDateText" class="flex-1 min-w-0 font-bold text-[#111111] text-[11px] text-right truncate">
+      10/12 - 10/14
+    </span>
+    <div id="calViewSeg" class="lm-seg shrink-0" role="group" aria-label="课表视图切换">
+      <button type="button" data-calview="day3" aria-pressed="false">3日</button>
+      <button type="button" data-calview="week" aria-pressed="true">周</button>
+      <button type="button" data-calview="month" aria-pressed="false">月</button>
+    </div>
   </div>
 
   <!-- 手机端 主视图 (课表视图 vs 学员列表) -->
@@ -144,10 +144,7 @@
     <div id="viewCalweek" class="h-full flex flex-col overflow-hidden hidden">
       <!-- 标题行：年月 + 展开箭头（翻页走日期条按钮或左右滑动手势） -->
       <div class="flex items-center px-4 pt-3 pb-0.5 shrink-0">
-        <button id="btnCalExpand" class="flex items-center gap-1.5 active:opacity-60 transition" aria-label="展开/收起整月">
-          <span id="calTitle" class="text-[20px] font-extrabold text-[#111111] tracking-tight">10月</span>
-          <i id="calChevron" class="fa-solid fa-chevron-down text-[11px] text-[#9c9fa5] transition-transform duration-300"></i>
-        </button>
+        <span id="calTitle" class="text-[20px] font-extrabold text-[#111111] tracking-tight">10月</span>
       </div>
 
       <!-- 星期表头 + 日历网格（收起=一周条，展开=整月） -->
@@ -620,7 +617,7 @@
     </div>
   </div>
 
-  <script src="js/mobile.js?v=42"></script>
+  <script src="js/mobile.js?v=43"></script>
   <!-- 老师访问码登录遮罩（管理员数据加载后自动隐藏） -->
   <div id="teacherLoginGate" class="hidden fixed inset-0 z-[90] lm-gate flex flex-col items-center justify-center px-8">
     <div class="w-14 h-14 rounded-2xl bg-[#111111] flex items-center justify-center text-white shadow-lg mb-4">
