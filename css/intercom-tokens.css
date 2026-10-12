@@ -87,6 +87,34 @@
 .lm-tag-done { background: #f1ece3; color: #4a4a48; }
 .lm-tag-todo { background: var(--lm-ink); color: #fff; }
 .lm-tag-leave { background: #ffe9ec; color: #d5304f; }
+/* 正在上课：口径 待上课(黑) → 正在上课(橙) → 待消课(黄)。
+   橙调浅底深字（#A63E00 on #FFDFCB ≈ 5.0:1）+ 呼吸圆点，语义上「进行中」。 */
+.lm-tag-live { background: #FFDFCB; color: #A63E00; gap: 6px; }
+.lm-live-dot {
+  position: relative;
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #FF5600;
+}
+.lm-live-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: #FF5600;
+  animation: lm-live-ring 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+/* 只动 transform/opacity，走合成层，避免 repaint */
+@keyframes lm-live-ring {
+  0%   { transform: scale(1);   opacity: 0.55; }
+  70%  { transform: scale(2.6); opacity: 0; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lm-live-dot::after { animation: none; opacity: 0; }
+}
 
 /* ---- 主按钮：Fin 橙（全站唯一橙色，仅课表页主操作） ---- */
 .lm-btn-fin {

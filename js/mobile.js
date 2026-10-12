@@ -2381,7 +2381,7 @@
       let badge;
       if (done) badge = '<span class="lm-tag lm-tag-done">已消课</span>';
       else if (leave) badge = '<span class="lm-tag lm-tag-leave">请假</span>';
-      else if (nowHM >= (s.startTime || '00:00') && nowHM < endHM) badge = '<span class="lm-tag lm-tag-live">正在上课</span>';
+      else if (nowHM >= (s.startTime || '00:00') && nowHM < endHM) badge = '<span class="lm-tag lm-tag-live"><i class="lm-live-dot" aria-hidden="true"></i>正在上课</span>';
       // 待消课 = 一键消课，徽章自带 转圈 → 绿底打勾 三态（对齐桌面看板）；
       // 待上课（课还没到）仍开操作菜单 —— 先看选项比直接扣课时更稳妥。
       else if (nowHM >= endHM) badge = '<button class="lm-tag lm-tag-due lm-checkin-btn" data-home-checkin="' + s.id + '">' +
@@ -2601,7 +2601,7 @@
         let badge;
         if (done) badge = '<span class="lm-tag lm-tag-done">已消课</span>';
         else if (leave) badge = '<span class="lm-tag lm-tag-leave">请假</span>';
-        else if (nowHM >= (s.startTime || '00:00') && nowHM < endHM) badge = '<span class="lm-tag lm-tag-live">正在上课</span>';
+        else if (nowHM >= (s.startTime || '00:00') && nowHM < endHM) badge = '<span class="lm-tag lm-tag-live"><i class="lm-live-dot" aria-hidden="true"></i>正在上课</span>';
         else if (calSelected === todayStr && nowHM >= endHM) badge = '<span class="lm-tag lm-tag-due">待消课</span>';
         else badge = '<span class="lm-tag lm-tag-todo">待上课</span>';
         return `
