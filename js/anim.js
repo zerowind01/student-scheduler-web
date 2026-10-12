@@ -245,4 +245,7 @@ window.uiAnim = {
   runAsyncButton: runAsyncButton,
   isBusy: () => busyCount > 0,
   emitRendered: emitRendered,
+  // 供调用方自行判断是否需要"直落终态"（如手机端日历的手势跟手动画）：
+  // RM 是实时值，系统偏好中途改也能立刻跟上。
+  reduceMotion: () => RM,
 };

@@ -28,8 +28,17 @@
   // 默认「周」：进课表先看这一周全貌，比 3 日窗口更适合快速定位。
   let calView = 'week';
   let calSelected = formatDate(getToday());    // 当前选中日期（周/月档共用）
-  const CAL_CELL_H = 46;                       // 单行日期格高度（px，用于月格高度过渡）
+  const CAL_CELL_H = 46;                       // 单行日期格高度（px）
+  const CAL_ROW_GAP = 2;                       // #calGrid 的 gap-y-0.5 = 2px
+  const CAL_WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
   const isMonthView = () => calView === 'month';
+  // 周/月网格的几何与动画状态：网格始终渲染整月，周档只是"裁剪到一行"
+  // （见 renderCalGrid / applyCalGridHeight）—— 于是周↔月切换只是同一个标量的补间。
+  let calGridGeom = null;   // { collapsedH, fullH, rowStep, rowIdx }
+  let calGridTween = null;  // 当前高度补间（手势接管前先 kill，避免两边抢同一属性）
+  let calDrag = null;       // 手势拖动中的临时状态
+  // 动效总开关（anim.js 的 RM 是实时值，系统偏好中途改也能立刻跟上）
+  const reduceMotion = () => !!(window.uiAnim && window.uiAnim.reduceMotion && window.uiAnim.reduceMotion());
 
   // 随机卡片颜色主题（app.js 里有同名函数，但手机端不加载 app.js，需本地实现）
   const MOBILE_COLOR_THEMES = ['amber', 'emerald', 'sky', 'purple', 'rose', 'mint'];
@@ -1314,19 +1323,81 @@
       renderCalendar();
     });
 
-    // 三档视图切换：一个分段控件，点哪档到哪档（取代原来的「切换按钮 + 展开箭头」两个入口）
+    // 三档视图切换：分段控件 / 手势切换线 / 键盘共用同一个入口 setCalView
     document.querySelectorAll('[data-calview]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const next = btn.getAttribute('data-calview');
-        if (!next || next === calView) return;
-        // 两套游标互相接力，切档位置连续（不会从"翻到下周的3日"又跳回今天）
-        if (next === 'day3') mobileStartDate = new Date(calSelected + 'T00:00:00');
-        else calSelected = formatDate(mobileStartDate);
-        calView = next;
-        applyCalViewUI();
-      });
+      btn.addEventListener('click', () => setCalView(btn.getAttribute('data-calview')));
     });
     syncCalViewChrome(); // 首帧同步分段控件选中态与翻页文案
+
+    // ============ 周/月切换线（小白条）：上下拖动切换 周 ↔ 月 ============
+    // 用 Pointer Events（触摸/鼠标/笔同一套，桌面调试也能直接拖）。
+    // 跟手原理：高度即位移 —— applyCalGridHeight(单一标量) 同时决定容器裁剪高度
+    // 与网格纵向位移，所以拖动就是逐帧写这一个数，松手交给 GSAP 从当前位置补间。
+    (function setupCalGrabber() {
+      const bar = document.getElementById('calGrabber');
+      if (!bar) return;
+      let active = null;   // { id, y0, h0, t0, moved }
+
+      const begin = (e) => {
+        if (calView === 'day3' || !calGridGeom) return;
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        active = { id: e.pointerId, y0: e.clientY, h0: readCalGridHeight(), t0: performance.now(), moved: false };
+        calDrag = active;
+        killCalGridTween();               // 手指优先，运行中的补间让位
+        bar.classList.add('is-dragging');
+        try { bar.setPointerCapture(e.pointerId); } catch (_) { /* 老浏览器忽略 */ }
+      };
+
+      const move = (e) => {
+        if (!active || e.pointerId !== active.id) return;
+        const dy = e.clientY - active.y0;
+        if (!active.moved && Math.abs(dy) < 4) return;   // 手指微抖不算拖动
+        active.moved = true;
+        applyCalGridHeight(active.h0 - dy);              // 上滑 = 负位移 = 变高
+        e.preventDefault();
+      };
+
+      const end = (e) => {
+        if (!active || (e && e.pointerId !== active.id)) return;
+        const drag = active;
+        active = null;
+        calDrag = null;
+        bar.classList.remove('is-dragging');
+        try { bar.releasePointerCapture(drag.id); } catch (_) { /* 可能已释放 */ }
+
+        const dy = (e ? e.clientY : drag.y0) - drag.y0;
+        const v = dy / Math.max(1, performance.now() - drag.t0);   // px/ms，负=上滑
+        let want;
+        if (!drag.moved || Math.abs(dy) < 8) {
+          want = calView === 'month' ? 'week' : 'month';           // 轻点：翻档
+        } else if (v < -0.5) want = 'month';                       // 快速上滑
+        else if (v > 0.5) want = 'week';                           // 快速下滑
+        else {
+          const g = calGridGeom;
+          const range = Math.max(1, g.fullH - g.collapsedH);
+          want = (readCalGridHeight() - g.collapsedH) / range > 0.5 ? 'month' : 'week';
+        }
+        if (want !== calView) setCalView(want);
+        else settleCalGridHeight();                                // 没换档 → 回弹到本档稳定态
+      };
+
+      bar.addEventListener('pointerdown', begin);
+      bar.addEventListener('pointermove', move);
+      bar.addEventListener('pointerup', end);
+      bar.addEventListener('pointercancel', end);
+
+      // 键盘可达：回车/空格翻档，上下方向键直达对应档
+      bar.addEventListener('keydown', (e) => {
+        const k = e.key;
+        if (k !== 'Enter' && k !== ' ' && k !== 'ArrowUp' && k !== 'ArrowDown') return;
+        e.preventDefault();
+        const want = k === 'ArrowUp' ? 'month'
+          : k === 'ArrowDown' ? 'week'
+            : (calView === 'month' ? 'week' : 'month');
+        if (want !== calView) setCalView(want);
+        else settleCalGridHeight();
+      });
+    })();
 
     // ============ 周/月日历：当日列表点击（翻页走日期条/滑动手势） ============
     const calListEl = document.getElementById('calDayList');
@@ -1522,6 +1593,8 @@
       if (fabAdd) fabAdd.classList.toggle('hidden', view !== 'schedule');
       // 顶部右侧：课表视图=老师筛选框（管理员），其余视图=老师名字徽章
       if (typeof updateHeaderIdentity === 'function') updateHeaderIdentity(view !== 'schedule');
+      // 课表：进 tab 时重渲染一次 —— 日历网格的高度几何要趁容器可见时量准
+      if (view === 'schedule') renderCalendar();
       if (view === 'students') renderMobileStudents();
       if (view === 'finance') renderMobileFinance();
       if (view === 'home' && typeof renderMobileHome === 'function') renderMobileHome();
@@ -2533,6 +2606,96 @@
     return themes.map((t) => CAL_DOT_COLORS[t] || CAL_DOT_COLORS.amber);
   }
 
+  // ============ 周/月网格：把「整月」裁剪成「一周」 ============
+  // 网格永远按选中日所在整月渲染（周一开头、补足整周）。周档不是另一套网格，
+  // 而是把它裁剪到选中日所在那一行 —— 于是「周 ↔ 月」是同一个标量的补间：
+  // 容器裁剪高度 + 网格纵向位移由同一进度推出，手指拖动与补间动画共用一套几何，
+  // 所以拖动可以无缝接管动画、动画也可以从任意半途位置接回来。
+  function measureCalGrid(selDate, monthStart, weeks) {
+    const grid = document.getElementById('calGrid');
+    if (!grid) return null;
+    const rect = grid.getBoundingClientRect().height;   // 视图隐藏（display:none）时为 0 → 回落到算式
+    return {
+      collapsedH: CAL_CELL_H,
+      fullH: rect > 1 ? rect : weeks * CAL_CELL_H + Math.max(0, weeks - 1) * CAL_ROW_GAP,
+      rowStep: CAL_CELL_H + CAL_ROW_GAP,
+      rowIdx: Math.min(Math.max(0, weeks - 1),
+        Math.max(0, Math.round((getMonday(selDate) - monthStart) / 604800000))),
+    };
+  }
+
+  // 单一标量 → 容器裁剪高度 + 网格纵向位移 + 跨月日期弱化（拖动与补间都只调这一个函数）
+  function applyCalGridHeight(h) {
+    const wrap = document.getElementById('calGridWrap');
+    const grid = document.getElementById('calGrid');
+    const g = calGridGeom;
+    if (!wrap || !grid || !g) return;
+    const clamped = Math.min(g.fullH, Math.max(g.collapsedH, h));
+    wrap.style.height = clamped + 'px';
+    const range = g.fullH - g.collapsedH;
+    const p = range > 0.5 ? (g.fullH - clamped) / range : 0;   // 0=整月 1=周条
+    grid.style.transform = p > 0.002
+      ? `translate3d(0, ${(-g.rowIdx * g.rowStep * p).toFixed(2)}px, 0)`
+      : '';
+    const wantMonth = p < 0.5;                                 // 过半才把跨月日期压暗
+    if (grid.classList.contains('is-month') !== wantMonth) grid.classList.toggle('is-month', wantMonth);
+  }
+
+  function readCalGridHeight() {
+    const wrap = document.getElementById('calGridWrap');
+    if (!wrap) return 0;
+    const inline = parseFloat(wrap.style.height);   // 拖动时走内联值，避免逐帧读布局
+    if (Number.isFinite(inline)) return inline;
+    const rect = wrap.getBoundingClientRect().height;
+    return rect > 1 ? rect : 0;
+  }
+
+  function killCalGridTween() {
+    if (!calGridTween) return;
+    try { calGridTween.kill(); } catch (_) { /* 已结束或目标已卸载 */ }
+    calGridTween = null;
+  }
+
+  // 高度补间：GSAP 只驱动一个数字，容器与网格都由它推导。
+  // 取代原来写死在 mobile.html 上的 CSS max-height 过渡 —— 那条过渡没法跟手、
+  // 也无法从中途接管，只能"从头播一遍"。
+  function animateCalGridHeight(targetH) {
+    if (!calGridGeom) return;
+    const from = readCalGridHeight();
+    const dist = Math.abs(targetH - from);
+    const g = window.gsap;
+    if (!g || reduceMotion() || dist < 1) {
+      killCalGridTween();
+      applyCalGridHeight(targetH);
+      return;
+    }
+    killCalGridTween();
+    const o = { h: from };   // 行程越大给得越久，一行↔整块的观感一致（上限 380ms）
+    calGridTween = g.to(o, {
+      h: targetH,
+      duration: Math.min(0.38, 0.2 + dist / 1400),
+      ease: 'power3.out',
+      onUpdate: () => applyCalGridHeight(o.h),
+      onComplete: () => { calGridTween = null; applyCalGridHeight(targetH); },
+    });
+  }
+
+  // 回到当前档位的稳定态：手势没换档 / 拖动被取消 / 点击滑条时用
+  function settleCalGridHeight() {
+    if (!calGridGeom || calView === 'day3') return;
+    animateCalGridHeight(isMonthView() ? calGridGeom.fullH : calGridGeom.collapsedH);
+  }
+
+  // dateBar 上的日期文案跟着档位走（周档 10/12 周一；月档 2026年10月）
+  function syncCalDateText() {
+    const el = document.getElementById('mobileDateText');
+    if (!el) return;
+    const selDate = new Date(calSelected + 'T00:00:00');
+    el.textContent = isMonthView()
+      ? `${selDate.getFullYear()}年${selDate.getMonth() + 1}月`
+      : `${selDate.getMonth() + 1}/${selDate.getDate()} ${CAL_WEEKDAYS[selDate.getDay()]}`;
+  }
+
   function renderCalGrid() {
     const grid = document.getElementById('calGrid');
     const wrap = document.getElementById('calGridWrap');
@@ -2552,26 +2715,22 @@
       byDate.get(s.date).push(s);
     });
 
-    // 网格范围：周档=选中日所在周（1 行）；月档=选中日所在月（按周一对齐，补足整周）
-    const anchor = isMonthView() ? new Date(selDate.getFullYear(), selDate.getMonth(), 1) : selDate;
-    const start = getMonday(anchor);
-    let weeks = 1;
-    if (isMonthView()) {
-      const last = new Date(selDate.getFullYear(), selDate.getMonth() + 1, 0);
-      weeks = Math.ceil((Math.round((last - start) / 86400000) + 1) / 7);
-    }
+    // 网格范围固定为「选中日所在整月」：周档只是把它裁剪到一行，
+    // 所以切档不需要重建 DOM（切档动画因此可中断、不会闪）。
+    const monthStart = getMonday(new Date(selDate.getFullYear(), selDate.getMonth(), 1));
+    const last = new Date(selDate.getFullYear(), selDate.getMonth() + 1, 0);
+    const weeks = Math.ceil((Math.round((last - monthStart) / 86400000) + 1) / 7);
     const totalCells = weeks * 7;
     const anchorMonth = selDate.getMonth();
 
-    // 展开/收起的高度过渡（行数可能变化，渲染后按实际行数设 max-height）
+    killCalGridTween();
+    const dragH = calDrag ? readCalGridHeight() : null;   // 拖动中重渲染：保住手指当前位置
     grid.innerHTML = '';
-    const targetH = weeks * CAL_CELL_H + 6;
-    requestAnimationFrame(() => { wrap.style.maxHeight = targetH + 'px'; });
 
     for (let i = 0; i < totalCells; i++) {
-      const d = addDays(start, i);
+      const d = addDays(monthStart, i);
       const dateStr = formatDate(d);
-      const inMonth = !isMonthView() || d.getMonth() === anchorMonth;
+      const inMonth = d.getMonth() === anchorMonth;
       const isToday = dateStr === todayStr;
       const isSel = dateStr === calSelected;
       const dayLessons = byDate.get(dateStr) || [];
@@ -2581,15 +2740,17 @@
 
       const cell = document.createElement('button');
       cell.type = 'button';
-      cell.className = 'cal-cell flex flex-col items-center justify-start rounded-xl transition select-none active:bg-black/5' +
-        (inMonth ? '' : ' opacity-30');
+      cell.className = 'cal-cell flex flex-col items-center justify-start rounded-xl transition select-none active:bg-black/5';
       cell.style.height = CAL_CELL_H + 'px';
       cell.setAttribute('data-date', dateStr);
+      // 跨月日期不在这里压暗：周档看到的那一行可能整行跨月（月初/月末），
+      // 压暗只该发生在"整月"态 —— 交给 .is-month 状态决定（见 mobile-theme.css）。
+      if (!inMonth) cell.setAttribute('data-out', '1');
 
       let numCls;
       if (isSel) numCls = 'background:#111111;color:#fff;font-weight:800';
       else if (isToday) numCls = 'color:#fe4c02;font-weight:800;box-shadow:inset 0 0 0 1.5px rgba(254,76,2,.55)';
-      else numCls = inMonth ? 'color:#111111;font-weight:700' : 'color:#9c9fa5;font-weight:500';
+      else numCls = 'color:#111111;font-weight:700';
       cell.innerHTML = `
         <span class="w-8 h-8 rounded-full flex items-center justify-center text-[13.5px]" style="${numCls}">${d.getDate()}</span>
         <span class="flex items-center gap-[3px]" style="height:5px;margin-top:2px">${dots.map((c) => `<span class="rounded-full" style="width:4px;height:4px;background:${c}"></span>`).join('')}</span>
@@ -2602,12 +2763,18 @@
       grid.appendChild(cell);
     }
 
+    // 量几何 → 落到当前档位的稳定态（拖动中保高度，别把手指位置抽走）
+    calGridGeom = measureCalGrid(selDate, monthStart, weeks);
+    if (calGridGeom) {
+      applyCalGridHeight(dragH != null ? dragH
+        : (isMonthView() ? calGridGeom.fullH : calGridGeom.collapsedH));
+    }
+
     // ---- 选中日的日程列表 ----
-    const weekdayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
     const dayList = (byDate.get(calSelected) || []).slice()
       .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
     if (dayTitleEl) {
-      const label = calSelected === todayStr ? '今日安排' : `${selDate.getMonth() + 1}月${selDate.getDate()}日 ${weekdayNames[selDate.getDay()]}`;
+      const label = calSelected === todayStr ? '今日安排' : `${selDate.getMonth() + 1}月${selDate.getDate()}日 ${CAL_WEEKDAYS[selDate.getDay()]}`;
       dayTitleEl.innerHTML = `
         <span class="inline-block rounded-full" style="width:6px;height:6px;background:#111"></span>
         ${label} · ${dayList.length} 节课`;
@@ -2639,12 +2806,7 @@
     }
 
     // dateBar 文字与标题同步
-    const dateTextEl = document.getElementById('mobileDateText');
-    if (dateTextEl) {
-      dateTextEl.textContent = isMonthView()
-        ? `${selDate.getFullYear()}年${selDate.getMonth() + 1}月`
-        : `${selDate.getMonth() + 1}/${selDate.getDate()} ${weekdayNames[selDate.getDay()]}`;
-    }
+    syncCalDateText();
   }
 
   // 周/月翻页：周档平移一周；月档翻月（保持"选中日序号"尽量不变）
@@ -2661,13 +2823,38 @@
     renderCalGrid();
   }
 
-  // 分段控件外观同步：选中态 + 翻页按钮文案（不动容器显隐，避免与 tab 切换打架）
+  // 三档视图的唯一切换入口：分段控件 / 手势切换线 / 键盘都调它
+  function setCalView(next) {
+    if (!next || next === calView) return;
+    if (calView === 'day3' || next === 'day3') {
+      // 3 日与周/月是两套容器：游标接力（位置连续，不会跳回今天）+ 容器显隐 + 进场动画
+      if (next === 'day3') mobileStartDate = new Date(calSelected + 'T00:00:00');
+      else calSelected = formatDate(mobileStartDate);
+      calView = next;
+      applyCalViewUI();
+      return;
+    }
+    // 周 ↔ 月：同一份网格，只补间裁剪高度 —— DOM 不重建，所以动画能从任意半途接管
+    calView = next;
+    syncCalViewChrome();
+    syncCalDateText();
+    if (!calGridGeom) renderCalGrid();
+    else animateCalGridHeight(isMonthView() ? calGridGeom.fullH : calGridGeom.collapsedH);
+  }
+
+  // 分段控件外观同步：选中态 + 翻页按钮文案 + 手势滑条状态（不动容器显隐，避免与 tab 切换打架）
   function syncCalViewChrome() {
     document.querySelectorAll('[data-calview]').forEach((btn) => {
       const on = btn.getAttribute('data-calview') === calView;
       btn.classList.toggle('is-on', on);
       btn.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
+    const grab = document.getElementById('calGrabber');
+    if (grab) {
+      const isMonth = calView === 'month';
+      grab.setAttribute('aria-expanded', isMonth ? 'true' : 'false');
+      grab.setAttribute('aria-label', isMonth ? '下滑收起为周视图' : '上滑展开整月');
+    }
     const p = document.getElementById('btnMobilePrev');
     const n = document.getElementById('btnMobileNext');
     const prevLabel = calView === 'day3' ? '前3天' : (calView === 'week' ? '前周' : '前月');

@@ -20,7 +20,7 @@
   <link rel="stylesheet" href="css/intercom-tokens.css?v=1">
   <link rel="stylesheet" href="css/styles.css?v=32">
   <!-- 手机端 Intercom 主题（岛台导航/奶油渐变/软陶卡） -->
-  <link rel="stylesheet" href="css/mobile-theme.css?v=31">
+  <link rel="stylesheet" href="css/mobile-theme.css?v=32">
   <!-- GSAP 动效：本地内置优先；缺失才回落 CDN，都失败也只是动效变静态 -->
   <script src="js/vendor/gsap.min.js?v=1"></script>
   <script>
@@ -28,7 +28,7 @@
       document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"><\/script>');
     }
   </script>
-  <script src="js/anim.js?v=9"></script>
+  <script src="js/anim.js?v=10"></script>
 </head>
 <body class="text-slate-800 font-sans h-[100dvh] flex flex-col overflow-hidden select-none" style="background: var(--surface-page);">
 
@@ -140,22 +140,26 @@
       </div>
     </div>
 
-    <!-- 1b. 手机端 周/月日历视图（系统日历风格：周条收起 ↔ 点开整月，下方挂选中日日程） -->
+    <!-- 1b. 手机端 周/月日历视图（系统日历风格：周条收起 ↔ 整月，下方挂选中日日程） -->
     <div id="viewCalweek" class="h-full flex flex-col overflow-hidden hidden">
-      <!-- 标题行：年月 + 展开箭头（翻页走日期条按钮或左右滑动手势） -->
+      <!-- 标题行：年月（翻页走日期条按钮 / 左右滑动 / 手势滑条） -->
       <div class="flex items-center px-4 pt-3 pb-0.5 shrink-0">
         <span id="calTitle" class="text-[20px] font-extrabold text-[#111111] tracking-tight">10月</span>
       </div>
 
-      <!-- 星期表头 + 日历网格（收起=一周条，展开=整月） -->
+      <!-- 星期表头 + 日历网格（周档=裁剪到一行，月档=整块；高度由 GSAP 驱动） -->
       <div class="px-3 shrink-0">
         <div class="grid grid-cols-7 text-center text-[10.5px] font-semibold text-[#9c9fa5] py-1.5 select-none">
           <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span class="text-[#c2704e]">六</span><span class="text-[#c2704e]">日</span>
         </div>
-        <div id="calGridWrap" style="overflow:hidden;transition:max-height .32s cubic-bezier(.4,0,.2,1)">
+        <div id="calGridWrap" style="overflow:hidden">
           <div id="calGrid" class="grid grid-cols-7 gap-y-0.5"></div>
         </div>
-        <div class="mx-1 mt-1.5" style="border-top:1px solid #f0ebe2"></div>
+        <!-- 手势切换线（小白条）：上滑展开整月 / 下滑收起为周；轻点、回车也能切换 -->
+        <div id="calGrabber" class="lm-cal-grabber" role="button" tabindex="0"
+             aria-label="上滑展开整月" aria-expanded="false" aria-controls="calGridWrap">
+          <span class="lm-cal-grabber-bar" aria-hidden="true"></span>
+        </div>
       </div>
 
       <!-- 选中日的日程列表 -->
@@ -617,7 +621,7 @@
     </div>
   </div>
 
-  <script src="js/mobile.js?v=43"></script>
+  <script src="js/mobile.js?v=44"></script>
   <!-- 老师访问码登录遮罩（管理员数据加载后自动隐藏） -->
   <div id="teacherLoginGate" class="hidden fixed inset-0 z-[90] lm-gate flex flex-col items-center justify-center px-8">
     <div class="w-14 h-14 rounded-2xl bg-[#111111] flex items-center justify-center text-white shadow-lg mb-4">
