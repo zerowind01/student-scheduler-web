@@ -1329,10 +1329,12 @@
     });
     syncCalViewChrome(); // 首帧同步分段控件选中态与翻页文案
 
-    // ============ 周/月切换线（小白条）：上下拖动切换 周 ↔ 月 ============
+    // ============ 周/月切换线（拖动条）：上下拖动切换 周 ↔ 月 ============
     // 用 Pointer Events（触摸/鼠标/笔同一套，桌面调试也能直接拖）。
     // 跟手原理：高度即位移 —— applyCalGridHeight(单一标量) 同时决定容器裁剪高度
     // 与网格纵向位移，所以拖动就是逐帧写这一个数，松手交给 GSAP 从当前位置补间。
+    // 方向：滑条贴在日历底边，**往下拖 = 把整月拉出来**（下拉展开、上推收起），
+    // 与"拉窗口下沿"的直觉一致。
     (function setupCalGrabber() {
       const bar = document.getElementById('calGrabber');
       if (!bar) return;
@@ -1353,7 +1355,7 @@
         const dy = e.clientY - active.y0;
         if (!active.moved && Math.abs(dy) < 4) return;   // 手指微抖不算拖动
         active.moved = true;
-        applyCalGridHeight(active.h0 - dy);              // 上滑 = 负位移 = 变高
+        applyCalGridHeight(active.h0 + dy);              // 下滑 = 正位移 = 变高（展开整月）
         e.preventDefault();
       };
 
@@ -1366,12 +1368,12 @@
         try { bar.releasePointerCapture(drag.id); } catch (_) { /* 可能已释放 */ }
 
         const dy = (e ? e.clientY : drag.y0) - drag.y0;
-        const v = dy / Math.max(1, performance.now() - drag.t0);   // px/ms，负=上滑
+        const v = dy / Math.max(1, performance.now() - drag.t0);   // px/ms，正=下滑
         let want;
         if (!drag.moved || Math.abs(dy) < 8) {
           want = calView === 'month' ? 'week' : 'month';           // 轻点：翻档
-        } else if (v < -0.5) want = 'month';                       // 快速上滑
-        else if (v > 0.5) want = 'week';                           // 快速下滑
+        } else if (v > 0.5) want = 'month';                        // 快速下滑 → 展开
+        else if (v < -0.5) want = 'week';                          // 快速上推 → 收起
         else {
           const g = calGridGeom;
           const range = Math.max(1, g.fullH - g.collapsedH);
@@ -1386,13 +1388,13 @@
       bar.addEventListener('pointerup', end);
       bar.addEventListener('pointercancel', end);
 
-      // 键盘可达：回车/空格翻档，上下方向键直达对应档
+      // 键盘可达：回车/空格翻档，下键展开、上键收起（与拖动方向一致）
       bar.addEventListener('keydown', (e) => {
         const k = e.key;
         if (k !== 'Enter' && k !== ' ' && k !== 'ArrowUp' && k !== 'ArrowDown') return;
         e.preventDefault();
-        const want = k === 'ArrowUp' ? 'month'
-          : k === 'ArrowDown' ? 'week'
+        const want = k === 'ArrowDown' ? 'month'
+          : k === 'ArrowUp' ? 'week'
             : (calView === 'month' ? 'week' : 'month');
         if (want !== calView) setCalView(want);
         else settleCalGridHeight();
@@ -2853,7 +2855,7 @@
     if (grab) {
       const isMonth = calView === 'month';
       grab.setAttribute('aria-expanded', isMonth ? 'true' : 'false');
-      grab.setAttribute('aria-label', isMonth ? '下滑收起为周视图' : '上滑展开整月');
+      grab.setAttribute('aria-label', isMonth ? '上滑收起为周视图' : '下滑展开整月');
     }
     const p = document.getElementById('btnMobilePrev');
     const n = document.getElementById('btnMobileNext');

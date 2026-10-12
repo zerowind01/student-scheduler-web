@@ -20,7 +20,7 @@
   <link rel="stylesheet" href="css/intercom-tokens.css?v=1">
   <link rel="stylesheet" href="css/styles.css?v=32">
   <!-- 手机端 Intercom 主题（岛台导航/奶油渐变/软陶卡） -->
-  <link rel="stylesheet" href="css/mobile-theme.css?v=32">
+  <link rel="stylesheet" href="css/mobile-theme.css?v=33">
   <!-- GSAP 动效：本地内置优先；缺失才回落 CDN，都失败也只是动效变静态 -->
   <script src="js/vendor/gsap.min.js?v=1"></script>
   <script>
@@ -155,9 +155,9 @@
         <div id="calGridWrap" style="overflow:hidden">
           <div id="calGrid" class="grid grid-cols-7 gap-y-0.5"></div>
         </div>
-        <!-- 手势切换线（小白条）：上滑展开整月 / 下滑收起为周；轻点、回车也能切换 -->
+        <!-- 手势切换线（拖动条）：下滑展开整月 / 上滑收起为周；轻点、回车也能切换 -->
         <div id="calGrabber" class="lm-cal-grabber" role="button" tabindex="0"
-             aria-label="上滑展开整月" aria-expanded="false" aria-controls="calGridWrap">
+             aria-label="下滑展开整月" aria-expanded="false" aria-controls="calGridWrap">
           <span class="lm-cal-grabber-bar" aria-hidden="true"></span>
         </div>
       </div>
@@ -621,7 +621,7 @@
     </div>
   </div>
 
-  <script src="js/mobile.js?v=44"></script>
+  <script src="js/mobile.js?v=45"></script>
   <!-- 老师访问码登录遮罩（管理员数据加载后自动隐藏） -->
   <div id="teacherLoginGate" class="hidden fixed inset-0 z-[90] lm-gate flex flex-col items-center justify-center px-8">
     <div class="w-14 h-14 rounded-2xl bg-[#111111] flex items-center justify-center text-white shadow-lg mb-4">
