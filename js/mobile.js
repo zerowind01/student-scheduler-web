@@ -3951,7 +3951,7 @@
           <span class="lm-cb-spinner" aria-hidden="true"></span>
           <svg class="lm-cb-check" viewBox="0 0 24 24" aria-hidden="true"><path pathLength="100" d="M4.5 12.6 L9.7 17.8 L19.5 6.6"/></svg>
         </button>` : ''}
-        <button data-act="leave" class="w-full py-3.5 rounded-xl font-bold text-sm bg-rose-50 text-rose-600 border border-rose-200 active:bg-rose-100 flex items-center justify-center gap-2">
+        <button data-act="leave" class="lm-btn-leave w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2">
           <i class="fa-solid fa-person-walking-arrow-right"></i> 学员请假（退还${getLessonCost(schedule)}节）${status === SCHEDULE_STATUS.COMPLETED ? ' · 改请假' : ''}
         </button>
         ${status === SCHEDULE_STATUS.COMPLETED ? `
@@ -3970,9 +3970,6 @@
       <button data-act="edit" class="w-full py-3.5 rounded-xl font-bold text-sm bg-slate-100 text-slate-700 active:bg-slate-200 flex items-center justify-center gap-2">
         <i class="fa-solid fa-pen-to-square"></i> 编辑课程信息
       </button>
-      <button data-act="delete" class="w-full py-3.5 rounded-xl font-bold text-sm bg-rose-50 text-rose-600 border border-rose-200 active:bg-rose-100 flex items-center justify-center gap-2">
-        <i class="fa-solid fa-trash-can"></i> 删除该课程
-      </button>
     `;
 
     const statusText = status === SCHEDULE_STATUS.COMPLETED ? '已消课 ✓' : status === SCHEDULE_STATUS.STUDENT_LEAVE ? '学员请假 🏖️' : '待上课';
@@ -3985,7 +3982,10 @@
       <div class="absolute inset-0 bg-slate-900/40" data-sheet-backdrop></div>
       <div class="lm-action-sheet relative bg-white rounded-t-3xl w-full p-5 space-y-2.5 shadow-2xl max-w-md mx-auto max-h-[88dvh] overflow-y-auto" style="padding-bottom: calc(1.5rem + env(safe-area-inset-bottom))">
         <div class="w-10 h-1 bg-slate-200 rounded-full mx-auto mb-1"></div>
-        <div class="pb-3 border-b border-slate-100">
+        <div class="lm-sheet-head pb-3 border-b border-slate-100">
+          <button type="button" data-act="delete" class="lm-sheet-del" aria-label="删除该课程" title="删除该课程">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
           <div class="font-bold text-sm text-slate-800">${schedule.studentName} · ${schedule.subject}</div>
           <div class="text-[11px] text-slate-400 mt-0.5">${schedule.date} ${schedule.startTime} · ${schedule.durationMinutes}分钟 · ${statusText}</div>
           ${student && getStudentDebts(student.id).length ? `<div class="text-[10px] text-rose-500 mt-1">⚠ 欠课：${getStudentDebts(student.id).map(d => d.courseName + ' ' + d.amount + '节').join('、')}</div>` : ''}

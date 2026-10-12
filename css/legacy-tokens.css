@@ -76,6 +76,42 @@
   background: #2b2b2b;
 }
 
+/* ---- 请假按钮：暖黄 + 弹窗右上角删除图标（与手机端同款，色值抄自 intercom-tokens.css） ----
+   手机端的定义在 css/intercom-tokens.css，但那个文件只被 mobile.html 引用
+   （本文件才是电脑端的兼容层），所以这里必须再写一份，否则两端会长得不一样。
+   口径：请假=黄（这一节有变更但不破坏数据），删除=玫红角标（不可逆，别和请假抢重量）。 */
+.lm-btn-leave {
+  background: #FEF3C7;
+  border: 1px solid #FDE68A;
+  color: #7C4A03;
+}
+.lm-btn-leave:hover {
+  background: #FDE68A;
+}
+.lm-sheet-del {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(17, 17, 17, 0.05);
+  color: #d5304f;
+  font-size: 14px;
+  line-height: 1;
+  transition: background-color .15s ease;
+}
+.lm-sheet-del:hover {
+  background: #ffe9ec;
+}
+/* 弹窗标题块：给角标让出位置，长学员名不会钻到图标底下 */
+.lm-sheet-head {
+  padding-right: 52px;
+}
+
 /* ---- 统计卡 / 分区块：纯白卡片 + 细边 ---- */
 .lm-stat-card {
   background: #fff;

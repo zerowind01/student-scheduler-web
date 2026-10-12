@@ -2712,7 +2712,7 @@
         <button data-act="checkin" class="w-full py-3 rounded-xl font-bold text-sm bg-emerald-500 text-white hover:bg-emerald-600 transition flex items-center justify-center gap-2">
           <i class="fa-solid fa-circle-check"></i> 消课签到（${getLessonCost(schedule)}节）
         </button>` : ''}
-        <button data-act="leave" class="w-full py-3 rounded-xl font-bold text-sm bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 transition flex items-center justify-center gap-2">
+        <button data-act="leave" class="lm-btn-leave w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition">
           <i class="fa-solid fa-person-walking-arrow-right"></i> 学员请假（退还${getLessonCost(schedule)}节）${status === SCHEDULE_STATUS.COMPLETED ? ' · 改请假' : ''}
         </button>
         ${status === SCHEDULE_STATUS.COMPLETED ? `
@@ -2731,15 +2731,15 @@
       <button data-act="edit" class="w-full py-3 rounded-xl font-bold text-sm btn-quiet transition flex items-center justify-center gap-2">
         <i class="fa-solid fa-pen-to-square"></i> 编辑课程信息
       </button>
-      <button data-act="delete" class="w-full py-3 rounded-xl font-bold text-sm bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 transition flex items-center justify-center gap-2">
-        <i class="fa-solid fa-trash-can"></i> 删除该课程
-      </button>
     `;
 
     const statusText = status === SCHEDULE_STATUS.COMPLETED ? '已消课 ✓' : status === SCHEDULE_STATUS.STUDENT_LEAVE ? '学员请假 🏖️' : '待上课';
     menu.innerHTML = `
-      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5 space-y-2.5">
-        <div class="pb-3 border-b lm-hairline">
+      <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5 space-y-2.5">
+        <div class="lm-sheet-head pb-3 border-b lm-hairline">
+          <button type="button" data-act="delete" class="lm-sheet-del" aria-label="删除该课程" title="删除该课程">
+            <i class="fa-solid fa-trash-can"></i>
+          </button>
           <div class="font-bold text-sm lm-t1">${schedule.studentName} · ${schedule.subject}</div>
           <div class="text-[11px] lm-t3 mt-0.5">${schedule.date} ${schedule.startTime} · ${schedule.durationMinutes}分钟 · 状态：${statusText}</div>
           ${student && getStudentDebts(student.id).length ? `<div class="text-[10px] text-rose-500 mt-1">⚠ 该学员有欠课：${getStudentDebts(student.id).map(d => d.courseName + ' ' + d.amount + '节').join('、')}</div>` : ''}

@@ -116,6 +116,40 @@
   .lm-live-dot::after { animation: none; opacity: 0; }
 }
 
+/* ---- 请假按钮：暖黄（口径「请假=黄」，与「待消课」同一个黄family） ----
+   原来是玫红，和同一个弹层里的「删除该课程」撞色 —— 删除是不可逆的破坏性动作，
+   请假只是把这一节记成不来，两者不该长得一样。黄=「这一节有变更但不破坏数据」。 */
+.lm-btn-leave {
+  background: #FEF3C7;
+  border: 1px solid #FDE68A;
+  color: #7C4A03;
+}
+.lm-btn-leave:active, .lm-btn-leave:hover { background: #FDE68A; }
+
+/* ---- 弹窗右上角的删除图标（替代整条「删除该课程」） ----
+   删除属于低频 + 不可逆，占一条满宽按钮会和「请假」抢视觉重量，也更容易误触。
+   收成 40px 角标：够得着（≥40px 触控目标），又不会在扫读时被当成主操作。 */
+.lm-sheet-del {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(17, 17, 17, 0.05);
+  color: #d5304f;
+  font-size: 14px;
+  line-height: 1;
+  transition: background-color .15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.lm-sheet-del:active, .lm-sheet-del:hover { background: #ffe9ec; }
+/* 弹窗标题块：给角标让出位置，长学员名不会钻到图标底下 */
+.lm-sheet-head { padding-right: 52px; }
+
 /* ---- 主按钮：Fin 橙（全站唯一橙色，仅课表页主操作） ---- */
 .lm-btn-fin {
   background: var(--lm-fin);
