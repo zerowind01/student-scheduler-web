@@ -3931,8 +3931,10 @@
     const student = students.find((st) => st.id === schedule.studentId);
     const menu = document.createElement('div');
     menu.id = 'mobileScheduleActionMenu';
+    // 弹层直接贴屏幕底部（与全站其它 lm-sheet 一致）：遮罩 z-50 本就盖住底部岛台
+    // （岛台 z-40，点它也只会关弹层），所以这里**不能**再给容器留出岛台高度的内边距，
+    // 否则弹层底边悬在半空，岛台那条半透明灰带会露在下面，看起来像一块空隙。
     menu.className = 'fixed inset-0 bg-slate-900/40 z-50 flex items-end justify-center';
-    menu.style.paddingBottom = 'calc(64px + env(safe-area-inset-bottom))';
 
     let actionsHtml = '';
     if (status !== SCHEDULE_STATUS.STUDENT_LEAVE) {
@@ -3969,7 +3971,7 @@
 
     const statusText = status === SCHEDULE_STATUS.COMPLETED ? '已消课 ✓' : status === SCHEDULE_STATUS.STUDENT_LEAVE ? '学员请假 🏖️' : '待上课';
     menu.innerHTML = `
-      <div class="bg-white rounded-t-3xl w-full p-5 pb-2 space-y-2.5 shadow-2xl max-w-md mx-auto">
+      <div class="bg-white rounded-t-3xl w-full p-5 space-y-2.5 shadow-2xl max-w-md mx-auto max-h-[88dvh] overflow-y-auto" style="padding-bottom: calc(1.5rem + env(safe-area-inset-bottom))">
         <div class="w-10 h-1 bg-slate-200 rounded-full mx-auto mb-1"></div>
         <div class="pb-3 border-b border-slate-100">
           <div class="font-bold text-sm text-slate-800">${schedule.studentName} · ${schedule.subject}</div>

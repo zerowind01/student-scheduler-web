@@ -77,3 +77,4 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
 10. 切档只有 `setCalView()` 一个入口（分段控件 / `#calGrabber` 手势滑条 / 键盘共用）；周↔月的高度动画由 GSAP 驱动（`animateCalGridHeight`），**不要**再往 `#calGridWrap` 上写 CSS `transition:max-height`（那条过渡无法跟手、也无法从中途接管）
 11. `#calGrabber` 的拖动方向**固定为「下滑展开整月 / 上滑收起为周」**（`move` 里是 `h0 + dy`，`end` 里 `v > 0.5 → month`，键盘 `ArrowDown → month`）。滑条贴在日历底边，往下拉才跟着手指走；写成 `h0 - dy` 会变成「手指往下、滑条往上跑」的倒挂手感
 12. 「老师进课表默认只看自己的课」由 `applyTeacherScopeDefault()` 负责，且**只能在渲染门面 `renderCalendar()` 里调用**（三档视图共用，写进 `renderTimeline3`/`renderCalGrid` 就只对那一档生效）。它每次老师会话只应用一次，之后用户手动改的筛选范围不被覆盖；`teacherLogout()` 负责把范围重置回 `all`，设置页「切换身份」进出都要调它，否则课表会卡在上一位老师的范围里
+13. 底部弹层（`flex items-end` 的遮罩容器）**必须贴屏幕底部**：容器上**不要**加 `padding-bottom` 去给底部岛台留位置。岛台 `z-40` 本来就被弹层遮罩 `z-50` 盖住、点它也只会关弹层，留出高度只会让弹层悬空、把那条半透明灰带露在下面（看起来像块空隙）。内容与 home indicator 的间距由**弹层自身**的 `padding-bottom: calc(…rem + env(safe-area-inset-bottom))` 负责，这也是全站其它 `lm-sheet` 的做法
