@@ -1,7 +1,9 @@
 /* ==========================================================================
    排课工作台 · 动效层
    分工（单一系统，避免两套东西争同一属性）：
-   - 弹窗 / Toast / 侧栏滑块 → CSS 过渡与 @starting-style（不依赖 GSAP CDN）
+   - 常驻 HTML + .hidden 显隐的弹窗（.modal-box）/ Toast / 侧栏滑块
+     → CSS 过渡与 @starting-style（不依赖 GSAP CDN）
+   - 运行时 appendChild 出来的浮层（第 5 节上滑操作菜单）→ 本文件（GSAP）
    - 数字滚动 / 翻周翻月方向感 / 课卡错峰进场 / 就地回闪 → 本文件（GSAP）
    禁止：滚动视差、循环动画、GSAP 粒子类效果
    全部遵守 prefers-reduced-motion（tokens.css 有 CSS 兜底，本文件有 RM 兜底）
@@ -162,6 +164,85 @@ function flashSchedule(scheduleId) {
   setTimeout(() => document.removeEventListener('lm:rendered', reflash), 400);
 }
 
+/* ---- 5. 上滑弹层（运行时动态创建的底部操作菜单）----
+   归属说明（别和第 1 节搞混）：
+   - styles.css 第 7 节那套 CSS 系统管的是「常驻在 HTML 里、靠 .hidden 显隐」的
+     .modal-box —— 它带 !important 终态，GSAP 写进去会被压掉，两者不可混用；
+   - 本节只服务另一种浮层：运行时 document.body.appendChild 出来、不挂 .modal-box 的。
+     它们以前是「凭空出现、凭空消失」—— 节点直接被 remove 掉，CSS 连过渡窗口都没有。
+   这里把进场与退场一起接管，保证「上滑进来 = 下滑出去」对称，动画跑完才摘节点。
+   RM / GSAP 缺失 → 直接落到终态（功能不受影响，只是没有过渡）。
+
+   注意：这两个补间**不进 trackTween**。弹层是自我管理生命周期的节点，而
+   killTrackedTweens 是给「会被整体重建的列表节点」用的；把弹层补间并进去，
+   列表一重渲染就会连进场动画一起掐掉（补间停在 yPercent:100 上 = 面板消失）。 */
+
+const SHEET_ENTER_S = 0.34;   // 进场：稍慢，有「落定」感
+const SHEET_EXIT_S = 0.22;    // 退场：比进场快（非对称，收起来要干脆）
+
+// 遮罩：约定的子节点 [data-sheet-backdrop]；找不到就只动面板（不报错）
+function sheetBackdrop(overlay, panel) {
+  const bd = overlay && overlay.querySelector('[data-sheet-backdrop]');
+  return bd && bd !== panel ? bd : null;
+}
+
+/* 进场：面板从屏幕下沿整块滑上来 + 遮罩淡入；opts.items 命中的子项再轻微错峰。
+   起始态只在有 GSAP 时用 gsap.set 写内联 —— 万一 GSAP 没就绪，元素保持自然态，
+   不会出现「面板停在屏幕外」的失败模式（这点和 CSS 的 @starting-style 同思路）。 */
+function sheetIn(overlay, panel, opts) {
+  if (!overlay || !panel) return;
+  uiAnimate((gsap) => {
+    const bd = sheetBackdrop(overlay, panel);
+    gsap.set(panel, { yPercent: 100 });
+    if (bd) gsap.set(bd, { opacity: 0 });
+
+    const tl = gsap.timeline();
+    if (bd) tl.to(bd, { opacity: 1, duration: 0.2, ease: 'power1.out' }, 0);
+    // 终态用 clearProps 把内联 transform 摘掉，交回 CSS（面板将来还要被其它逻辑复用）
+    tl.to(panel, { yPercent: 0, duration: SHEET_ENTER_S, ease: 'power3.out', clearProps: 'transform' }, 0);
+
+    const sel = opts && opts.items;
+    if (sel) {
+      const items = panel.querySelectorAll(sel);
+      if (items.length) {
+        tl.fromTo(items,
+          { y: 10, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.24, stagger: 0.028, ease: 'power2.out', clearProps: 'transform,opacity' },
+          0.06
+        );
+      }
+    }
+  });
+}
+
+/* 退场：面板滑下去 + 遮罩淡出；动画结束才回调 done（调用方在 done 里 remove 节点）。
+   幂等：连点遮罩 / 按钮只会跑一次（overlay.dataset.lmSheetClosing 当闩）。 */
+function sheetOut(overlay, panel, done) {
+  const finish = () => { if (done) done(); };
+  if (!overlay || !panel) { finish(); return; }
+  if (overlay.dataset.lmSheetClosing === '1') return;
+  overlay.dataset.lmSheetClosing = '1';
+
+  const g = window.gsap;
+  if (RM || !g) { finish(); return; }   // 无 GSAP / 减少动效 → 直接摘节点
+
+  const bd = sheetBackdrop(overlay, panel);
+  // 进场可能还在跑：先把子项恢复到自然态，否则退场那 220ms 里会看到半透明的按钮
+  const items = panel.querySelectorAll('[data-act]');
+  if (items.length) g.set(items, { clearProps: 'opacity,transform' });
+  g.killTweensOf(panel);
+  if (bd) g.killTweensOf(bd);
+
+  let called = false;
+  const once = () => { if (called) return; called = true; finish(); };
+  const tl = g.timeline({ onComplete: once, onInterrupt: once });
+  // 退场用 power1.in：起步就给位移（power2.in 的立方起步太黏，手会觉得"卡了半拍才走"）
+  if (bd) tl.to(bd, { opacity: 0, duration: SHEET_EXIT_S, ease: 'power1.in' }, 0);
+  tl.to(panel, { yPercent: 100, duration: SHEET_EXIT_S, ease: 'power1.in' }, 0);
+  // 兜底：补间若被外部 kill 掉，done 也得放出去，否则节点永远摘不掉
+  setTimeout(once, (SHEET_EXIT_S + 0.15) * 1000);
+}
+
 /* ==========================================================================
    6. 按钮异步三态：idle → loading → done（配套 styles.css 第 17 节）
    典型调用：消课按钮。work() 是同步的（本地处理），所以必须给 spinner
@@ -243,6 +324,9 @@ window.uiAnim = {
   flash: flash,
   flashSchedule: flashSchedule,
   runAsyncButton: runAsyncButton,
+  // 动态创建的底部浮层（不挂 .modal-box 的那些）：上滑进场 / 下滑退场
+  sheetIn: sheetIn,
+  sheetOut: sheetOut,
   isBusy: () => busyCount > 0,
   emitRendered: emitRendered,
   // 供调用方自行判断是否需要"直落终态"（如手机端日历的手势跟手动画）：

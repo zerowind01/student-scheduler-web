@@ -3929,12 +3929,15 @@
   function openMobileScheduleActionMenu(schedule) {
     const status = schedule.status || SCHEDULE_STATUS.SCHEDULED;
     const student = students.find((st) => st.id === schedule.studentId);
+    // 防连点叠加：新开一张前先把旧的摘掉（否则遮罩会一层压一层）
+    const prevMenu = document.getElementById('mobileScheduleActionMenu');
+    if (prevMenu) prevMenu.remove();
+
     const menu = document.createElement('div');
     menu.id = 'mobileScheduleActionMenu';
-    // 弹层直接贴屏幕底部（与全站其它 lm-sheet 一致）：遮罩 z-50 本就盖住底部岛台
-    // （岛台 z-40，点它也只会关弹层），所以这里**不能**再给容器留出岛台高度的内边距，
-    // 否则弹层底边悬在半空，岛台那条半透明灰带会露在下面，看起来像一块空隙。
-    menu.className = 'fixed inset-0 bg-slate-900/40 z-50 flex items-end justify-center';
+    // 容器不再自带底色，让遮罩独立成一个子节点 —— 这样遮罩能单独淡入淡出，
+    // 而面板单独上滑（一个节点身上挂两种过渡会互相牵制）。
+    menu.className = 'fixed inset-0 z-50 flex items-end justify-center';
 
     let actionsHtml = '';
     if (status !== SCHEDULE_STATUS.STUDENT_LEAVE) {
@@ -3970,8 +3973,14 @@
     `;
 
     const statusText = status === SCHEDULE_STATUS.COMPLETED ? '已消课 ✓' : status === SCHEDULE_STATUS.STUDENT_LEAVE ? '学员请假 🏖️' : '待上课';
+    // 遮罩（独立子节点，可单独淡入淡出）+ 面板（上滑）。
+    // 面板直接贴屏幕底部（与全站其它 lm-sheet 一致）：遮罩 z-50 本就盖住底部岛台
+    // （岛台 z-40，点它也只会关弹层），所以**不能**给容器留出岛台高度的内边距，
+    // 否则面板底边悬在半空，岛台那条半透明灰带会露在下面，看起来像一块空隙。
+    // 与 home indicator 的间距由面板自身的 padding-bottom 负责。
     menu.innerHTML = `
-      <div class="bg-white rounded-t-3xl w-full p-5 space-y-2.5 shadow-2xl max-w-md mx-auto max-h-[88dvh] overflow-y-auto" style="padding-bottom: calc(1.5rem + env(safe-area-inset-bottom))">
+      <div class="absolute inset-0 bg-slate-900/40" data-sheet-backdrop></div>
+      <div class="lm-action-sheet relative bg-white rounded-t-3xl w-full p-5 space-y-2.5 shadow-2xl max-w-md mx-auto max-h-[88dvh] overflow-y-auto" style="padding-bottom: calc(1.5rem + env(safe-area-inset-bottom))">
         <div class="w-10 h-1 bg-slate-200 rounded-full mx-auto mb-1"></div>
         <div class="pb-3 border-b border-slate-100">
           <div class="font-bold text-sm text-slate-800">${schedule.studentName} · ${schedule.subject}</div>
@@ -3983,42 +3992,55 @@
       </div>
     `;
 
+    const panel = menu.querySelector('.lm-action-sheet');
+    // 唯一的关闭出口：下滑退场跑完再摘节点（RM / 无 GSAP 时立即摘）。
+    // after 里的动作排在退场之后 —— 这样紧跟其后的弹窗/Toast 不会和退场动画挤在一起。
+    const closeActionMenu = (after) => {
+      const anim = window.uiAnim;
+      if (anim && anim.sheetOut) anim.sheetOut(menu, panel, () => { menu.remove(); if (after) after(); });
+      else { menu.remove(); if (after) after(); }
+    };
+
     menu.addEventListener('click', (e) => {
-      if (e.target === menu) { menu.remove(); return; }
+      if (e.target === menu || e.target.hasAttribute('data-sheet-backdrop')) { closeActionMenu(); return; }
       const btn = e.target.closest('[data-act]');
       if (!btn) return;
       const act = btn.getAttribute('data-act');
       // 消课：三态动效得在按钮上跑完，所以先别关菜单 —— 动效一结束立刻关菜单 + 刷新
       if (act === 'checkin') {
         if (!window.uiAnim || !window.uiAnim.runAsyncButton) {
-          menu.remove();
-          executeCheckIn(schedule.id);
+          closeActionMenu(() => executeCheckIn(schedule.id));
           return;
         }
         window.uiAnim.runAsyncButton(
           btn,
           () => {
             const ok = executeCheckIn(schedule.id, '', { skipRefresh: true });
-            if (!ok) menu.remove(); // 被拦下（状态守卫）：菜单别赖着不走
+            if (!ok) closeActionMenu(); // 被拦下（状态守卫）：菜单别赖着不走
             return ok;
           },
-          () => { menu.remove(); refreshMobileAll(); }
+          // 刷新立即做（在退场动画底下重渲染），弹层自己滑自己的
+          () => { closeActionMenu(); refreshMobileAll(); }
         );
         return;
       }
-      menu.remove();
-      if (act === 'leave') markStudentLeave(schedule.id);
-      else if (act === 'revert') revertScheduleStatus(schedule.id);
-      else if (act === 'edit') openMobileScheduleModalForEdit(schedule);
+      if (act === 'close') { closeActionMenu(); return; }
+      if (act === 'leave') closeActionMenu(() => markStudentLeave(schedule.id));
+      else if (act === 'revert') closeActionMenu(() => revertScheduleStatus(schedule.id));
+      else if (act === 'edit') closeActionMenu(() => openMobileScheduleModalForEdit(schedule));
       else if (act === 'delete') {
-        deleteMobileScheduleWithScope(schedule, () => {
+        closeActionMenu(() => deleteMobileScheduleWithScope(schedule, () => {
           renderCalendar();
           renderMobileStudents();
-        });
+        }));
       }
     });
 
     document.body.appendChild(menu);
+    // 上滑进场：面板从屏幕下沿滑上来，动作按钮轻微错峰
+    if (window.uiAnim && window.uiAnim.sheetIn) {
+      window.uiAnim.sheetIn(menu, panel, { items: '[data-act]' });
+    }
   }
 
   let toastTimer = null;
