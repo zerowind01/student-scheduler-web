@@ -234,3 +234,23 @@ button.w-8.h-8::after {
 .lm-gate {
   background: linear-gradient(180deg, var(--lm-canvas-top), var(--lm-canvas-mid)) !important;
 }
+
+/* ==========================================================================
+   标签式消课按钮：「待消课」一键消课的三态动效（手机端）
+   桌面端的三态按钮是深色底，白圈白勾天然可见；手机端这个按钮是浅底标签，
+   白圈在浅底上等于隐形 —— 所以按底色分别给转圈定色。
+   本文件在 styles.css 之后加载，选择器多一层即可压过默认白圈。
+   ========================================================================== */
+.lm-tag-due {
+  background: #FDE68A; /* 待消课：琥珀（对应设计口径「待消课=黄」） */
+  color: #7C4A03;
+}
+.lm-tag.lm-checkin-btn {
+  position: relative;
+  overflow: hidden;
+}
+.lm-tag-due.lm-checkin-btn .lm-cb-spinner {
+  border-color: rgba(124, 74, 3, 0.25);
+  border-top-color: #7C4A03;
+}
+/* 完成态不走这里：由 styles.css 的 .lm-checkin-btn.is-done 统一接管（绿底 + 白勾） */

@@ -587,16 +587,19 @@
     return Math.max(1, Math.round((schedule.durationMinutes || 45) / 45));
   }
 
-  function executeCheckIn(scheduleId, remarks) {
+  // 返回值语义（三态按钮依赖它）：true = 真的消了课，false = 被业务拦下（已消课/请假）。
+  // uiAnim.runAsyncButton 靠这个决定是「转圈 → 绿底打勾」还是「静默回到初态」。
+  function executeCheckIn(scheduleId, remarks, opts) {
+    const skipRefresh = !!(opts && opts.skipRefresh);
     const sch = schedules.find((s) => s.id === scheduleId);
-    if (!sch) return;
+    if (!sch) return false;
     if (sch.status === SCHEDULE_STATUS.COMPLETED) {
       showToast('该课程已消课，无需重复操作');
-      return;
+      return false;
     }
     if (sch.status === SCHEDULE_STATUS.STUDENT_LEAVE) {
       showToast('该课程为请假状态，请先撤销请假');
-      return;
+      return false;
     }
 
     const student = students.find((st) => st.id === sch.studentId);
@@ -622,10 +625,12 @@
     sch.status = SCHEDULE_STATUS.COMPLETED;
     recordCheckInLog(sch, deducted, payment, finalRemarks);
     saveData();
-    renderMobile3DayView();
-    renderMobileStudents();
+    // skipRefresh：三态动效进行中先别重建 DOM —— 按钮节点一被换掉，动效就整个消失。
+    // 等动效跑完由 onDone 调 refreshMobileAll 统一刷新（与桌面看板同一套配合方式）。
+    if (!skipRefresh) refreshMobileAll();
     offerUndo(`✅ 已消课：${sch.studentName} · ${sch.subject || sch.courseName || ''}（${deducted}节）`, `消课 ${sch.studentName}`);
     if (window.uiAnim) window.uiAnim.flashSchedule(sch.id);
+    return true;
   }
 
   // 学员请假（不限课程时间，已消课的也可改为请假）
@@ -2134,6 +2139,30 @@
   const FLIP_MAX_DY = 420; // 超过这个距离就别飞了（会显得滑稽），改淡入
   const prefersReduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+  /* ------------------------------------------------------------------------
+     首页统计数字渐变（hero 大数字 + 数据卡小数字）
+     hero 与数据卡每次整块重建 innerHTML，元素都是新节点 —— 上一次的值没法挂在
+     元素上（desktop 那套 data-lm-val 在这里会丢），所以只能存在闭包里。
+     首帧不滚（没得从哪滚），值没变也不滚：只有真的变了才给滚动反馈。
+     ------------------------------------------------------------------------ */
+  const homeNumPrev = new Map();
+  // 模板里先写「上一次的值」，随后 rollHomeNumbers 再滚到新值；
+  // 若直接写新值，会先闪一下新数字再滚回来（回跳）。
+  const homeNumText = (key, value) => {
+    const prev = homeNumPrev.get(key);
+    return (prev === undefined || prev === value) ? String(value) : String(prev);
+  };
+  const rollHomeNumbers = (container, pairs) => {
+    if (!container) return;
+    for (const [key, value] of pairs) {
+      const el = container.querySelector(`[data-roll="${key}"]`);
+      const prev = homeNumPrev.get(key);
+      homeNumPrev.set(key, value);
+      if (!el || prev === undefined || prev === value) continue;
+      if (window.uiAnim && window.uiAnim.number) window.uiAnim.number(el, prev, value, 0, '');
+    }
+  };
+
   // 重排前：记下每行当前位置（含分隔条，用固定 key）
   function snapshotTodayRows(box) {
     const map = new Map();
@@ -2213,7 +2242,7 @@
       hero.innerHTML = `
         <div class="lm-card lm-hero" style="border-radius:22px 22px 0 0;position:relative;z-index:2;padding:20px 20px 12px">
           <div class="lm-eyebrow">今日课时</div>
-          <div class="lm-bignum">${todayCountH}<small>节课 · 已消 ${todayDoneH}${leaveTag}</small></div>
+          <div class="lm-bignum"><span data-roll="heroCount">${homeNumText('heroCount', todayCountH)}</span><small>节课 · 已消 ${todayDoneH}${leaveTag}</small></div>
           ${nextUpH ? `
           <div class="mt-2 pt-1.5" style="border-top:1px solid #f0ebe2;display:flex;align-items:center;gap:8px">
             <span class="text-[11px] font-medium text-[#9c9fa5]" style="flex-shrink:0">下一节</span>
@@ -2230,6 +2259,7 @@
             <div class="text-[11px] font-medium text-[#9c9fa5]">${tomorrowAllH.length ? '最早 ' + tomorrowAllH.map((s) => s.startTime).sort()[0] : '暂无安排'}</div>
           </div>
         </div>`;
+      rollHomeNumbers(hero, [['heroCount', todayCountH]]);
     } else {
       const myToday = schedules.filter((s) => s.date === todayStr && inScope(s)).sort((a, b) => a.startTime.localeCompare(b.startTime));
       const myTodayDone = myToday.filter((s) => s.status === SCHEDULE_STATUS.COMPLETED).length;
@@ -2246,7 +2276,7 @@
             <div class="lm-eyebrow" style="margin-bottom:0">${teacherSession.name.endsWith('老师') ? teacherSession.name : teacherSession.name + '老师'} · 今日课时</div>
             <button id="btnTeacherExitHome" class="text-[11px] bg-white rounded-full px-2.5 py-1 font-bold text-[#626260] shadow-xs active:bg-[#f1ece3]">退出</button>
           </div>
-          <div class="lm-bignum mt-1.5">${myTodayCount}<small>节课 · 已消 ${myTodayDone}${myLeaveTag}</small></div>
+          <div class="lm-bignum mt-1.5"><span data-roll="heroCount">${homeNumText('heroCount', myTodayCount)}</span><small>节课 · 已消 ${myTodayDone}${myLeaveTag}</small></div>
           ${myNext ? `
           <div class="mt-2 pt-1.5" style="border-top:1px solid #f0ebe2;display:flex;align-items:center;gap:8px">
             <span class="text-[11px] font-medium text-[#9c9fa5]" style="flex-shrink:0">下一节</span>
@@ -2263,6 +2293,7 @@
             <div class="text-[11px] font-medium text-[#9c9fa5]">${myTomorrow.length ? '最早 ' + myTomorrow[0].startTime : '暂无安排'}</div>
           </div>
         </div>`;
+      rollHomeNumbers(hero, [['heroCount', myTodayCount]]);
     }
 
     // ---- 看板卡 ----
@@ -2298,36 +2329,44 @@
       <div class="grid grid-cols-2 gap-3">
         <div class="lm-card px-4 py-4">
           <div class="text-[11px] font-medium text-[#9c9fa5] flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full" style="background:#111"></span> 今天待消课</div>
-          <div class="lm-stat-v mt-1">${todayPending}<span class="text-xs font-medium text-[#626260]"> 节</span></div>
+          <div class="lm-stat-v mt-1"><span data-roll="todayPending">${homeNumText('todayPending', todayPending)}</span><span class="text-xs font-medium text-[#626260]"> 节</span></div>
           <div class="text-[11px] text-[#9c9fa5] mt-0.5">${todayPending ? '下一节 ' + (todayAll.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).sort((a, b) => a.startTime.localeCompare(b.startTime))[0]?.startTime || '') : '全部完成 🎉'}</div>
         </div>
         <div class="lm-card px-4 py-4">
           <div class="text-[11px] font-medium text-[#9c9fa5] flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full" style="background:#fe4c02"></span> 本周剩余</div>
-          <div class="lm-stat-v mt-1 text-[#fe4c02]">${weekLeft}<span class="text-xs font-medium text-[#626260]"> 节</span></div>
+          <div class="lm-stat-v mt-1 text-[#fe4c02]"><span data-roll="weekLeft">${homeNumText('weekLeft', weekLeft)}</span><span class="text-xs font-medium text-[#626260]"> 节</span></div>
           <div class="text-[11px] text-[#9c9fa5] mt-0.5">至周日 · 已消 ${weekDoneCnt} 节</div>
         </div>
         ${!isTeacherView() ? `
         <button id="homeCardDebt" class="lm-card px-4 py-4 text-left active:opacity-80">
           <div class="text-[11px] font-medium text-[#9c9fa5] flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full" style="background:#ff2067"></span> 欠费学员</div>
-          <div class="lm-stat-v mt-1 text-[#d5304f]">${debtCount}<span class="text-xs font-medium text-[#626260]"> 人</span></div>
+          <div class="lm-stat-v mt-1 text-[#d5304f]"><span data-roll="debtCount">${homeNumText('debtCount', debtCount)}</span><span class="text-xs font-medium text-[#626260]"> 人</span></div>
           <div class="text-[11px] text-[#9c9fa5] mt-0.5">共欠 ${debtTotal} 节</div>
         </button>
         <button id="homeCardRenew" class="lm-card px-4 py-4 text-left active:opacity-80">
           <div class="text-[11px] font-medium text-[#9c9fa5] flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full" style="background:#fe4c02"></span> 待续费提醒</div>
-          <div class="lm-stat-v mt-1 text-[#fe4c02]">${lowCount}<span class="text-xs font-medium text-[#626260]"> 项</span></div>
+          <div class="lm-stat-v mt-1 text-[#fe4c02]"><span data-roll="lowCount">${homeNumText('lowCount', lowCount)}</span><span class="text-xs font-medium text-[#626260]"> 项</span></div>
           <div class="text-[11px] text-[#9c9fa5] mt-0.5">课时≤2 需跟进</div>
         </button>` : `
         <button id="homeCardDebt" class="lm-card px-4 py-4 text-left active:opacity-80">
           <div class="text-[11px] font-medium text-[#9c9fa5] flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full" style="background:#ff2067"></span> 欠费学员</div>
-          <div class="lm-stat-v mt-1 text-[#d5304f]">${tDebtCount}<span class="text-xs font-medium text-[#626260]"> 人</span></div>
+          <div class="lm-stat-v mt-1 text-[#d5304f]"><span data-roll="debtCount">${homeNumText('debtCount', tDebtCount)}</span><span class="text-xs font-medium text-[#626260]"> 人</span></div>
           <div class="text-[11px] text-[#9c9fa5] mt-0.5">共欠 ${tDebtTotal} 节</div>
         </button>
         <button id="homeCardRenew" class="lm-card px-4 py-4 text-left active:opacity-80">
           <div class="text-[11px] font-medium text-[#9c9fa5] flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full" style="background:#fe4c02"></span> 待续费提醒</div>
-          <div class="lm-stat-v mt-1 text-[#fe4c02]">${tLowCount}<span class="text-xs font-medium text-[#626260]"> 项</span></div>
+          <div class="lm-stat-v mt-1 text-[#fe4c02]"><span data-roll="lowCount">${homeNumText('lowCount', tLowCount)}</span><span class="text-xs font-medium text-[#626260]"> 项</span></div>
           <div class="text-[11px] text-[#9c9fa5] mt-0.5">我的学员 课时≤2</div>
         </button>`}
       </div>`;
+
+    // 数据卡数字滚动：值真的变了才滚（首帧 / 值没变都不滚）
+    rollHomeNumbers(cards, [
+      ['todayPending', todayPending],
+      ['weekLeft', weekLeft],
+      ['debtCount', isTeacherView() ? tDebtCount : debtCount],
+      ['lowCount', isTeacherView() ? tLowCount : lowCount],
+    ]);
 
     // ---- 今日课程列表 ----
     // 排序：正常课按时间在前，请假课沉到最后（请假的不用盯，别混在时间轴里占位），
@@ -2343,7 +2382,13 @@
       if (done) badge = '<span class="lm-tag lm-tag-done">已消课</span>';
       else if (leave) badge = '<span class="lm-tag lm-tag-leave">请假</span>';
       else if (nowHM >= (s.startTime || '00:00') && nowHM < endHM) badge = '<span class="lm-tag lm-tag-live">正在上课</span>';
-      else if (nowHM >= endHM) badge = '<button class="lm-tag lm-tag-due" data-home-checkin="' + s.id + '">待消课 ›</button>';
+      // 待消课 = 一键消课，徽章自带 转圈 → 绿底打勾 三态（对齐桌面看板）；
+      // 待上课（课还没到）仍开操作菜单 —— 先看选项比直接扣课时更稳妥。
+      else if (nowHM >= endHM) badge = '<button class="lm-tag lm-tag-due lm-checkin-btn" data-home-checkin="' + s.id + '">' +
+        '<span class="lm-cb-label">待消课 ›</span>' +
+        '<span class="lm-cb-spinner" aria-hidden="true"></span>' +
+        '<svg class="lm-cb-check" viewBox="0 0 24 24" aria-hidden="true"><path pathLength="100" d="M4.5 12.6 L9.7 17.8 L19.5 6.6"/></svg>' +
+        '</button>';
       else badge = '<button class="lm-tag lm-tag-todo" data-home-checkin="' + s.id + '">待上课 ›</button>';
       return `
         <div class="lm-card px-5 py-4 flex items-center gap-3.5" data-today-row="${s.id}">
@@ -2369,6 +2414,12 @@
            <span class="flex-1 h-px" style="background:#efe9e0"></span>
          </div>`
       : '';
+    // 三态消课动效进行中：保住今日列表的 DOM —— 一旦重建，按钮节点被换掉动效就整个消失
+    // （与桌面看板 dashBusy 同一道闸门）。动效结束由 onDone → refreshMobileAll 重新渲染。
+    if (window.uiAnim && window.uiAnim.isBusy && window.uiAnim.isBusy()) {
+      pendingReorderId = null;
+      return;
+    }
     // 先量旧位置，再换 DOM，最后把每行从旧位置滑到新位置（请假沉底时看得见「它去了哪」）
     const prevRowRects = snapshotTodayRows(todayBox);
     const reorderId = pendingReorderId;
@@ -2385,23 +2436,40 @@
     void lowList; void lowCount;
 
     // ---- 事件（委托到 cards 容器；走 window 桥避免作用域错误）----
+    // 今日课程徽章点击：待消课 = 一键消课（转圈 → 绿底打勾三态），其余 = 开操作菜单。
+    // 与桌面看板同一条协作方式：work 里 skipRefresh，动效跑完再统一刷新。
+    const handleHomeCheckinTap = (e) => {
+      const tag = e.target.closest('[data-home-checkin]');
+      if (!tag) return false;
+      const sch = schedules.find((x) => x.id === tag.getAttribute('data-home-checkin'));
+      if (!sch) return true;
+      if (tag.classList.contains('lm-tag-due') && window.uiAnim && window.uiAnim.runAsyncButton) {
+        window.uiAnim.runAsyncButton(
+          tag,
+          () => executeCheckIn(sch.id, '', { skipRefresh: true }),
+          () => refreshMobileAll()
+        );
+        return true;
+      }
+      if (typeof openMobileScheduleActionMenu === 'function') openMobileScheduleActionMenu(sch);
+      return true;
+    };
     // 今日课程容器独立委托（badge 在 todayBox 不在 cards）
     const todayBoxEl = document.getElementById('mobileHomeToday');
     if (todayBoxEl) todayBoxEl.onclick = (e) => {
       const tag = e.target.closest('[data-home-checkin]');
-      if (tag) {
-        const sch = schedules.find((x) => x.id === tag.getAttribute('data-home-checkin'));
-        if (sch) openMobileScheduleActionMenu(sch);
-      }
+      if (tag) { handleHomeCheckinTap(e); return; }
+      // 点行内空白处 → 开操作菜单：徽章已经变成「一键消课」，请假/编辑/删除/撤销
+      // 得另有入口，否则待消课的行就只剩下消课一个动作了。
+      const row = e.target.closest('[data-today-row]');
+      if (!row) return;
+      const sch = schedules.find((x) => x.id === row.getAttribute('data-today-row'));
+      if (sch && typeof openMobileScheduleActionMenu === 'function') openMobileScheduleActionMenu(sch);
     };
     cards.onclick = (e) => {
       // 今日课程状态胶囊 → 弹确认菜单（消课/请假二选一）
       const tag = e.target.closest('[data-home-checkin]');
-      if (tag) {
-        const sch = schedules.find((x) => x.id === tag.getAttribute('data-home-checkin'));
-        if (sch && typeof openMobileScheduleActionMenu === 'function') openMobileScheduleActionMenu(sch);
-        return;
-      }
+      if (tag) { handleHomeCheckinTap(e); return; }
       const t = e.target.closest('#homeCardDebt, #homeCardRenew');
       if (!t) return;
       if (t.id === 'homeCardDebt') window.__switchMobileView('finance');
@@ -2594,6 +2662,10 @@
       if (n) n.innerHTML = '后3天 <i class="fa-solid fa-chevron-right text-[10px]"></i>';
     }
     if (calMode === 'cal') renderMobileCal();
+    // 模式切换进场：低频切换（一天几次），给一个轻微位移说明「换了一整套视图」。
+    // 底部 tab 切换仍刻意不做整页淡入（高频操作 + 正撞重渲染开销最大的时刻）。
+    const shown = calMode === 'cal' ? vc : vs;
+    if (shown && window.uiAnim && window.uiAnim.viewIn) window.uiAnim.viewIn(shown);
   }
 
   function renderMobile3DayView() {
@@ -3628,8 +3700,10 @@
     if (status !== SCHEDULE_STATUS.STUDENT_LEAVE) {
       actionsHtml += `
         ${status === SCHEDULE_STATUS.SCHEDULED ? `
-        <button data-act="checkin" class="w-full py-3.5 rounded-xl font-bold text-sm bg-emerald-500 text-white active:bg-emerald-600 flex items-center justify-center gap-2">
-          <i class="fa-solid fa-circle-check"></i> 消课签到（${getLessonCost(schedule)}节）
+        <button data-act="checkin" class="lm-checkin-btn w-full py-3.5 rounded-xl font-bold text-sm bg-emerald-500 text-white active:bg-emerald-600 flex items-center justify-center gap-2">
+          <span class="lm-cb-label"><i class="fa-solid fa-circle-check"></i> 消课签到（${getLessonCost(schedule)}节）</span>
+          <span class="lm-cb-spinner" aria-hidden="true"></span>
+          <svg class="lm-cb-check" viewBox="0 0 24 24" aria-hidden="true"><path pathLength="100" d="M4.5 12.6 L9.7 17.8 L19.5 6.6"/></svg>
         </button>` : ''}
         <button data-act="leave" class="w-full py-3.5 rounded-xl font-bold text-sm bg-rose-50 text-rose-600 border border-rose-200 active:bg-rose-100 flex items-center justify-center gap-2">
           <i class="fa-solid fa-person-walking-arrow-right"></i> 学员请假（退还${getLessonCost(schedule)}节）${status === SCHEDULE_STATUS.COMPLETED ? ' · 改请假' : ''}
@@ -3674,9 +3748,26 @@
       const btn = e.target.closest('[data-act]');
       if (!btn) return;
       const act = btn.getAttribute('data-act');
+      // 消课：三态动效得在按钮上跑完，所以先别关菜单 —— 动效一结束立刻关菜单 + 刷新
+      if (act === 'checkin') {
+        if (!window.uiAnim || !window.uiAnim.runAsyncButton) {
+          menu.remove();
+          executeCheckIn(schedule.id);
+          return;
+        }
+        window.uiAnim.runAsyncButton(
+          btn,
+          () => {
+            const ok = executeCheckIn(schedule.id, '', { skipRefresh: true });
+            if (!ok) menu.remove(); // 被拦下（状态守卫）：菜单别赖着不走
+            return ok;
+          },
+          () => { menu.remove(); refreshMobileAll(); }
+        );
+        return;
+      }
       menu.remove();
-      if (act === 'checkin') executeCheckIn(schedule.id);
-      else if (act === 'leave') markStudentLeave(schedule.id);
+      if (act === 'leave') markStudentLeave(schedule.id);
       else if (act === 'revert') revertScheduleStatus(schedule.id);
       else if (act === 'edit') openMobileScheduleModalForEdit(schedule);
       else if (act === 'delete') {
