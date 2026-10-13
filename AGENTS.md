@@ -93,7 +93,12 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
 24. **排补课预填源课时间必须 `snapTo5Min()`**：排课表单的时间框是 `step="300"`，而历史/导入数据的分钟位未必是 5 的倍数 —— 那种值填进去会让 **原生校验静默拦下提交**（用户点保存毫无反应，也看不出哪个字段有问题）。测试里特意留了一个非 5 分钟整的种子来钉住这条。
 25. **待补池的回溯窗口是「含今天在内的最近 7 天」**，取数走两端的 `pendingMakeupList(scopeFn)`（`MAKEUP_WINDOW_DAYS = 7`），**禁止在渲染里另写过滤**。口径：只列「请假 + `needMakeup` + 未核销」——补完 / 当初选不补 / 超窗 都不出现，**清单空则整块不渲染**（不留空标题占位）。排序**按日期升序**（拖最久的排最前，先补最容易烂的那节）。今日行上的「排补课」只管今天，这块才是整周的口子；入口统一走 `openMakeupFor(schId)`（预填学员/时间，**日期取今天** —— 补课排的是接下来要上的课，不是回到请假那天去补）。手机端渲染在 `renderMobileHome`（`#mobileHomeMakeup`），电脑端在 `renderDashboard`（`#dashMakeupCard`，空则整卡 `hidden`）。注意今天请的假会同时出现在「今日课程」和这里：这是刻意的 —— 计数要是把今天排除掉，「还欠几节」就报不准了。
 26. **「与上月对比」的环比徽章口径锁死为「本月累计 vs 上月整月合计」**，取数走两端的 `prevMonthLogs()`（跨年由 `Date` 自动回退），渲染走两端的 `momBadge(cur, prev, unit, fmt, big)`（`js/app.js` 与 `js/mobile.js` **各一份同语义副本，改口径必须两边一起改**）。三条硬约束：① **上月为 0 时不出徽章** —— 除零算出的「+∞%」是假数据；② 只给能由消课流水直接推出的两项（**本月课消 / 消课价值**），「待消存量 / 欠课学员」没有历史快照（充值不进流水、欠课账只存当前值），硬算会出假数；③ 徽章是卡片标题行**右上方**（label 左、徽章右，靠 `margin-left:auto` 顶开，**不要**为了它去引新 tailwind 类 —— `css/tailwind.css` 是预生成的）。样式类 `.lm-mom / .is-up / .is-down / .is-flat / .is-lg` 在 `css/legacy-tokens.css` 和 `css/intercom-tokens.css` **各一份**（并行的两套，见第 19 条）。颜色只用绿（升）/玫红（降）/暖灰（持平），不碰琥珀色。悬停 `title` 带两侧绝对值，口径可核对。三处 UI 都挂了徽章：财务页 4 卡（桌面 `renderPageFinance` / 手机 `renderMobileFinance`）+ 待排课抽屉的「本月经营」小卡（桌面 `updateFinancePanel`，见第 27 条）。
-27. **桌面端「待排课学生」抽屉（`#sidebarStudent`，含底部的「本月经营」`#financePanel`）目前没有入口**：唯一打开它的按钮 `#btnBatchSchedule` 在 commit `fb1c3e3`（「课表去新建学员/批量排课」）时删掉了，但 `updateFinancePanel()` 还在照常往里写。**别把它当成用户看得见的 UI** —— 要在这块加东西（或改口径）时先确认入口是否已恢复，否则改动等于零。恢复入口只需在课表页给 `#btnBatchSchedule` 一个按钮（`expandSidebar()` / `collapseSidebar()` 都还在，事件绑定也还在）。
+27. **桌面端「待排课学生」抽屉（`#sidebarStudent`，含底部的「本月经营」`#financePanel`）入口已恢复。**
+    唯一开关 `#btnBatchSchedule` 曾在 commit `fb1c3e3`（「课表去新建学员/批量排课」）被删掉，抽屉连同底部的财务面板一起变成点不到的代码；本轮回补了顶栏按钮（课表页可见，**月历视图下由 `setCalendarViewMode` 收起**，避免抽屉压住月历）。`expandSidebar()` / `collapseSidebar()` 与事件绑定一直都在，恢复只需给按钮一个 id。
+    **回补时暴露了两处被「入口缺失」掩盖已久的问题，都已修**：
+    ① **筛选行被挤成竖排**：抽屉只有 288px 宽，4 个筛选按钮 + 两个下拉挤一行时按钮文字会逐字换行。改成「按钮一行（`flex-wrap` + `whitespace-nowrap`）+ 两个下拉一行（`flex-1`）」。
+    ② **选中态从来没生效过**：`.filter-student-btn.active` 只定义在 `css/desktop-theme.css` 里，而**那个文件没有被任何 HTML 引用**（历史遗留，见第 19 条附近），JS 又只切 `.active` / `.lm-t2`，于是按钮的深色底一直靠 HTML 上硬编码的 `bg-[#111111] text-white` 装样子 —— 点别的筛选项时旧按钮不脱色，出现「两个都像选中」。已把规则搬进 `css/legacy-tokens.css`（`!important` + 双类特异性压过 `.lm-t2` 的 `!important`），HTML 上的硬编码底色删掉，**选中态由 `.active` 独家驱动**。
+    另注：这处的「预警(≤2)」筛选**故意包含欠课**（负课时 ≤2 也算命中）—— 它是**待排课筛选**，欠课的人更该排课；与财务页「续费预警」口径不同是刻意的，别顺手统一（`tmp/renewal-check.mjs` 的 O6 用固定值 5 人钉住了这点）。
 28. **退款（F12）复用 `checkInLogs` 记账，不新建集合。** 记法靠三个字段表达，这是本轮最关键的取舍：
     ① `deductedLessons = 0` —— 退的是「没上过的课」，**不该动「本月课消节数」**；
     ② `paymentAmount = -金额` —— 「课消价值 / 收入 / 环比徽章 / 明细 / 导出」全部**自动被扣减**；
@@ -109,3 +114,21 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
     「本月老师课时」排行里也要跳过退款行，否则会冒出一行「未指定老师」。学员详情里退款**单列一个「退款记录」区块**，
     并且要从「消课记录」里排除（退款不是消课，混着读会把节数看糊涂）。双端各一份 `isRefundLog / recordRefundLog /
     refundableCourses / executeRefund / fmtMoney`，**语义必须一致**。核对脚本 `tmp/refund-check.mjs`（43 项）。
+29. **低课时续费预警（F1）三处共用一套口径。** 阈值全站唯一 `LOW_LESSON_THRESHOLD = 2`（侧边栏筛选那处见第 27 条的例外），
+    取数走两端的 `lowLessonRows(studentsScope, courseOf)`（`js/app.js` 与 `js/mobile.js` **各一份同语义副本，改口径必须两边一起改**），
+    **禁止在渲染里另写过滤**。三处 UI：财务页「续费预警」卡（桌面右栏 / 手机在 4 张 KPI 之后）+ 看板「课时预警」（`#dashLowList`）。三条硬约束：
+    ① **只收余额落在 [0, 阈值] 的课程包** —— 欠课（负数）**不进预警**，它们归「欠课名单」；两处同时列同一个人会让老师以为要退钱。
+       余 0 节仍要提醒，文案统一走 `lowLessonText()`（0 写「已用完」，不写「剩 0 节」）。
+    ② **按课程包逐条判，不按学员聚合**：同一学员可以同时「竖琴 2 节进预警 + 长笛欠课进欠课名单」（这正是分开两块的理由）。
+    ③ 排序：剩余节数升序（最该续费的排最前），同数按学员名。
+    点一行 → **直通充值**并预选到该课程包：`openRechargeModal(student, presetCourseName)` / `openMobileRechargeModal(student, presetCourseName)`
+    （**第二个入参是本轮新增的**，课程下拉预选该项并且单价随之带出）。手机端老师视角沿用既有的 `relStudents` + `myCoursesOf` 收窄；
+    电脑端财务页历来不分老师视角，保持一致。
+    核对脚本 `tmp/renewal-check.mjs`（50 项）—— 其中 **H3 直接拿手机端实测行集合与电脑端逐条比对**，跨端口径不一致会立刻报红。
+30. **断言「颜色 / 位置」时的两个陷阱（实操踩过）：**
+    ① **带 transition 的元素，改完 class 立刻读 `getComputedStyle` 拿到的是过渡起始值（旧色）**。`.filter-student-btn` 有 `transition: background-color .15s`，
+        同一个任务里点完按钮马上读，`.active` 明明切对了、颜色断言却报「样式没生效」（本轮白查了一轮）。
+        正确做法：`await waitForTimeout(>过渡时长)` 再读，或把「改 class」和「读颜色」拆成两次 evaluate。
+        反面样板：**读 `.classList` 不受影响**（它不等过渡），所以「class 对 + 颜色不对」这个组合基本就是撞上过渡了。
+    ② **flex 容器里 `innerText` 会在 flex item 之间插换行**，想截「一行」别用 `[^\n]*`（卡头 `续费预警` + 阈值 span 是 flex 兄弟，
+        只截到「续费预警」）。先 `innerText.replace(/\s+/g,' ')` 压平再匹配。

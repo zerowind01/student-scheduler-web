@@ -1141,6 +1141,33 @@
   }
 
   // ==========================================
+  // 3.6 低课时续费预警（F1）
+  // ==========================================
+  // 阈值全站唯一：财务页「续费预警」、看板「课时预警」、手机端同名片都读这个数。
+  // 侧边栏抽屉的「预警(≤2)」筛选用的是同一阈值，但它是**待排课筛选**（欠课的人更该排课），
+  // 故意不排除欠课 —— 两处目的不同，别顺手统一掉。
+  const LOW_LESSON_THRESHOLD = 2;
+
+  // 低课时预警行：余额落在 [0, 阈值] 才算「该续费了」（余 0 节也提醒，就是「已用完」）。
+  // 欠课（负数）**不进预警** —— 它们归「欠课名单」，两处同时列同一个人会让老师以为要退钱。
+  // 排序：剩余节数升序（最该续费的排最前），同数按学员名。
+  function lowLessonRows(studentsScope, courseOf) {
+    const rows = [];
+    (studentsScope || students).forEach((st) => {
+      normalizeStudent(st);
+      const courses = (courseOf ? courseOf(st) : st.courses) || [];
+      courses.forEach((c) => {
+        const left = Number(c.remainingLessons) || 0;
+        if (left >= 0 && left <= LOW_LESSON_THRESHOLD) rows.push({ student: st, course: c, left });
+      });
+    });
+    return rows.sort((a, b) => a.left - b.left || String(a.student.name || '').localeCompare(String(b.student.name || '')));
+  }
+
+  // 行内文案：0 节说「已用完」比「剩 0 节」更像人话
+  function lowLessonText(left) { return left === 0 ? '已用完' : `剩 ${left} 节`; }
+
+  // ==========================================
   // 3. 安全防崩溃事件监听配置
   // ==========================================
   // 排课日期改动时刷新系列批量修改的提示（事件委托，避免重复绑定）
@@ -1866,23 +1893,22 @@
     }
 
     // ---- 课时预警 ----
+    // 取数与财务页「续费预警」共用 lowLessonRows()：欠课（负数）不进这里，它们在看板的欠课区。
     const lowList = document.getElementById('dashLowList');
     if (lowList) {
-      const lowStudents = students
-        .map((st) => {
-          normalizeStudent(st);
-          const lowCourses = (st.courses || []).filter((c) => c.remainingLessons <= 2);
-          return { st, lowCourses };
-        })
-        .filter((x) => x.lowCourses.length);
+      const grouped = new Map();
+      lowLessonRows(students).forEach((r) => {
+        if (!grouped.has(r.student.id)) grouped.set(r.student.id, { st: r.student, lowCourses: [], min: r.left });
+        grouped.get(r.student.id).lowCourses.push(r.course);
+      });
+      const lowStudents = [...grouped.values()];
       if (!lowStudents.length) {
         lowList.innerHTML = `<div class="text-center py-8 text-[#a8a29e] text-xs"><i class="fa-solid fa-shield-heart text-2xl mb-2 block opacity-40"></i>暂无课时预警</div>`;
       } else {
-        lowList.innerHTML = lowStudents.slice(0, 8).map(({ st, lowCourses }) => {
-          const min = Math.min(...lowCourses.map((c) => c.remainingLessons));
+        lowList.innerHTML = lowStudents.slice(0, 8).map(({ st, lowCourses, min }) => {
           return `<div class="flex items-center justify-between px-5 py-3 border-t border-[#f2ece4] cursor-pointer hover:bg-[#faf8f3] transition dash-low-student" data-id="${st.id}">
             <span class="text-[13px] font-bold text-[#111111] truncate">${st.name} <span class="text-[11px] text-[#a8a29e] font-semibold">· ${lowCourses.map((c) => c.name).join('、')}</span></span>
-            <span class="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0 ml-2 ${min < 0 ? 'bg-rose-100 text-rose-700' : 'bg-rose-50 text-rose-600'}">剩 ${min} 节</span>
+            <span class="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0 ml-2 bg-rose-50 text-rose-600">${lowLessonText(min)}</span>
           </div>`;
         }).join('');
         lowList.querySelectorAll('.dash-low-student').forEach((el) => {
@@ -2194,6 +2220,8 @@
     const totalRemaining = students.reduce((acc, st) => acc + (st.courses || []).reduce((a, c) => a + Math.max(0, c.remainingLessons), 0), 0);
     const totalStockValue = students.reduce((acc, st) => acc + (st.courses || []).reduce((a, c) => a + Math.max(0, c.remainingLessons) * (c.unitPrice || 0), 0), 0);
     const debtors = debts.filter((d) => d.amount > 0);
+    // 续费预警（余额 ≤2 节；欠课负数归右栏「欠课名单」，不在这里重复出现）
+    const lowRows = lowLessonRows(students);
 
     // 环比（与上月整月比）：只给能由消课流水直接推出的两项
     // 「待消存量 / 欠课学员」没有历史快照（充值不进流水、欠课账只存当前值），硬算会出假数，故不放徽章
@@ -2253,8 +2281,21 @@
           </div>`}
         </div>
 
-        <!-- 右栏：欠课名单 + 课时存量价值 -->
+        <!-- 右栏：续费预警 + 欠课名单 + 课时存量价值 -->
         <div class="space-y-4">
+          <div class="lm-stat-card rounded-2xl p-4">
+            <div class="font-bold text-xs lm-t1 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-bell" style="color:#fe4c02;"></i> 续费预警 <span class="text-[10px] font-bold lm-t3">（剩余 ≤2 节）</span></div>
+            ${lowRows.length === 0 ? '<div class="text-[11px] lm-t3 py-4 text-center">暂无需要续费的学员 👍</div>' : `
+            <div class="space-y-1.5 max-h-64 overflow-y-auto custom-scrollbar">
+              ${lowRows.map((r) => `
+                <button type="button" class="renew-low-row w-full flex items-center justify-between text-xs bg-[#fff7ef] hover:bg-[#ffeee0] px-3 py-2 rounded-lg transition text-left" data-renew-student="${r.student.id}" data-renew-course="${r.course.name}" title="点击为「${r.course.name}」充值">
+                  <span class="font-bold lm-t1 truncate">${r.student.name} <span class="lm-t3 font-medium">· ${r.course.name}</span></span>
+                  <span class="font-black shrink-0 ml-2 ${r.left === 0 ? 'text-rose-600' : 'text-[#fe4c02]'}">${lowLessonText(r.left)}</span>
+                </button>`).join('')}
+              <div class="text-[10px] lm-t3 pt-1">💡 点一行直接为该课程充值</div>
+            </div>`}
+          </div>
+
           <div class="lm-stat-card rounded-2xl p-4">
             <div class="font-bold text-xs lm-t1 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-triangle-exclamation" style="color:var(--lm-pink);"></i> 欠课名单</div>
             ${debtors.length === 0 ? '<div class="text-[11px] lm-t3 py-4 text-center">没有欠课学员，太棒了 🎉</div>' : `
@@ -2280,6 +2321,14 @@
         </div>
       </div>
     `;
+
+    // 续费预警行 → 直通充值（预选到该课程包，单价一并带出）
+    container.querySelectorAll('.renew-low-row').forEach((el) => {
+      el.addEventListener('click', () => {
+        const st = students.find((s) => s.id === el.getAttribute('data-renew-student'));
+        if (st) openRechargeModal(st, el.getAttribute('data-renew-course'));
+      });
+    });
   }
 
   function renderTeacherOptions() {
@@ -4503,18 +4552,20 @@
   }
 
   // 充值课时弹窗（新购/充值二合一，自动抵扣欠课）
-  function openRechargeModal(student) {
+  // presetCourseName：从「续费预警」那行点进来时预选到对应课程包（并带出它的单价）
+  function openRechargeModal(student, presetCourseName) {
     normalizeStudent(student);
     migrateStudentCourses(student);
 
     const old = document.getElementById('rechargeModal');
     if (old) old.remove();
 
+    const pre = presetCourseName ? (student.courses || []).find((c) => c.name === presetCourseName) : null;
     const courseOptions = (student.courses || [])
-      .map((c) => `<option value="${c.name}">${c.name}（余 ${c.remainingLessons}）</option>`)
+      .map((c) => `<option value="${c.name}"${c === pre ? ' selected' : ''}>${c.name}（余 ${c.remainingLessons}）</option>`)
       .join('');
 
-    const firstCourse = (student.courses || [])[0];
+    const firstCourse = pre || (student.courses || [])[0];
 
     const modal = document.createElement('div');
     modal.id = 'rechargeModal';

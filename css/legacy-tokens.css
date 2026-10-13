@@ -218,3 +218,17 @@ body {
 .lm-mom.is-up { color: #0a7d52; background: #e6f6ee; }
 .lm-mom.is-down { color: #b3233d; background: #fdecef; }
 .lm-mom.is-flat { color: #78716c; background: #f3f0ea; font-weight: 700; }
+
+/* ---- 待排课抽屉：分类筛选按钮 ----
+   原样式写在 css/desktop-theme.css 里，但那个文件**没有被任何 HTML 引用**（历史遗留），
+   等于选中态从来没生效过；按钮最初靠 HTML 上硬编码的 bg-[#111111] text-white 装样子，
+   而 JS 只切 .active / .lm-t2 —— 于是点别的筛选项时旧按钮不脱色，出现"两个都像选中"。
+   这里把规则搬回真正被引用的文件，选中态由 .active 独家驱动（.lm-t2 是 !important，
+   故这里也用 !important 并用双类提高特异性压过它）。 */
+.filter-student-btn {
+  color: var(--lm-ink-2);
+  border-radius: 8px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.filter-student-btn:hover { background: rgba(17, 17, 17, 0.05); color: var(--lm-ink); }
+.filter-student-btn.active { background: var(--lm-ink) !important; color: #fff !important; }

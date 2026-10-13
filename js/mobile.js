@@ -581,18 +581,43 @@
     return (n < 0 ? '-¥' : '¥') + Math.abs(n).toFixed(0);
   }
 
-  function openMobileRechargeModal(student) {
+  // ==========================================
+  // 低课时续费预警（F1）—— 与桌面端 app.js 同名同语义，改一处必须改两处
+  // ==========================================
+  const LOW_LESSON_THRESHOLD = 2;
+
+  // 低课时预警行：余额落在 [0, 阈值] 才算「该续费了」（余 0 节也提醒，就是「已用完」）。
+  // 欠课（负数）**不进预警** —— 它们归「欠课名单」，两处同时列同一个人会让老师以为要退钱。
+  // 排序：剩余节数升序（最该续费的排最前），同数按学员名。
+  function lowLessonRows(studentsScope, courseOf) {
+    const rows = [];
+    (studentsScope || students).forEach((st) => {
+      normalizeStudent(st);
+      const courses = (courseOf ? courseOf(st) : st.courses) || [];
+      courses.forEach((c) => {
+        const left = Number(c.remainingLessons) || 0;
+        if (left >= 0 && left <= LOW_LESSON_THRESHOLD) rows.push({ student: st, course: c, left });
+      });
+    });
+    return rows.sort((a, b) => a.left - b.left || String(a.student.name || '').localeCompare(String(b.student.name || '')));
+  }
+
+  // 行内文案：0 节说「已用完」比「剩 0 节」更像人话
+  function lowLessonText(left) { return left === 0 ? '已用完' : `剩 ${left} 节`; }
+
+  function openMobileRechargeModal(student, presetCourseName) {
     normalizeStudent(student);
     migrateStudentCourses(student);
 
     const old = document.getElementById('mobileRechargeModal');
     if (old) old.remove();
 
+    const pre = presetCourseName ? (student.courses || []).find((c) => c.name === presetCourseName) : null;
     const courseOptions = (student.courses || [])
-      .map((c) => `<option value="${c.name}">${c.name}（余 ${c.remainingLessons}）</option>`)
+      .map((c) => `<option value="${c.name}"${c === pre ? ' selected' : ''}>${c.name}（余 ${c.remainingLessons}）</option>`)
       .join('');
 
-    const firstCourse = (student.courses || [])[0];
+    const firstCourse = pre || (student.courses || [])[0];
 
     const modal = document.createElement('div');
     modal.id = 'mobileRechargeModal';
@@ -4350,11 +4375,9 @@
       ? debts.filter((d) => d.amount > 0 && relIds.has(d.studentId) && relStudents.some((st) => st.id === d.studentId && courseRelatedToTeacher(st, d.courseName)))
       : debts.filter((d) => d.amount > 0 && relIds.has(d.studentId));
 
-    // 续费跟进清单（剩余课时≤2，老师视角只看自己授课科目）
-    const financeLowList = [];
-    relStudents.forEach((st) => myCoursesOf(st).forEach((c) => {
-      if (c.remainingLessons <= 2) financeLowList.push({ student: st.name, course: c.courseName || c.name || '', remaining: c.remainingLessons });
-    }));
+    // 续费预警（剩余课时落在 [0, 2]；老师视角只看自己授课科目）
+    // 欠课（负数）不在这里 —— 它们进下方「欠课名单」，两处重复列同一个人会让老师以为要退钱
+    const lowRows = lowLessonRows(relStudents, myCoursesOf);
 
     container.innerHTML = `
       <div class="grid grid-cols-2 gap-2.5">
@@ -4377,13 +4400,16 @@
       </div>
 
       <div class="lm-card p-4">
-        <div class="font-bold text-[12px] text-[#111111] mb-2 flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full" style="background:#fe4c02"></span> 续费跟进清单 <span class="text-[11px] font-medium text-[#9c9fa5]">${isTeacherView() ? '（我的学员）' : ''}</span></div>
-        ${financeLowList.length === 0 ? '<div class="text-[12px] text-[#9c9fa5] py-3 text-center">暂无待续费学员</div>' : financeLowList.slice(0, 5).map((x) => `
-          <div class="flex items-center justify-between py-1.5" style="border-bottom:1px solid #f0ebe2">
-            <div class="text-[11.5px] font-bold text-[#111111]">${x.student} <span class="text-[#9c9fa5] font-medium">· ${x.course}</span></div>
-            <div class="text-[11px] font-bold ${x.remaining <= 0 ? 'text-[#d5304f]' : 'text-[#fe4c02]'}">${x.remaining <= 0 ? '已用完' : '剩 ' + x.remaining + ' 节'}</div>
-          </div>`).join('')}
-        ${financeLowList.length > 5 ? `<div class="text-[11px] text-[#9c9fa5] pt-1.5">还有 ${financeLowList.length - 5} 项，去学员页查看</div>` : ''}
+        <div class="font-bold text-[12px] text-[#111111] mb-2 flex items-center gap-1.5"><span class="inline-block w-2 h-2 rounded-full" style="background:#fe4c02"></span> 续费预警 <span class="text-[11px] font-medium text-[#9c9fa5]">剩余 ≤2 节${isTeacherView() ? ' · 我的学员' : ''}</span></div>
+        ${lowRows.length === 0 ? '<div class="text-[12px] text-[#9c9fa5] py-3 text-center">暂无需要续费的学员 👍</div>' : `
+        <div>
+          ${lowRows.map((r) => `
+          <button type="button" data-renew-student="${r.student.id}" data-renew-course="${r.course.name}" class="w-full flex items-center justify-between py-2 text-left active:opacity-60 transition" style="border-bottom:1px solid #f0ebe2">
+            <div class="text-[11.5px] font-bold text-[#111111] truncate">${r.student.name} <span class="text-[#9c9fa5] font-medium">· ${r.course.name}</span></div>
+            <div class="text-[11px] font-bold shrink-0 ml-2 ${r.left === 0 ? 'text-[#d5304f]' : 'text-[#fe4c02]'}">${lowLessonText(r.left)} <i class="fa-solid fa-circle-plus ml-0.5 opacity-60"></i></div>
+          </button>`).join('')}
+          <div class="text-[10px] text-[#9c9fa5] pt-1.5">💡 点一行直接为该课程充值</div>
+        </div>`}
       </div>
 
       <div class="lm-card p-4">
@@ -4422,6 +4448,14 @@
         </div>`}
       </div>
     `;
+
+    // 续费预警行 → 直通充值（预选到该课程包，单价一并带出）
+    container.querySelectorAll('[data-renew-student]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const st = students.find((s) => s.id === el.getAttribute('data-renew-student'));
+        if (st) openMobileRechargeModal(st, el.getAttribute('data-renew-course'));
+      });
+    });
 
     // 欠课红点
     const badge = document.getElementById('mobileNavDebtBadge');

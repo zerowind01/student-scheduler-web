@@ -22,7 +22,7 @@
   <!-- Custom CSS -->
   <link rel="stylesheet" href="css/tokens.css?v=12">
   <link rel="stylesheet" href="css/styles.css?v=32">
-  <link rel="stylesheet" href="css/legacy-tokens.css?v=14">
+  <link rel="stylesheet" href="css/legacy-tokens.css?v=15">
   <!-- GSAP 动效：本地内置优先（cdnjs 曾实测超时，CDN 挂掉会让全部 GSAP 动效静默消失）。
        本地缺失时才回落到 CDN；两者都失败也不影响功能——anim.js 检测不到 window.gsap 会退化为静态。 -->
   <script src="js/vendor/gsap.min.js?v=1"></script>
@@ -36,7 +36,7 @@
        改完 class 要重新生成：tools\build-tailwind.cmd
        ⚠ 必须留在 </head> 之前（即所有自有样式之后），复刻 Play CDN 把 <style>
        append 到 head 末尾的层叠顺序；挪到前面会翻转优先级。 -->
-  <link rel="stylesheet" href="css/tailwind.css?v=4">
+  <link rel="stylesheet" href="css/tailwind.css?v=5">
 </head>
 <body class="text-[#111111] font-sans h-screen flex flex-col overflow-hidden select-none" style="background: var(--surface-page);">
 
@@ -60,6 +60,11 @@
           <i class="fa-regular fa-calendar text-[10px]"></i> <span class="hidden sm:inline">月历</span>
         </button>
       </div>
+
+      <!-- 待排课学员抽屉入口（侧边栏内含财务面板）；月历视图下由 setCalendarViewMode 收起 -->
+      <button id="btnBatchSchedule" class="px-2 py-1 rounded-md bg-[#f5f2ec]/80 border border-[#efe9e0]/60 text-[#57534e] hover:bg-white hover:shadow-2xs transition text-xs font-semibold flex items-center gap-1 shrink-0" title="待排课学生列表 / 财务面板">
+        <i class="fa-solid fa-users text-[10px]"></i> <span class="hidden sm:inline">待排课</span>
+      </button>
 
       <!-- 老师筛选下拉框 -->
       <div class="flex items-center space-x-1 bg-[#faf8f3]/80 border border-[#efe9e0]/80 px-2 py-1 rounded-lg text-xs font-semibold text-[#111111] shadow-2xs shrink-0">
@@ -223,16 +228,18 @@
           <input type="text" id="searchStudentInput" aria-label="搜索学生" placeholder="搜索姓名/科目…" class="w-full pl-7 pr-2.5 py-1 text-xs bg-white border border-[#efe9e0] rounded-md focus:outline-none focus:ring-1 focus:ring-[#a8a29e] transition">
         </div>
 
-        <!-- 分类筛选 -->
-        <div class="flex items-center space-x-1 text-xs">
-          <button class="filter-student-btn active px-2 py-0.5 rounded text-[11px] bg-[#111111] text-white font-medium transition" data-filter="unscheduled">待排课</button>
-          <button class="filter-student-btn px-2 py-0.5 rounded text-[11px] text-[#57534e] hover:bg-[#e7e5e4]/60 transition" data-filter="low">预警(≤2)</button>
-          <button class="filter-student-btn px-2 py-0.5 rounded text-[11px] text-[#57534e] hover:bg-[#e7e5e4]/60 transition" data-filter="scheduled">本周已排</button>
-          <button class="filter-student-btn px-2 py-0.5 rounded text-[11px] text-[#57534e] hover:bg-[#e7e5e4]/60 transition" data-filter="all">全部</button>
-          <select id="studentTeacherFilter" aria-label="按老师筛选" class="ml-auto bg-white border border-[#efe9e0] rounded px-1 py-0.5 text-[11px] font-medium text-[#44403c] outline-none focus:ring-1 focus:ring-[#a8a29e] max-w-[90px]">
+        <!-- 分类筛选（抽屉只有 288px 宽，筛选按钮与两个下拉分两行，否则文字会被挤成竖排） -->
+        <div class="flex flex-wrap items-center gap-1 text-xs">
+          <button class="filter-student-btn active px-2 py-0.5 rounded text-[11px] font-medium transition whitespace-nowrap shrink-0" data-filter="unscheduled">待排课</button>
+          <button class="filter-student-btn px-2 py-0.5 rounded text-[11px] text-[#57534e] hover:bg-[#e7e5e4]/60 transition whitespace-nowrap shrink-0" data-filter="low">预警(≤2)</button>
+          <button class="filter-student-btn px-2 py-0.5 rounded text-[11px] text-[#57534e] hover:bg-[#e7e5e4]/60 transition whitespace-nowrap shrink-0" data-filter="scheduled">本周已排</button>
+          <button class="filter-student-btn px-2 py-0.5 rounded text-[11px] text-[#57534e] hover:bg-[#e7e5e4]/60 transition whitespace-nowrap shrink-0" data-filter="all">全部</button>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <select id="studentTeacherFilter" aria-label="按老师筛选" class="flex-1 min-w-0 bg-white border border-[#efe9e0] rounded px-1 py-0.5 text-[11px] font-medium text-[#44403c] outline-none focus:ring-1 focus:ring-[#a8a29e]">
             <option value="all">全部老师</option>
           </select>
-          <select id="studentCourseFilter" aria-label="按课程筛选" class="bg-white border border-[#efe9e0] rounded px-1 py-0.5 text-[11px] font-medium text-[#44403c] outline-none focus:ring-1 focus:ring-[#a8a29e] max-w-[90px]">
+          <select id="studentCourseFilter" aria-label="按课程筛选" class="flex-1 min-w-0 bg-white border border-[#efe9e0] rounded px-1 py-0.5 text-[11px] font-medium text-[#44403c] outline-none focus:ring-1 focus:ring-[#a8a29e]">
             <option value="all">全部课程</option>
           </select>
         </div>
@@ -1000,7 +1007,7 @@
   </div>
 
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=38"></script>
+  <script src="js/app.js?v=39"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
