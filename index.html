@@ -161,6 +161,14 @@
             </div>
           </div>
         </div>
+        <!-- 待补课（近 7 天请假未补）：清单空时整卡隐藏 -->
+        <div id="dashMakeupCard" class="hidden bg-white border border-[#efe9e0] rounded-2xl overflow-hidden">
+          <div class="px-5 pt-4 pb-3 flex items-center justify-between flex-wrap gap-2">
+            <div class="text-[15px] font-black text-[#111111] flex items-center gap-2"><i class="fa-solid fa-calendar-plus" style="color:#B98235"></i> 待补课</div>
+            <span id="dashMakeupBadge" class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-[#FEF3C7] text-[#7C4A03]"></span>
+          </div>
+          <div id="dashMakeupList"><!-- 近 7 天待补动态渲染 --></div>
+        </div>
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div class="lg:col-span-2 bg-white border border-[#efe9e0] rounded-2xl p-5">
             <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -992,7 +1000,7 @@
   </div>
 
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=35"></script>
+  <script src="js/app.js?v=36"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

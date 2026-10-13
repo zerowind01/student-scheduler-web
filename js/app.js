@@ -801,6 +801,37 @@
     });
   }
 
+  // 待补池的回溯窗口：含今天在内的最近 7 天。与 js/mobile.js 同口径 ——
+  // 今日行上的「排补课」只覆盖今天，一周内请的假得另有地方露出来（否则拖久了没人记得）。
+  const MAKEUP_WINDOW_DAYS = 7;
+  // 近 7 天待补清单：请假 + 需补 + 未核销，按「日期+时间」升序（早请假的排前面）
+  function pendingMakeupList(scopeFn) {
+    const today = new Date();
+    const from = new Date(today);
+    from.setDate(from.getDate() - (MAKEUP_WINDOW_DAYS - 1));
+    const fromStr = formatDate(from);
+    const toStr = formatDate(today);
+    return schedules
+      .filter((s) => (!scopeFn || scopeFn(s)) && isPendingMakeup(s) && s.date >= fromStr && s.date <= toStr)
+      .sort((a, b) => ((a.date || '') + (a.startTime || '')).localeCompare((b.date || '') + (b.startTime || '')));
+  }
+  // 「这假请了几天了」——今天请的=0
+  function makeupDaysAgo(dateStr) {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const d = new Date(`${dateStr}T00:00:00`);
+    if (isNaN(d.getTime())) return 0;
+    return Math.max(0, Math.round((today - d) / 86400000));
+  }
+  // 待补条的「多久了」文案 + 拖过 3 天给的暖黄小标（与手机端同一份口径）
+  function makeupAgeLabel(dateStr) {
+    const days = makeupDaysAgo(dateStr);
+    const text = days === 0 ? '今天' : (days === 1 ? '昨天' : `${days}天前`);
+    const chip = days >= 3
+      ? `<span class="text-[10px] font-bold rounded-full ml-1.5" style="background:#FEF3C7;color:#7C4A03;padding:1px 6px">已拖 ${days} 天</span>`
+      : '';
+    return { days, text, chip };
+  }
+
   // 消课（签到确认）：状态→completed，记财务流水；课时不足部分记欠课账
   // 返回布尔值供按钮三态动画判断走向；
   // opts.skipRefresh / opts.silentToast：给「看板一键消课」用，把重渲染推迟到成功动画播完之后，
@@ -1674,6 +1705,37 @@
       });
       // 行内「排补课」：直接开补课表单（预填源请假课）
       todayList.querySelectorAll('.dash-makeup-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const sch = schedules.find((x) => x.id === btn.getAttribute('data-id'));
+          if (!sch) return;
+          openScheduleModalForNew(students.find((st) => st.id === sch.studentId), formatDate(new Date()), sch.startTime, sch);
+        });
+      });
+    }
+
+    // ---- 待补课（近 7 天请假 · 需补 · 未核销）----
+    // 今日时间轴里的「排补课」只管今天：几天前请的假没补上，在这儿才露出来，不用翻日历兑账。
+    // 与手机端同口径（pendingMakeupList）；清单空则整卡隐藏，不给已有内容添噪声。
+    const mkCard = document.getElementById('dashMakeupCard');
+    const mkListEl = document.getElementById('dashMakeupList');
+    if (mkCard && mkListEl && !dashBusy) {
+      const pendMakeups = pendingMakeupList(null);
+      mkCard.classList.toggle('hidden', pendMakeups.length === 0);
+      const mkBadge = document.getElementById('dashMakeupBadge');
+      if (mkBadge) mkBadge.textContent = `近 7 天请假未补 ${pendMakeups.length} 节`;
+      mkListEl.innerHTML = pendMakeups.map((s) => {
+        const age = makeupAgeLabel(s.date);
+        const dayLabel = String(s.date || '').slice(5).replace('-', '/');
+        return `<div class="flex items-center justify-between px-5 py-3 border-t border-[#f2ece4]">
+          <div class="flex items-center gap-3 min-w-0">
+            <span class="w-2 h-2 rounded-full shrink-0" style="background:#D9985F"></span>
+            <div class="text-[13px] font-bold text-[#111111] truncate">${dayLabel} ${s.startTime || '--'} ${s.subject || ''} · ${s.studentName || ''}</div>
+            <span class="text-[11px] font-semibold text-[#a8a29e] shrink-0">${age.text}请假</span>${age.chip}
+          </div>
+          <button class="lm-mini-btn dash-makeup-btn shrink-0" data-id="${s.id}">排补课</button>
+        </div>`;
+      }).join('');
+      mkListEl.querySelectorAll('.dash-makeup-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
           const sch = schedules.find((x) => x.id === btn.getAttribute('data-id'));
           if (!sch) return;

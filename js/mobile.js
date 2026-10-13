@@ -663,6 +663,42 @@
     });
   }
 
+  // 待补池的回溯窗口：含今天在内的最近 7 天（「一周内」）。
+  // 今日行上的「排补课」只覆盖今天 —— 三天前请的假没补上，首页就再也看不见了，
+  // 时间一长就变成没人记得的死账。所以首页/看板另开一块，把口子放到整周。
+  const MAKEUP_WINDOW_DAYS = 7;
+
+  // 近 7 天待补清单：请假 + 需补 + 未核销，按「日期+时间」升序（早请假的排前面，先补最容易烂的那节）。
+  // scopeFn 用于老师视角过滤（手机端传 inScope，电脑端传 null = 全量）。
+  function pendingMakeupList(scopeFn) {
+    const today = new Date();
+    const from = new Date(today);
+    from.setDate(from.getDate() - (MAKEUP_WINDOW_DAYS - 1));
+    const fromStr = formatDate(from);
+    const toStr = formatDate(today);
+    return schedules
+      .filter((s) => (!scopeFn || scopeFn(s)) && isPendingMakeup(s) && s.date >= fromStr && s.date <= toStr)
+      .sort((a, b) => ((a.date || '') + (a.startTime || '')).localeCompare((b.date || '') + (b.startTime || '')));
+  }
+
+  // 「这假请了几天了」——今天请的=0。给拖久的待补课加一点着急感（前端只负责显示，不参与判定）。
+  function makeupDaysAgo(dateStr) {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const d = new Date(`${dateStr}T00:00:00`);
+    if (isNaN(d.getTime())) return 0;
+    return Math.max(0, Math.round((today - d) / 86400000));
+  }
+
+  // 待补条的「多久了」文案 + 拖过 3 天给的暖黄小标（两端同一份口径，避免各写各的）
+  function makeupAgeLabel(dateStr) {
+    const days = makeupDaysAgo(dateStr);
+    const text = days === 0 ? '今天' : (days === 1 ? '昨天' : `${days}天前`);
+    const chip = days >= 3
+      ? `<span class="text-[10px] font-bold rounded-full ml-1.5" style="background:#FEF3C7;color:#7C4A03;padding:1px 6px">已拖 ${days} 天</span>`
+      : '';
+    return { days, text, chip };
+  }
+
   // 返回值语义（三态按钮依赖它）：true = 真的消了课，false = 被业务拦下（已消课/请假）。
   // uiAnim.runAsyncButton 靠这个决定是「转圈 → 绿底打勾」还是「静默回到初态」。
   function executeCheckIn(scheduleId, remarks, opts) {
@@ -2624,19 +2660,19 @@
       if (typeof openMobileScheduleActionMenu === 'function') openMobileScheduleActionMenu(sch);
       return true;
     };
+    // 「排补课」统一入口（今日行 / 待补课区块共用）：
+    // 预填源请假课的学员与时间，日期取**今天** —— 补课排的是接下来要上的课，不是回到请假那天去补。
+    const openMakeupFor = (schId) => {
+      const sch = schedules.find((x) => x.id === schId);
+      if (!sch) return;
+      openMobileScheduleModalForNew(students.find((x) => x.id === sch.studentId), formatDate(new Date()), sch.startTime, sch);
+    };
     // 今日课程容器独立委托（badge 在 todayBox 不在 cards）
     const todayBoxEl = document.getElementById('mobileHomeToday');
     if (todayBoxEl) todayBoxEl.onclick = (e) => {
       // 行内「排补课」：直接开补课表单（预填源请假课）
       const mkBtn = e.target.closest('[data-home-makeup]');
-      if (mkBtn) {
-        const sch = schedules.find((x) => x.id === mkBtn.getAttribute('data-home-makeup'));
-        if (sch) {
-          const st = students.find((x) => x.id === sch.studentId);
-          openMobileScheduleModalForNew(st, formatDate(new Date()), sch.startTime, sch);
-        }
-        return;
-      }
+      if (mkBtn) { openMakeupFor(mkBtn.getAttribute('data-home-makeup')); return; }
       const tag = e.target.closest('[data-home-checkin]');
       if (tag) { handleHomeCheckinTap(e); return; }
       // 点行内空白处 → 开操作菜单：徽章已经变成「一键消课」，请假/编辑/删除/撤销
@@ -2658,6 +2694,47 @@
         if (f) { f.value = 'low'; f.dispatchEvent(new Event('change')); }
       }, 250); }
     };
+    // ---- 待补课（近 7 天请假 · 需补 · 未核销）----
+    // 今日行的「排补课」只管今天：三天前请的假没补上，在今日列表里根本露不出来，
+    // 只能翻回日历去找 —— 时间一长就成了没人记得的死账。这块把口子放到整周。
+    // 只列「待办」：补完 / 当初选了不补 都会自动消失（清单空 = 这周的假都了结了）。
+    const mkBox = document.getElementById('mobileHomeMakeup');
+    if (mkBox) {
+      const pendMakeups = pendingMakeupList(inScope);
+      if (!pendMakeups.length) {
+        mkBox.innerHTML = '';
+      } else {
+        mkBox.innerHTML = `
+          <div class="flex items-center justify-between px-1 pt-1">
+            <div class="font-bold text-[13px] text-[#111111]">待补课（${pendMakeups.length}）</div>
+            <div class="text-[10.5px] font-semibold" style="color:#7C4A03">近 7 天请假未补</div>
+          </div>
+          ${pendMakeups.map((s) => {
+            const age = makeupAgeLabel(s.date);
+            const p = String(s.date || '').split('-');
+            const dayLabel = p.length === 3 ? `${Number(p[1])}/${Number(p[2])}` : String(s.date || '');
+            return `
+            <div class="lm-card px-5 py-4 flex items-center gap-3.5" data-makeup-row="${s.id}">
+              <div class="text-center shrink-0 min-w-[52px]">
+                <div class="font-bold text-[15px] text-[#111111]">${dayLabel}</div>
+                <div class="text-[10.5px] text-[#9c9fa5] mt-0.5">${s.startTime || '--'}</div>
+              </div>
+              <div class="flex-1 min-w-0" style="border-left:1px solid #f0ebe2;padding-left:14px">
+                <div class="font-bold text-[14.5px] text-[#111111] truncate">${s.studentName || ''} <span class="text-[#9c9fa5] font-medium">· ${s.subject || ''}</span></div>
+                <div class="text-[12px] text-[#9c9fa5] truncate mt-1">${age.text}请假${age.chip}</div>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <button class="lm-mini-btn" data-home-makeup="${s.id}">排补课</button>
+              </div>
+            </div>`;
+          }).join('')}`;
+        mkBox.onclick = (e) => {
+          const mkBtn = e.target.closest('[data-home-makeup]');
+          if (!mkBtn) return;
+          openMakeupFor(mkBtn.getAttribute('data-home-makeup'));
+        };
+      }
+    }
     const exitBtn = document.getElementById('btnTeacherExitHome');
     if (exitBtn) exitBtn.onclick = () => {
       if (!confirm('退出老师身份，回到管理员入口？')) return;
