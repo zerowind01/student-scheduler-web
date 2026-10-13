@@ -131,4 +131,23 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
         正确做法：`await waitForTimeout(>过渡时长)` 再读，或把「改 class」和「读颜色」拆成两次 evaluate。
         反面样板：**读 `.classList` 不受影响**（它不等过渡），所以「class 对 + 颜色不对」这个组合基本就是撞上过渡了。
     ② **flex 容器里 `innerText` 会在 flex item 之间插换行**，想截「一行」别用 `[^\n]*`（卡头 `续费预警` + 阈值 span 是 flex 兄弟，
-        只截到「续费预警」）。先 `innerText.replace(/\s+/g,' ')` 压平再匹配。
+       只截到「续费预警」）。先 `innerText.replace(/\s+/g,' ')` 压平再匹配。
+
+31. **桌面月视图（`#monthViewWrap`）按 Google Calendar 形态实现：事件整行铺在格子里，不再只画小圆点。**
+    渲染全在 `renderMonthView()`（`js/app.js`）+ `css/styles.css` 第 17 节（`.month-cell-num` / `.month-ev` / `.month-evs`）。
+    用户当场定的三条：**保留右栏**（380px，含当日清单与「查看周课表 →」）/ **沿用自有暖色 tokens**（不照搬 Google 的蓝灰）/
+    **事件全部显示，放不下由格子内部滚动**（不做「还有 N 项」，也不让格子被撑高）。
+    几条硬口径，改动时别踩：
+    - **网格自身不滚动**：`#monthViewGrid` 是 `overflow-hidden` + `auto-rows-fr` 铺满高度；每格 `flex flex-col` 且
+      **必须有 `overflow-hidden`**（grid item 一旦 `overflow != visible`，自动最小尺寸归零，行高才不会被 8 节课顶开）。
+      事件区 `.month-evs` 是 `flex-1 min-h-0 overflow-y-auto`。滚动条**默认隐形、悬停格子才浮出**（42 格各挂一条常驻滚动条太吵）。
+    - **点事件行 → `openScheduleActionMenu(sch)`**（对齐 Google 点事件）；**点格子空白 → 切 `monthSelectedDate` + 右栏跟随**。
+      两件事靠 `#monthViewGrid` 上**一次性的事件委托**区分（网格 innerHTML 每次渲染都重建，绑在格子上会随渲染丢掉）；
+      先判 `closest('[data-month-sch]')` 再判 `closest('[data-month-day][data-in-month="1"]')`。**非本月格故意不带 `data-in-month`** → 点了不改右栏。
+    - **日期数字不是固定宽度正圆**：`min-width: 26px` + `padding: 0 5px` + `white-space: nowrap`。写死 `width: 26px` 会把
+      1 号的「10月1」（对齐 Google 的月份前缀）折成两行。
+    - **今天 = 橙描边圈；选中 = 炭黑实心。默认进月视图时选中日就是今天** → 必须补 `.is-sel.is-today`（橙外圈）这一条，
+      否则选中态的实心圆会把「今天是哪一格」整个吞掉（本轮就是这个组合翻车，靠断言抓出来的）。
+    - 已消课整行灰化（`.is-done`）；请假是**玫红 + 删除线 + 空心圆点**（`.is-leave`），对齐 Google 的「已谢绝」事件。
+    - 窄列（1280 下约 108px/列）事件标题会截断成「19:30 钢琴 …」——这是「保右栏」的既定代价，不是 bug。
+    核对脚本 `tmp/month-gcal-check.mjs`（78 项，宽屏 1600 + 窄屏 1280 各一遍），出图 `tmp/month-gcal-shots.mjs`。

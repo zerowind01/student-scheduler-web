@@ -21,7 +21,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <!-- Custom CSS -->
   <link rel="stylesheet" href="css/tokens.css?v=12">
-  <link rel="stylesheet" href="css/styles.css?v=32">
+  <link rel="stylesheet" href="css/styles.css?v=33">
   <link rel="stylesheet" href="css/legacy-tokens.css?v=15">
   <!-- GSAP 动效：本地内置优先（cdnjs 曾实测超时，CDN 挂掉会让全部 GSAP 动效静默消失）。
        本地缺失时才回落到 CDN；两者都失败也不影响功能——anim.js 检测不到 window.gsap 会退化为静态。 -->
@@ -36,7 +36,7 @@
        改完 class 要重新生成：tools\build-tailwind.cmd
        ⚠ 必须留在 </head> 之前（即所有自有样式之后），复刻 Play CDN 把 <style>
        append 到 head 末尾的层叠顺序；挪到前面会翻转优先级。 -->
-  <link rel="stylesheet" href="css/tailwind.css?v=5">
+  <link rel="stylesheet" href="css/tailwind.css?v=6">
 </head>
 <body class="text-[#111111] font-sans h-screen flex flex-col overflow-hidden select-none" style="background: var(--surface-page);">
 
@@ -273,19 +273,20 @@
             </div>
           </div>
           <div class="grid grid-cols-7 px-4 shrink-0">
-            <div class="py-1 text-center text-[11px] font-bold text-[#a8a29e]">一</div>
-            <div class="py-1 text-center text-[11px] font-bold text-[#a8a29e]">二</div>
-            <div class="py-1 text-center text-[11px] font-bold text-[#a8a29e]">三</div>
-            <div class="py-1 text-center text-[11px] font-bold text-[#a8a29e]">四</div>
-            <div class="py-1 text-center text-[11px] font-bold text-[#a8a29e]">五</div>
-            <div class="py-1 text-center text-[11px] font-bold text-[#a8a29e]">六</div>
-            <div class="py-1 text-center text-[11px] font-bold text-[#a8a29e]">日</div>
+            <div class="py-1 text-center text-[11px] font-bold text-[#a8a29e]">周一</div>
+            <div class="py-1 text-center text-[11px] font-bold text-[#a8a29e]">周二</div>
+            <div class="py-1 text-center text-[11px] font-bold text-[#a8a29e]">周三</div>
+            <div class="py-1 text-center text-[11px] font-bold text-[#a8a29e]">周四</div>
+            <div class="py-1 text-center text-[11px] font-bold text-[#a8a29e]">周五</div>
+            <div class="py-1 text-center text-[11px] font-bold text-[#a8a29e]">周六</div>
+            <div class="py-1 text-center text-[11px] font-bold text-[#a8a29e]">周日</div>
           </div>
+          <!-- 网格自身不滚动：行高由 auto-rows-fr 均分铺满，事件多到放不下时由格子内部滚动 -->
           <div class="flex-1 overflow-hidden px-4 pb-4">
-            <div id="monthViewGrid" class="h-full overflow-y-auto grid grid-cols-7 auto-rows-fr border border-[#efe9e0] rounded-lg custom-scrollbar"></div>
+            <div id="monthViewGrid" class="h-full overflow-hidden grid grid-cols-7 auto-rows-fr border border-[#efe9e0]"></div>
           </div>
         </div>
-        <aside class="w-[440px] shrink-0 border-l border-[#efe9e0] bg-[#faf8f3] flex flex-col overflow-hidden">
+        <aside class="w-[380px] shrink-0 border-l border-[#efe9e0] bg-[#faf8f3] flex flex-col overflow-hidden">
           <div class="px-4 pt-4 pb-2 flex items-center justify-between shrink-0">
             <div id="monthDayTitle" class="text-sm font-bold text-[#111111]"></div>
             <button id="btnMonthGotoWeek" class="text-xs font-bold text-[#78716c] hover:text-[#111111] transition">查看周课表 →</button>
@@ -1007,7 +1008,7 @@
   </div>
 
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=39"></script>
+  <script src="js/app.js?v=40"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

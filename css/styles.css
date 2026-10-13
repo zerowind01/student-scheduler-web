@@ -686,3 +686,75 @@ button, a, select, input, textarea {
     stroke-dashoffset: 0;
   }
 }
+
+/* 17. 月历总览 —— 对齐 Google Calendar 月视图形态（仅桌面端，#monthView* 只存在于 index.html）
+       旧形态是「日期数字 + 3 个主题色圆点」，看不出上什么课；现在把事件整行铺进格子：
+       ● 17:00  钢琴 · 伍行等 —— 和 Google 一样，圆点带学员色、后面跟时间与标题。
+       格子的日期数字居中；今天橙描边圈、选中炭黑实心（沿用全站三态，不照搬 Google 的蓝）。 */
+.month-cell { background: transparent; }
+.month-cell.is-sel { background: #faf8f3; }
+
+.month-cell-num {
+  /* 不是固定 26px 的正圆：1 号要显示「10月1」（对齐 Google），固定宽度会把它折成两行。
+     min-width + 横内边距 → 一两位数字仍是正圆，长标签自动长成胶囊。 */
+  min-width: 26px;
+  height: 26px;
+  padding: 0 5px;
+  white-space: nowrap;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #111111;
+  font-variant-numeric: tabular-nums;
+  transition: background-color 130ms ease, color 130ms ease, box-shadow 130ms ease;
+}
+.month-cell-num.is-out { color: #b8b2a9; font-weight: 500; }
+.month-cell-num.is-today { color: #fe4c02; font-weight: 800; box-shadow: inset 0 0 0 1.5px rgba(254, 76, 2, .55); }
+.month-cell-num.is-sel { background: #111111; color: #ffffff; font-weight: 800; box-shadow: none; }
+/* 既是今天又是选中：补一圈橙外圈。
+   否则默认进月视图时「今天」正好是被选中的那天，选中态的炭黑实心会把今天标记整个吞掉
+   —— 屏幕上再也看不出今天是哪一格。 */
+.month-cell-num.is-sel.is-today { box-shadow: 0 0 0 1.5px rgba(254, 76, 2, .85); }
+
+/* 事件行：单行截断，窄列下自然退化成「19:30 钢琴 · 韩…」，不会撑破格子 */
+.month-ev {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 1px 4px 1px 3px;
+  border-radius: 4px;
+  text-align: left;
+  transition: background-color 120ms ease;
+}
+.month-ev:hover { background: rgba(239, 233, 224, 0.75); }
+.month-ev-dot { width: 6px; height: 6px; border-radius: 999px; flex: none; }
+.month-ev-time { flex: none; color: #a8a29e; font-weight: 600; font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.month-ev-title {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #44403c;
+  font-weight: 600;
+  font-size: 11px;
+}
+/* 已消课：整体灰化（圆点半透明，文字转灰） */
+.month-ev.is-done .month-ev-dot { opacity: .45; }
+.month-ev.is-done .month-ev-title { color: #a8a29e; }
+/* 请假：玫红 + 删除线，读起来就是「这节没了」（对齐 Google 的已谢绝事件） */
+.month-ev.is-leave .month-ev-time { color: #e3929f; }
+.month-ev.is-leave .month-ev-title { color: #d5304f; text-decoration: line-through; }
+
+/* 事件区滚动条默认隐形，悬停格子才浮出来 —— 42 个格子各挂一条常驻滚动条太吵 */
+.month-evs { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+.month-evs::-webkit-scrollbar { width: 4px; }
+.month-evs::-webkit-scrollbar-track { background: transparent; }
+.month-evs::-webkit-scrollbar-thumb { background: transparent; border-radius: 999px; }
+.month-cell:hover .month-evs::-webkit-scrollbar-thumb { background: rgba(227, 219, 208, .95); }
+.month-evs:hover::-webkit-scrollbar-thumb { background: rgba(168, 162, 158, .85); }

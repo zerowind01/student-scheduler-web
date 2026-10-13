@@ -1220,6 +1220,25 @@
     safeBind('btnMonthNext', 'click', () => { currentMonth.setMonth(currentMonth.getMonth() + 1); renderMonthView(); });
     safeBind('btnMonthToday', 'click', () => { currentMonth = new Date(); monthSelectedDate = formatDate(getToday()); renderMonthView(); });
 
+    // 月视图格子：事件行 → 该课操作菜单（对齐 Google 点事件）；点格子空白 → 切换选中日（右栏跟着走）
+    // 事件委托只绑一次（网格 innerHTML 每次渲染都会重建，绑在网格本体上才不会丢）
+    const monthGrid = document.getElementById('monthViewGrid');
+    if (monthGrid) monthGrid.onclick = (e) => {
+      const row = e.target.closest('[data-month-sch]');
+      if (row) {
+        const sch = schedules.find((x) => x.id === row.getAttribute('data-month-sch'));
+        if (sch) openScheduleActionMenu(sch);
+        return;
+      }
+      const cell = e.target.closest('[data-month-day][data-in-month="1"]');
+      if (!cell) return;
+      const day = cell.getAttribute('data-month-day');
+      if (day && day !== monthSelectedDate) {
+        monthSelectedDate = day;
+        renderMonthView();
+      }
+    };
+
     // 月视图右栏：点课卡弹操作菜单；「查看周课表」跳到选中日所在周
     const monthDayList = document.getElementById('monthDayList');
     if (monthDayList) monthDayList.onclick = (e) => {
@@ -1492,17 +1511,18 @@
     if (!monthSelectedDate) monthSelectedDate = todayStr;
     const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
-    // 每天的课程（按老师筛选；含请假课——列表要显示请假标签，圆点才排除）
+    // 每天的课程（按老师筛选；请假课照列 —— 要在格子里画成玫红删除线，像 Google 的「已谢绝」）
     const shown = selectedTeacherFilter === 'all' ? schedules : schedules.filter((s) => s.teacherId === selectedTeacherFilter || s.assistantTeacherId === selectedTeacherFilter);
     const byDate = new Map();
     shown.forEach((s) => {
       if (!byDate.has(s.date)) byDate.set(s.date, []);
       byDate.get(s.date).push(s);
     });
+    byDate.forEach((list) => list.sort((a, b) => (a.startTime || '').localeCompare(b.startTime || '')));
 
-    // 学员主题色圆点（与手机版同款：前 3 节去重，请假课不计）
-    // 学员主题色圆点：色卡色的深化版（5px 小点在白底上必须够深才可见，底色本身太浅）
+    // 学员主题色圆点：色卡色的深化版（小点在浅底上必须够深才可见，底色本身太浅）
     const CAL_DOT_COLORS = { amber: '#D9985F', emerald: '#7E9271', sky: '#4E93A8', purple: '#6F7C6C', rose: '#D08168', mint: '#7FA495' };
+    const LEAVE_RED = '#d5304f';
 
     grid.innerHTML = '';
     for (let i = 0; i < totalCells; i++) {
@@ -1513,43 +1533,45 @@
       const isSel = dateStr === monthSelectedDate;
       const dayLessons = byDate.get(dateStr) || [];
 
-      const themes = [];
-      dayLessons.forEach((s) => {
-        if (s.status === SCHEDULE_STATUS.STUDENT_LEAVE) return;
-        const t = resolveScheduleTheme(s);
-        if (themes.length < 3 && !themes.includes(t)) themes.push(t);
-      });
-
-      const cell = document.createElement(inMonth ? 'button' : 'div');
-      if (inMonth) cell.type = 'button';
+      const cell = document.createElement('div');
       // 表格线格子：暖发丝内框（末列去右边线、末行去下边线，避免与外框叠加）
       const isLastCol = i % 7 === 6;
       const isLastRow = i >= totalCells - 7;
-      cell.className = 'flex flex-col items-center pt-1.5 pb-1 transition select-none border-[#efe9e0] ' +
+      cell.className = 'month-cell flex flex-col min-h-0 overflow-hidden select-none transition border-[#efe9e0] ' +
         (isLastCol ? '' : 'border-r ') +
         (isLastRow ? '' : 'border-b ') +
-        (inMonth ? 'cursor-pointer hover:bg-[#faf8f3] ' : '') +
-        (isSel ? ' bg-[#faf8f3]' : '') +
-        (inMonth ? '' : ' opacity-30');
+        (isSel ? 'is-sel ' : 'hover:bg-[#fbf9f5] ') +
+        (inMonth ? 'cursor-pointer' : '');
+      cell.setAttribute('data-month-day', dateStr);
+      if (inMonth) cell.setAttribute('data-in-month', '1');
 
-      // 数字三态：选中=炭黑圆底白字；今天=橙字+橙描边圈；普通=炭黑
-      let numCls;
-      if (isSel) numCls = 'background:#111111;color:#ffffff;font-weight:800';
-      else if (isToday) numCls = 'color:#fe4c02;font-weight:800;box-shadow:inset 0 0 0 1.5px rgba(254,76,2,.55)';
-      else numCls = inMonth ? 'color:#111111;font-weight:700' : 'color:#a8a29e;font-weight:500';
+      // 日期数字：居中；1 号带月份前缀（对齐 Google 的「10月1」）
+      const numText = d.getDate() === 1 ? `${d.getMonth() + 1}月1` : String(d.getDate());
+      const numCls = 'month-cell-num' + (inMonth ? '' : ' is-out') + (isToday ? ' is-today' : '') + (isSel ? ' is-sel' : '');
+      const numTag = inMonth ? 'button type="button"' : 'span';
+
+      // 事件行：学员色圆点 + 开始时间 + 科目 · 学员（请假=玫红删除线，已消课=灰化）
+      const evHtml = dayLessons.map((s) => {
+        const done = s.status === SCHEDULE_STATUS.COMPLETED;
+        const leave = s.status === SCHEDULE_STATUS.STUDENT_LEAVE;
+        const dotColor = CAL_DOT_COLORS[resolveScheduleTheme(s)] || CAL_DOT_COLORS.amber;
+        const dotStyle = leave ? `box-shadow:inset 0 0 0 1.5px ${LEAVE_RED}` : `background:${dotColor}`;
+        const label = [s.subject, s.studentName].filter(Boolean).join(' · ');
+        const state = done ? '已消课' : (leave ? '请假' : '待上课');
+        return `<button type="button" class="month-ev${done ? ' is-done' : ''}${leave ? ' is-leave' : ''}" data-month-sch="${escAttr(s.id)}" title="${escAttr(`${s.startTime || ''} ${label}（${state}）`)}">
+            <span class="month-ev-dot" style="${dotStyle}"></span>
+            <span class="month-ev-time">${escAttr(s.startTime || '')}</span>
+            <span class="month-ev-title">${escAttr(label)}</span>
+          </button>`;
+      }).join('');
 
       cell.innerHTML = `
-        <span class="w-8 h-8 rounded-full flex items-center justify-center text-[13.5px]" style="${numCls}">${d.getDate()}</span>
-        <span class="flex items-center gap-[3px]" style="height:5px;margin-top:3px">${themes.map((t) => `<span class="rounded-full" style="width:5px;height:5px;background:${CAL_DOT_COLORS[t] || CAL_DOT_COLORS.amber}"></span>`).join('')}</span>
+        <div class="shrink-0 flex justify-center pt-1 pb-0.5">
+          <${numTag} class="${numCls}">${numText}</${numTag}>
+        </div>
+        <div class="month-evs flex-1 min-h-0 overflow-y-auto px-1 pb-1 flex flex-col gap-px">${evHtml}</div>
       `;
 
-      if (inMonth) {
-        cell.title = `${dateStr} ${WEEKDAY_LABELS[i % 7]} · ${dayLessons.length} 节课`;
-        cell.addEventListener('click', () => {
-          monthSelectedDate = dateStr;
-          renderMonthView();
-        });
-      }
       grid.appendChild(cell);
     }
 
