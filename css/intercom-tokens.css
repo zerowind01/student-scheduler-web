@@ -116,6 +116,57 @@
   .lm-live-dot::after { animation: none; opacity: 0; }
 }
 
+/* ---- 请假三态（F11 补课） ----
+   请假时用户二选一「需要补课 / 不用补课」，所以请假本身分出三态：
+   待补 = 暖黄（要行动，与「请假」按钮同族）；已补 = 灰米（已了结，压下去）；
+   普通请假（不补）沿用上面的 .lm-tag-leave（玫红）。 */
+.lm-tag-leavePend { background: #FEF3C7; color: #7C4A03; }
+.lm-tag-leaveDone { background: #f1ece3; color: #78716c; }
+
+/* ---- 补课（F11）：柔和青 ----
+   项目禁用琥珀，而课表域原本就是琥珀 —— 补课借「学员绿」同族的柔和青，
+   不去新开第五个色相，也和「请假黄」「删除玫红」拉开距离。
+   ⚠️ 这三个类两端都要用，色值必须在 css/legacy-tokens.css 里再抄一份（电脑端不引本文件）。 */
+.lm-btn-makeup {
+  background: #DAE9E3;
+  border: 1px solid #BFD8CF;
+  color: #2E5D68;
+}
+.lm-btn-makeup:active, .lm-btn-makeup:hover { background: #BFD8CF; }
+
+/* 补课小标：课卡 / 今日行上标出「这是一节补课」（窄卡只放一个字） */
+.lm-chip-makeup {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 6px;
+  background: #DAE9E3;
+  color: #2E5D68;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  margin-right: 4px;
+}
+
+/* 行内小按钮（首页今日行里的「排补课」） */
+.lm-mini-btn {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #f0ebe2;
+  color: #111;
+  font-size: 11px;
+  font-weight: 700;
+  -webkit-tap-highlight-color: transparent;
+}
+.lm-mini-btn:active { background: #e3dccf; }
+
 /* ---- 请假按钮：暖黄（口径「请假=黄」，与「待消课」同一个黄family） ----
    原来是玫红，和同一个弹层里的「删除该课程」撞色 —— 删除是不可逆的破坏性动作，
    请假只是把这一节记成不来，两者不该长得一样。黄=「这一节有变更但不破坏数据」。 */

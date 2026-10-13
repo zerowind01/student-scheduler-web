@@ -112,6 +112,49 @@
   padding-right: 52px;
 }
 
+/* ---- 补课（F11）与行内小按钮 ----
+   色值抄自 css/intercom-tokens.css（那个文件只被 mobile.html 引用，电脑端不引），
+   不加这一段的话电脑端「排补课」是无底色的裸文字、补课小标会变成一支裸青色块。
+   口径：补课 = 柔和青 #DAE9E3/#2E5D68（借学员绿同族，不新开色相）。 */
+.lm-btn-makeup {
+  background: #DAE9E3;
+  border: 1px solid #BFD8CF;
+  color: #2E5D68;
+}
+.lm-btn-makeup:hover {
+  background: #BFD8CF;
+}
+.lm-chip-makeup {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 6px;
+  background: #DAE9E3;
+  color: #2E5D68;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  margin-right: 4px;
+}
+.lm-mini-btn {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #f0ebe2;
+  color: #111;
+  font-size: 11px;
+  font-weight: 700;
+}
+.lm-mini-btn:hover {
+  background: #e3dccf;
+}
+
 /* ---- 统计卡 / 分区块：纯白卡片 + 细边 ---- */
 .lm-stat-card {
   background: #fff;

@@ -752,6 +752,55 @@
     return Math.max(1, Math.round((schedule.durationMinutes || 60) / 60));
   }
 
+  // ============ 补课链路（F11） ============
+  // 与 js/mobile.js 同语义、同字段（两端数据层必须一致）：
+  //   请假时用户二选一「需要补课 / 不用补课」——同一次请假不是都要补。
+  //   · 源请假课 needMakeup (bool)  —— 缺省 false，历史请假数据不会凭空冒出待补
+  //   · 补课课次 makeupOfId (id)    —— 指向它补的那节源请假课
+  //   · 源请假课 madeUpById (id)    —— 指向核销它的补课课（仅当补课已消课）
+  function isMakeupLesson(s) { return !!(s && s.makeupOfId); }
+  // 把 "HH:MM" 吸附到 5 分钟整（排课表单的时间框是 step=300）。
+  // 排补课预填源请假课的时间，历史/导入数据的分钟位未必是 5 的倍数 ——
+  // 那种值会让表单原生校验静默拦下提交（用户点保存毫无反应）。与手机端同逻辑。
+  function snapTo5Min(hm) {
+    const parts = String(hm || '').split(':').map(Number);
+    if (parts.length !== 2 || !Number.isFinite(parts[0]) || !Number.isFinite(parts[1])) return hm;
+    const total = Math.round((parts[0] * 60 + parts[1]) / 5) * 5;
+    return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+  }
+  function isPendingMakeup(s) {
+    return !!s && s.status === SCHEDULE_STATUS.STUDENT_LEAVE && !!s.needMakeup && !s.madeUpById;
+  }
+  function isMakeupDone(s) {
+    return !!s && s.status === SCHEDULE_STATUS.STUDENT_LEAVE && !!s.madeUpById;
+  }
+  // 双向标记一致性：由节次状态反推（撤销消课 / 请假被还原 / 补课被删都自动退回待补）
+  function syncMakeupLink(sch) {
+    if (!sch) return;
+    if (sch.makeupOfId) {
+      const src = schedules.find((s) => s.id === sch.makeupOfId);
+      if (!src) { sch.makeupOfId = null; return; }
+      const done = sch.status === SCHEDULE_STATUS.COMPLETED && src.status === SCHEDULE_STATUS.STUDENT_LEAVE;
+      src.madeUpById = done ? sch.id : null;
+      return;
+    }
+    if (sch.madeUpById) {
+      const mk = schedules.find((s) => s.id === sch.madeUpById);
+      const keep = !!mk && mk.status === SCHEDULE_STATUS.COMPLETED && sch.status === SCHEDULE_STATUS.STUDENT_LEAVE;
+      if (!keep) {
+        if (mk) mk.makeupOfId = null;
+        sch.madeUpById = null;
+      }
+    }
+  }
+  function cleanupMakeupLinks(schId) {
+    schedules.forEach((s) => {
+      if (s.id === schId) return;
+      if (s.makeupOfId === schId) s.makeupOfId = null;
+      if (s.madeUpById === schId) s.madeUpById = null;
+    });
+  }
+
   // 消课（签到确认）：状态→completed，记财务流水；课时不足部分记欠课账
   // 返回布尔值供按钮三态动画判断走向；
   // opts.skipRefresh / opts.silentToast：给「看板一键消课」用，把重渲染推迟到成功动画播完之后，
@@ -795,16 +844,19 @@
 
     sch.status = SCHEDULE_STATUS.COMPLETED;
     recordCheckInLog(sch, deducted, payment, finalRemarks);
+    // 补课消课 = 把这节请假课补上了 → 核销源课（源课从「待补」变「已补」）
+    syncMakeupLink(sch);
     saveData();
     if (!o.skipRefresh) refreshView();
-    if (!o.silentToast) offerUndo(`✅ 已消课：${sch.studentName} · ${sch.subject}（${deducted}节）`, 'circle-check', `消课 ${sch.studentName}`);
+    if (!o.silentToast) offerUndo(`✅ 已消课：${sch.studentName} · ${sch.subject}（${deducted}节）${sch.makeupOfId ? ' · 补课' : ''}`, 'circle-check', `消课 ${sch.studentName}`);
     if (window.uiAnim) window.uiAnim.flashSchedule(sch.id);
     return true;
   }
 
   // 学员请假（不限课程时间，已消课的也可改为请假）
   // App 语义：请假本不扣课时；只有已消课改请假时，才把消课扣掉的课时退回
-  function markStudentLeave(scheduleId) {
+  // needMakeup：由用户在请假时**明确选择**——只有 true 才进待补池
+  function markStudentLeave(scheduleId, needMakeup) {
     const sch = schedules.find((s) => s.id === scheduleId);
     if (!sch) return;
     if (sch.status === SCHEDULE_STATUS.STUDENT_LEAVE) {
@@ -829,9 +881,30 @@
     }
 
     sch.status = SCHEDULE_STATUS.STUDENT_LEAVE;
+    sch.needMakeup = !!needMakeup;
+    // 这节本身若是补课课次，改请假 = 没补成 → 源课退回待补
+    syncMakeupLink(sch);
+    leaveMsg += needMakeup ? ' · 已转入待补课' : ' · 不补课';
     saveData();
     refreshView();
     offerUndo(leaveMsg, 'circle-check', `请假 ${sch.studentName}`);
+    if (window.uiAnim) window.uiAnim.flashSchedule(sch.id);
+  }
+
+  // 请假课「要不要补」的后续开关（请假后改主意）
+  function setNeedMakeup(scheduleId, needMakeup) {
+    const sch = schedules.find((s) => s.id === scheduleId);
+    if (!sch || sch.status !== SCHEDULE_STATUS.STUDENT_LEAVE) return;
+    if (sch.madeUpById && !needMakeup) {
+      showToast('该请假课已被补课核销，请先撤销那节补课', 'circle-info');
+      return;
+    }
+    pushUndo(`改补课标记 ${sch.studentName}`);
+    sch.needMakeup = !!needMakeup;
+    syncMakeupLink(sch);
+    saveData();
+    refreshView();
+    offerUndo(needMakeup ? '📌 已加入待补课' : '已取消补课标记', 'circle-check', `补课标记 ${sch.studentName}`);
     if (window.uiAnim) window.uiAnim.flashSchedule(sch.id);
   }
 
@@ -855,6 +928,10 @@
     // 请假撤销：App 语义下请假本不扣课时，直接还原状态即可
 
     sch.status = SCHEDULE_STATUS.SCHEDULED;
+    // 不请假了 → 补课标记与核销关系一起清掉
+    sch.needMakeup = false;
+    sch.madeUpById = null;
+    syncMakeupLink(sch);
     saveData();
     refreshView();
     offerUndo('已撤销状态，还原为待上课', 'rotate-left', `还原 ${sch.studentName} 的课`);
@@ -865,6 +942,7 @@
   function handleDeleteScheduleWithCleanup(schId) {
     const sch = schedules.find((s) => s.id === schId);
     checkInLogs = checkInLogs.filter((l) => l.scheduleId !== schId);
+    cleanupMakeupLinks(schId);   // 断补课链路：删的可能是源请假课，也可能是补课课次
     schedules = schedules.filter((s) => s.id !== schId);
     if (sch && sch.status === SCHEDULE_STATUS.SCHEDULED) {
       // 待上课的课程删除时退还课时（保持"课时只随消课消耗"的一致性）
@@ -1550,11 +1628,14 @@
         todayList.innerHTML = sorted.map((s) => {
           const done = s.status === SCHEDULE_STATUS.COMPLETED;
           const isLeave = s.status === SCHEDULE_STATUS.STUDENT_LEAVE;
+          const pend = isPendingMakeup(s);
+          const mkDone = isMakeupDone(s);
           const dot = done ? '#10b981' : isLeave ? '#9ca3af' : '#475569';
+          // 请假三态：待补（暖黄，要行动）/ 已补（灰米，已了结）/ 普通请假（不补）
           const statusHtml = done
             ? '<span class="text-[11px] font-bold text-emerald-600 shrink-0">已消课</span>'
             : isLeave
-              ? '<span class="text-[10px] font-bold px-2 py-1 rounded-full bg-[#f5f2ec] text-[#78716c] shrink-0">请假待补</span>'
+              ? `<span class="text-[10px] font-bold px-2 py-1 rounded-full shrink-0 ${pend ? 'bg-[#FEF3C7] text-[#7C4A03]' : 'bg-[#f5f2ec] text-[#78716c]'}">${pend ? '请假待补' : (mkDone ? '请假·已补' : '请假')}</span>`
               : `<button class="lm-checkin-btn dash-checkin-btn shrink-0 text-[11px] font-bold px-3.5 py-1.5 rounded-full bg-[#111111] text-white transition" data-id="${s.id}">
                    <span class="lm-cb-label">消课</span>
                    <span class="lm-cb-spinner" aria-hidden="true"></span>
@@ -1562,12 +1643,15 @@
                  </button>`;
           const student = students.find((st) => st.id === s.studentId);
           const debtTag = student ? (debts.find((d) => d.studentId === student.id && d.amount > 0) ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-600 ml-1.5">欠课</span>' : '') : '';
+          // 待补课：行内直接给「排补课」，不用先点开菜单
+          const makeupBtn = pend ? `<button class="lm-mini-btn dash-makeup-btn" data-id="${s.id}">排补课</button>` : '';
+          const mkChip = isMakeupLesson(s) ? '<span class="lm-chip-makeup">补课</span>' : '';
           return `<div class="flex items-center justify-between px-5 py-3 border-t border-[#f2ece4]">
             <div class="flex items-center gap-3 min-w-0">
               <span class="w-2 h-2 rounded-full shrink-0" style="background:${dot}"></span>
-              <div class="text-[13px] font-bold text-[#111111] truncate">${s.startTime || '--'} ${s.subject || ''} · ${s.studentName || ''}${debtTag}</div>
+              <div class="text-[13px] font-bold text-[#111111] truncate">${mkChip}${s.startTime || '--'} ${s.subject || ''} · ${s.studentName || ''}${debtTag}</div>
             </div>
-            ${statusHtml}
+            <div class="flex items-center gap-2 shrink-0">${makeupBtn}${statusHtml}</div>
           </div>`;
         }).join('');
       }
@@ -1586,6 +1670,14 @@
             () => executeCheckIn(sch.id, '', { skipRefresh: true }),
             () => refreshView()
           );
+        });
+      });
+      // 行内「排补课」：直接开补课表单（预填源请假课）
+      todayList.querySelectorAll('.dash-makeup-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const sch = schedules.find((x) => x.id === btn.getAttribute('data-id'));
+          if (!sch) return;
+          openScheduleModalForNew(students.find((st) => st.id === sch.studentId), formatDate(new Date()), sch.startTime, sch);
         });
       });
     }
@@ -2554,7 +2646,16 @@
     if (schedule.status === SCHEDULE_STATUS.COMPLETED) {
       statusChip = `<span class="shrink-0 ${statusCompact ? 'text-[9px] px-0.5' : 'text-[8px] px-1'} font-black text-white bg-emerald-500 rounded-md leading-none py-[3px]" title="已消课">✓${statusCompact ? '' : ' 消'}</span>`;
     } else if (schedule.status === SCHEDULE_STATUS.STUDENT_LEAVE) {
-      statusChip = `<span class="shrink-0 ${statusCompact ? 'text-[9px] px-0.5' : 'text-[8px] px-1'} font-black text-white bg-rose-400 rounded-md leading-none py-[3px]" title="学员请假">假</span>`;
+      // 请假三态：待补（假·待补）/ 已补（假✓）/ 普通请假（假）—— 窄卡只放得下两字
+      const pend = isPendingMakeup(schedule);
+      const dn = isMakeupDone(schedule);
+      const leaveMark = pend ? (statusCompact ? '假!' : '假·待补') : (dn ? '假✓' : '假');
+      const leaveTitle = pend ? '学员请假 · 待补课' : (dn ? '学员请假 · 已补课' : '学员请假');
+      statusChip = `<span class="shrink-0 ${statusCompact ? 'text-[9px] px-0.5' : 'text-[8px] px-1'} font-black text-white ${pend ? 'bg-[#B98235]' : 'bg-rose-400'} rounded-md leading-none py-[3px]" title="${leaveTitle}">${leaveMark}</span>`;
+    }
+    // 补课课次：另加一枚「补」小标（不动状态角标，两者语义不同）
+    if (isMakeupLesson(schedule)) {
+      statusChip = '<span class="lm-chip-makeup" title="补课">补</span>' + statusChip;
     }
     if (schedule.status === SCHEDULE_STATUS.COMPLETED) {
       card.style.opacity = '0.65';
@@ -2705,58 +2806,120 @@
     menu.id = 'scheduleActionMenu';
     menu.className = 'fixed inset-0 lm-scrim backdrop-blur-xs z-50 flex items-center justify-center p-4';
 
+    const statusText = status === SCHEDULE_STATUS.COMPLETED ? '已消课 ✓'
+      : status === SCHEDULE_STATUS.STUDENT_LEAVE
+        ? (isPendingMakeup(schedule) ? '学员请假 🏖️ · 待补课' : (isMakeupDone(schedule) ? '学员请假 🏖️ · 已补课' : '学员请假 🏖️'))
+        : (isMakeupLesson(schedule) ? '补课 · 待上课' : '待上课');
+    const makeupSrc = isMakeupLesson(schedule) ? schedules.find((x) => x.id === schedule.makeupOfId) : null;
+    const makeupDone = isMakeupDone(schedule) ? schedules.find((x) => x.id === schedule.madeUpById) : null;
+
+    menu.innerHTML = `
+      <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5 space-y-2.5">
+        <div id="lmSheetBody" class="space-y-2.5"></div>
+      </div>`;
+
+    const body = menu.querySelector('#lmSheetBody');
+
+    const headHtml = () => `
+      <div class="lm-sheet-head pb-3 border-b lm-hairline">
+        <button type="button" data-act="delete" class="lm-sheet-del" aria-label="删除该课程" title="删除该课程">
+          <i class="fa-solid fa-trash-can"></i>
+        </button>
+        <div class="font-bold text-sm lm-t1">${schedule.studentName} · ${schedule.subject}</div>
+        <div class="text-[11px] lm-t3 mt-0.5">${schedule.date} ${schedule.startTime} · ${schedule.durationMinutes}分钟 · 状态：${statusText}</div>
+        ${makeupSrc ? `<div class="text-[11px] mt-1" style="color:#2E5D68"><i class="fa-solid fa-arrows-rotate mr-1"></i>补 ${makeupSrc.date} ${makeupSrc.startTime} 的课</div>` : ''}
+        ${makeupDone ? `<div class="text-[11px] mt-1" style="color:#2E5D68"><i class="fa-solid fa-circle-check mr-1"></i>已由 ${makeupDone.date} ${makeupDone.startTime} 的补课核销</div>` : ''}
+        ${student && getStudentDebts(student.id).length ? `<div class="text-[10px] text-rose-500 mt-1">⚠ 该学员有欠课：${getStudentDebts(student.id).map(d => d.courseName + ' ' + d.amount + '节').join('、')}</div>` : ''}
+      </div>`;
+
+    const BTN = 'w-full py-3 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2';
+
     let actionsHtml = '';
     if (status !== SCHEDULE_STATUS.STUDENT_LEAVE) {
       actionsHtml += `
         ${status === SCHEDULE_STATUS.SCHEDULED ? `
-        <button data-act="checkin" class="w-full py-3 rounded-xl font-bold text-sm bg-emerald-500 text-white hover:bg-emerald-600 transition flex items-center justify-center gap-2">
+        <button data-act="checkin" class="${BTN} bg-emerald-500 text-white hover:bg-emerald-600">
           <i class="fa-solid fa-circle-check"></i> 消课签到（${getLessonCost(schedule)}节）
         </button>` : ''}
-        <button data-act="leave" class="lm-btn-leave w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition">
+        <button data-act="leave" class="lm-btn-leave ${BTN}">
           <i class="fa-solid fa-person-walking-arrow-right"></i> 学员请假（退还${getLessonCost(schedule)}节）${status === SCHEDULE_STATUS.COMPLETED ? ' · 改请假' : ''}
         </button>
         ${status === SCHEDULE_STATUS.COMPLETED ? `
-        <button data-act="revert" class="w-full py-3 rounded-xl font-bold text-sm lm-btn-ink text-white transition flex items-center justify-center gap-2">
+        <button data-act="revert" class="${BTN} lm-btn-ink text-white">
           <i class="fa-solid fa-rotate-left"></i> 撤销消课（还原为待上课）
         </button>` : ''}
       `;
     } else {
+      // 请假态：补课链路的主场
+      if (isPendingMakeup(schedule)) {
+        actionsHtml += `
+        <button data-act="makeup" class="lm-btn-makeup ${BTN}">
+          <i class="fa-solid fa-calendar-plus"></i> 排补课
+        </button>
+        <button data-act="unneed" class="${BTN} btn-quiet">
+          <i class="fa-solid fa-ban"></i> 这节课不用补了
+        </button>`;
+      } else if (!schedule.needMakeup) {
+        actionsHtml += `
+        <button data-act="need" class="lm-btn-makeup ${BTN}">
+          <i class="fa-solid fa-calendar-plus"></i> 加入待补课
+        </button>`;
+      }
       actionsHtml += `
-        <button data-act="revert" class="w-full py-3 rounded-xl font-bold text-sm lm-btn-ink text-white transition flex items-center justify-center gap-2">
+        <button data-act="revert" class="${BTN} lm-btn-ink text-white">
           <i class="fa-solid fa-rotate-left"></i> 撤销状态（还原为待上课）
         </button>
       `;
     }
     actionsHtml += `
-      <button data-act="edit" class="w-full py-3 rounded-xl font-bold text-sm btn-quiet transition flex items-center justify-center gap-2">
+      <button data-act="edit" class="${BTN} btn-quiet">
         <i class="fa-solid fa-pen-to-square"></i> 编辑课程信息
       </button>
     `;
 
-    const statusText = status === SCHEDULE_STATUS.COMPLETED ? '已消课 ✓' : status === SCHEDULE_STATUS.STUDENT_LEAVE ? '学员请假 🏖️' : '待上课';
-    menu.innerHTML = `
-      <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5 space-y-2.5">
-        <div class="lm-sheet-head pb-3 border-b lm-hairline">
-          <button type="button" data-act="delete" class="lm-sheet-del" aria-label="删除该课程" title="删除该课程">
-            <i class="fa-solid fa-trash-can"></i>
-          </button>
-          <div class="font-bold text-sm lm-t1">${schedule.studentName} · ${schedule.subject}</div>
-          <div class="text-[11px] lm-t3 mt-0.5">${schedule.date} ${schedule.startTime} · ${schedule.durationMinutes}分钟 · 状态：${statusText}</div>
-          ${student && getStudentDebts(student.id).length ? `<div class="text-[10px] text-rose-500 mt-1">⚠ 该学员有欠课：${getStudentDebts(student.id).map(d => d.courseName + ' ' + d.amount + '节').join('、')}</div>` : ''}
+    // 请假二选一：**不是每次请假都要补课**，所以把选择摆成必须选的一步，
+    // 而不是偷偷给默认值（漏选会直接错在账上）。与手机端同一套两步交互。
+    const askHtml = `
+      <div class="pb-3 border-b lm-hairline">
+        <div class="font-bold text-sm lm-t1">这节需要补课吗？</div>
+        <div class="text-[11px] lm-t3 mt-1 leading-relaxed">
+          ${schedule.studentName} · ${schedule.subject} · ${schedule.date} ${schedule.startTime}<br>
+          需要补课 → 转入待补课清单，之后可以安排补课；不用补课 → 直接记为请假。
         </div>
-        ${actionsHtml}
-        <button data-act="close" class="w-full py-2 lm-t3 text-xs hover:lm-t2 transition">取消</button>
       </div>
-    `;
+      <button data-ask="1" class="lm-btn-makeup ${BTN}">
+        <i class="fa-solid fa-calendar-plus"></i> 需要补课（转入待补课）
+      </button>
+      <button data-ask="0" class="${BTN} btn-quiet">
+        <i class="fa-solid fa-check"></i> 不用补课（直接记为请假）
+      </button>
+      <button data-act="back" class="w-full py-2 lm-t3 text-xs hover:lm-t2 transition">返回</button>`;
+
+    const mainHtml = headHtml() + actionsHtml
+      + `<button data-act="close" class="w-full py-2 lm-t3 text-xs hover:lm-t2 transition">取消</button>`;
+
+    const renderBody = (view) => { body.innerHTML = view === 'ask' ? askHtml : mainHtml; };
+    renderBody('main');
 
     menu.addEventListener('click', (e) => {
       if (e.target === menu) { menu.remove(); return; }
+      const askBtn = e.target.closest('[data-ask]');
+      if (askBtn) {
+        const need = askBtn.getAttribute('data-ask') === '1';
+        menu.remove();
+        markStudentLeave(schedule.id, need);
+        return;
+      }
       const btn = e.target.closest('[data-act]');
       if (!btn) return;
       const act = btn.getAttribute('data-act');
+      if (act === 'back') { renderBody('main'); return; }
+      if (act === 'leave') { renderBody('ask'); return; }   // 请假先切二选一那一屏
       menu.remove();
       if (act === 'checkin') executeCheckIn(schedule.id);
-      else if (act === 'leave') markStudentLeave(schedule.id);
+      else if (act === 'makeup') openScheduleModalForNew(student, formatDate(new Date()), schedule.startTime, schedule);
+      else if (act === 'need') setNeedMakeup(schedule.id, true);
+      else if (act === 'unneed') setNeedMakeup(schedule.id, false);
       else if (act === 'revert') revertScheduleStatus(schedule.id);
       else if (act === 'edit') openScheduleModalForEdit(schedule);
       else if (act === 'delete') {
@@ -2906,14 +3069,31 @@
     });
   }
 
-  function openScheduleModalForNew(student, dateStr, startTimeStr) {
+  function openScheduleModalForNew(student, dateStr, startTimeStr, makeupSrc) {
+    // 补课：学员/课程/科目/老师/时长/课室一律跟随源请假课，用户只挑日期与时间
+    const preset = makeupSrc || null;
+    if (preset) {
+      student = students.find((st) => st.id === preset.studentId) || student;
+      dateStr = formatDate(new Date());
+      startTimeStr = snapTo5Min(preset.startTime || startTimeStr);
+    }
     normalizeStudent(student);
 
     const titleEl = document.getElementById('modalScheduleTitle');
-    if (titleEl) titleEl.textContent = '安排新课程';
+    if (titleEl) titleEl.textContent = preset ? '安排补课' : '安排新课程';
 
     const idEl = document.getElementById('inputScheduleId');
     if (idEl) idEl.value = '';
+
+    // 补课标记写进隐藏域，保存时落成 schedule.makeupOfId
+    const makeupEl = document.getElementById('inputMakeupOfId');
+    if (makeupEl) makeupEl.value = preset ? preset.id : '';
+    const banner = document.getElementById('makeupBanner');
+    const bannerText = document.getElementById('makeupBannerText');
+    if (banner) banner.classList.toggle('hidden', !preset);
+    if (bannerText && preset) {
+      bannerText.textContent = `补 ${preset.date} ${preset.startTime} 的课 · ${preset.studentName} · ${preset.subject || ''}`;
+    }
 
     const stIdEl = document.getElementById('inputStudentId');
     if (stIdEl) stIdEl.value = student.id;
@@ -2940,10 +3120,10 @@
     if (timeEl) timeEl.value = startTimeStr;
 
     const durEl = document.getElementById('selectDuration');
-    if (durEl) durEl.value = '60';
+    if (durEl) durEl.value = String(preset && preset.durationMinutes ? preset.durationMinutes : 60);
 
     const roomEl = document.getElementById('inputRoom');
-    if (roomEl) roomEl.value = '琴房 101';
+    if (roomEl) roomEl.value = (preset && preset.room) ? preset.room : '琴房 101';
 
     const noteEl = document.getElementById('inputNotes');
     if (noteEl) noteEl.value = '';
@@ -2954,30 +3134,38 @@
       student.courses.forEach((c) => {
         courseSelect.innerHTML += `<option value="${c.id}" data-name="${c.name}">${c.name} (剩余 ${c.remainingLessons} 课时)</option>`;
       });
+      if (preset && preset.courseId) courseSelect.value = preset.courseId;
     }
 
-    // 科目：新增时留空（保存时自动等于课程包名），候选来自课程类型
+    // 科目：新增时留空（保存时自动等于课程包名），候选来自课程类型；补课沿用源课的科目
     renderCourseTypesDatalist();
     const subjectElNew = document.getElementById('inputSubject');
     if (subjectElNew) {
-      subjectElNew.value = '';
-      if (courseSelect && courseSelect.options[courseSelect.selectedIndex]) {
+      subjectElNew.value = preset ? (preset.subject || '') : '';
+      if (!preset && courseSelect && courseSelect.options[courseSelect.selectedIndex]) {
         subjectElNew.value = courseSelect.options[courseSelect.selectedIndex].getAttribute('data-name') || '';
       }
     }
 
     renderTeacherOptions();
+    if (preset) {
+      const tSel = document.getElementById('selectTeacher');
+      if (tSel && preset.teacherId) tSel.value = preset.teacherId;
+      const aSel = document.getElementById('selectAssistantTeacher');
+      if (aSel && preset.assistantTeacherId) aSel.value = preset.assistantTeacherId;
+    }
 
     const delBtn = document.getElementById('btnDeleteSchedule');
     if (delBtn) delBtn.classList.add('hidden');
 
-    // 重复排课：仅新增时显示，默认"不重复"，结束日期默认3个月后
+    // 重复排课：仅新增时显示，默认"不重复"，结束日期默认3个月后。
+    // 补课是一对一核销，天然只排一节 → 直接藏掉，避免排出一整个系列。
     const repeatBlock = document.getElementById('repeatOptionsBlock');
     const ruleEl = document.getElementById('selectRepeatRule');
     const endWrap = document.getElementById('repeatEndDateWrap');
     const endEl = document.getElementById('inputRepeatEndDate');
     const hintEl = document.getElementById('repeatHint');
-    if (repeatBlock) repeatBlock.classList.remove('hidden');
+    if (repeatBlock) repeatBlock.classList.toggle('hidden', !!preset);
     if (ruleEl) ruleEl.value = 'none';
     if (endWrap) endWrap.classList.add('hidden');
     if (endEl) {
@@ -3003,6 +3191,12 @@
 
     const titleEl = document.getElementById('modalScheduleTitle');
     if (titleEl) titleEl.textContent = '修改课程排期';
+
+    // 编辑不走补课模式：清掉补课隐藏域与提示条（否则上次排补课残留的 id 会被误写）
+    const makeupElEdit = document.getElementById('inputMakeupOfId');
+    if (makeupElEdit) makeupElEdit.value = '';
+    const bannerEdit = document.getElementById('makeupBanner');
+    if (bannerEdit) bannerEdit.classList.add('hidden');
 
     const idEl = document.getElementById('inputScheduleId');
     if (idEl) idEl.value = schedule.id;
@@ -3208,7 +3402,20 @@
         colorTheme,
         ...(seriesId ? { seriesId } : {}),
       });
-      schedules.push(makeSchedule('sch_' + Date.now(), date));
+      const firstId = 'sch_' + Date.now();
+      schedules.push(makeSchedule(firstId, date));
+      // 补课：把这一节挂到源请假课上（双向标记由 syncMakeupLink 统一维护）
+      const makeupOfId = (() => { const el = document.getElementById('inputMakeupOfId'); return el ? el.value : ''; })();
+      if (makeupOfId) {
+        const created = schedules.find((s) => s.id === firstId);
+        const src = schedules.find((s) => s.id === makeupOfId);
+        if (created && src && isPendingMakeup(src)) {
+          created.makeupOfId = src.id;
+          syncMakeupLink(created);
+        } else if (created) {
+          showToast('⚠ 原请假课状态已变，这节按普通排课保存', 'circle-info');
+        }
+      }
 
       // 课时在消课时扣除（App 语义），排课不再扣
 

@@ -22,7 +22,7 @@
   <!-- Custom CSS -->
   <link rel="stylesheet" href="css/tokens.css?v=12">
   <link rel="stylesheet" href="css/styles.css?v=32">
-  <link rel="stylesheet" href="css/legacy-tokens.css?v=12">
+  <link rel="stylesheet" href="css/legacy-tokens.css?v=13">
   <!-- GSAP 动效：本地内置优先（cdnjs 曾实测超时，CDN 挂掉会让全部 GSAP 动效静默消失）。
        本地缺失时才回落到 CDN；两者都失败也不影响功能——anim.js 检测不到 window.gsap 会退化为静态。 -->
   <script src="js/vendor/gsap.min.js?v=1"></script>
@@ -36,7 +36,7 @@
        改完 class 要重新生成：tools\build-tailwind.cmd
        ⚠ 必须留在 </head> 之前（即所有自有样式之后），复刻 Play CDN 把 <style>
        append 到 head 末尾的层叠顺序；挪到前面会翻转优先级。 -->
-  <link rel="stylesheet" href="css/tailwind.css?v=2">
+  <link rel="stylesheet" href="css/tailwind.css?v=3">
 </head>
 <body class="text-[#111111] font-sans h-screen flex flex-col overflow-hidden select-none" style="background: var(--surface-page);">
 
@@ -482,6 +482,11 @@
       <form id="formSchedule" autocomplete="off" class="p-5 space-y-3.5 text-xs">
         <input type="hidden" id="inputScheduleId">
         <input type="hidden" id="inputStudentId">
+        <!-- 补课：指向被补的那节请假课（空 = 普通排课） -->
+        <input type="hidden" id="inputMakeupOfId">
+        <div id="makeupBanner" class="hidden text-[11px] font-semibold rounded-xl px-3 py-2 flex items-center gap-2" style="background:#DAE9E3;color:#2E5D68">
+          <i class="fa-solid fa-arrows-rotate"></i><span id="makeupBannerText"></span>
+        </div>
 
         <div class="bg-[#faf8f3]/70 border border-[#efe9e0] rounded-xl p-2.5 flex items-center justify-between">
           <div class="flex items-center gap-2.5">
@@ -987,7 +992,7 @@
   </div>
 
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=34"></script>
+  <script src="js/app.js?v=35"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
