@@ -94,3 +94,18 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
 25. **待补池的回溯窗口是「含今天在内的最近 7 天」**，取数走两端的 `pendingMakeupList(scopeFn)`（`MAKEUP_WINDOW_DAYS = 7`），**禁止在渲染里另写过滤**。口径：只列「请假 + `needMakeup` + 未核销」——补完 / 当初选不补 / 超窗 都不出现，**清单空则整块不渲染**（不留空标题占位）。排序**按日期升序**（拖最久的排最前，先补最容易烂的那节）。今日行上的「排补课」只管今天，这块才是整周的口子；入口统一走 `openMakeupFor(schId)`（预填学员/时间，**日期取今天** —— 补课排的是接下来要上的课，不是回到请假那天去补）。手机端渲染在 `renderMobileHome`（`#mobileHomeMakeup`），电脑端在 `renderDashboard`（`#dashMakeupCard`，空则整卡 `hidden`）。注意今天请的假会同时出现在「今日课程」和这里：这是刻意的 —— 计数要是把今天排除掉，「还欠几节」就报不准了。
 26. **「与上月对比」的环比徽章口径锁死为「本月累计 vs 上月整月合计」**，取数走两端的 `prevMonthLogs()`（跨年由 `Date` 自动回退），渲染走两端的 `momBadge(cur, prev, unit, fmt, big)`（`js/app.js` 与 `js/mobile.js` **各一份同语义副本，改口径必须两边一起改**）。三条硬约束：① **上月为 0 时不出徽章** —— 除零算出的「+∞%」是假数据；② 只给能由消课流水直接推出的两项（**本月课消 / 消课价值**），「待消存量 / 欠课学员」没有历史快照（充值不进流水、欠课账只存当前值），硬算会出假数；③ 徽章是卡片标题行**右上方**（label 左、徽章右，靠 `margin-left:auto` 顶开，**不要**为了它去引新 tailwind 类 —— `css/tailwind.css` 是预生成的）。样式类 `.lm-mom / .is-up / .is-down / .is-flat / .is-lg` 在 `css/legacy-tokens.css` 和 `css/intercom-tokens.css` **各一份**（并行的两套，见第 19 条）。颜色只用绿（升）/玫红（降）/暖灰（持平），不碰琥珀色。悬停 `title` 带两侧绝对值，口径可核对。三处 UI 都挂了徽章：财务页 4 卡（桌面 `renderPageFinance` / 手机 `renderMobileFinance`）+ 待排课抽屉的「本月经营」小卡（桌面 `updateFinancePanel`，见第 27 条）。
 27. **桌面端「待排课学生」抽屉（`#sidebarStudent`，含底部的「本月经营」`#financePanel`）目前没有入口**：唯一打开它的按钮 `#btnBatchSchedule` 在 commit `fb1c3e3`（「课表去新建学员/批量排课」）时删掉了，但 `updateFinancePanel()` 还在照常往里写。**别把它当成用户看得见的 UI** —— 要在这块加东西（或改口径）时先确认入口是否已恢复，否则改动等于零。恢复入口只需在课表页给 `#btnBatchSchedule` 一个按钮（`expandSidebar()` / `collapseSidebar()` 都还在，事件绑定也还在）。
+28. **退款（F12）复用 `checkInLogs` 记账，不新建集合。** 记法靠三个字段表达，这是本轮最关键的取舍：
+    ① `deductedLessons = 0` —— 退的是「没上过的课」，**不该动「本月课消节数」**；
+    ② `paymentAmount = -金额` —— 「课消价值 / 收入 / 环比徽章 / 明细 / 导出」全部**自动被扣减**；
+    ③ `type = 'refund'` —— 与消课流水区分（**老数据没有该字段，读取处一律按消课处理**，判定统一走 `isRefundLog(l)`）。
+    这样撤销快照（`pushUndo` 已含 `checkInLogs`）、云同步、跨标签同步、`refreshView` 都是现成路径，
+    完全绕开了「7 处 × 2 文件」那套高风险改动。**别为了「台账更干净」再去拆一个 refunds 集合。**
+    口径（用户当场拍板）：**支持部分退款**（按课时退，金额默认 = 节数 × 单价、可手改）；**从收入里扣减**（不另立指标）；
+    入口在**学员详情**（桌面 `openStudentDetail` 的 `#detailRefundBtn` / 手机 `openMobileStudentDetail` 的 `#mDetailRefundBtn`），
+    **不建第二个入口**。校验：退款节数 ≥ 1 且 ≤ 该包剩余课时，余额 ≤ 0（用光 / 欠课）直接拒绝 —— 退款只会让余额朝 0 变小，
+    永远造不出负余额，**所以不要调 `syncAllDebts()`**。金额显示统一用 `fmtMoney()`（负数写成 `-¥1400` 而不是 `¥-1400`）。
+    两处必须记住的口径细节：**「本月课消」节数不变、「课消价值」变负是正常的**（退的钱可能超过本月已消的价值）；
+    **老师视角不摊分退款**（一笔退款不对应某一节课，若走 `logRelatedToTeacher` 的兜底分支会被每个老师重复扣一次），
+    「本月老师课时」排行里也要跳过退款行，否则会冒出一行「未指定老师」。学员详情里退款**单列一个「退款记录」区块**，
+    并且要从「消课记录」里排除（退款不是消课，混着读会把节数看糊涂）。双端各一份 `isRefundLog / recordRefundLog /
+    refundableCourses / executeRefund / fmtMoney`，**语义必须一致**。核对脚本 `tmp/refund-check.mjs`（43 项）。

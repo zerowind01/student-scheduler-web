@@ -350,10 +350,16 @@
     const themeColor = getThemeBadgeStyle(student.colorTheme || 'amber');
     const studentDebts = getStudentDebts(student.id);
     const logs = checkInLogs
-      .filter((l) => l.studentId === student.id)
+      .filter((l) => l.studentId === student.id && !isRefundLog(l))
       .slice()
       .sort((a, b) => (b.checkInTime || '').localeCompare(a.checkInTime || ''))
       .slice(0, 30);
+    // 退款记录单列（退款不是「消课」，混进消课记录里会把节数读糊涂）
+    const refundLogs = checkInLogs
+      .filter((l) => l.studentId === student.id && isRefundLog(l))
+      .slice()
+      .sort((a, b) => (b.checkInTime || '').localeCompare(a.checkInTime || ''))
+      .slice(0, 10);
     const leaves = schedules
       .filter((s) => s.studentId === student.id && s.status === SCHEDULE_STATUS.STUDENT_LEAVE)
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
@@ -361,6 +367,7 @@
 
     const totalLessons = student.courses.reduce((acc, c) => acc + c.remainingLessons, 0);
     const totalOwed = studentDebts.reduce((acc, d) => acc + d.amount, 0);
+    const canRefund = refundableCourses(student).length > 0;
 
     body.innerHTML = `
       <div class="flex items-center gap-3 lm-soft rounded-xl p-3">
@@ -374,6 +381,10 @@
           <div class="text-[9px] lm-t3 font-bold">总剩课时${totalOwed > 0 ? ' · 欠' + totalOwed + '节' : ''}</div>
         </div>
       </div>
+
+      <button type="button" id="detailRefundBtn" class="w-full py-2.5 rounded-xl btn-quiet font-bold text-xs flex items-center justify-center gap-1.5 transition"${canRefund ? '' : ' disabled style="opacity:.45;cursor:not-allowed"'}>
+        <i class="fa-solid fa-circle-minus" style="color:#d5304f;"></i> 退款 / 退课时${canRefund ? '' : '（无可退课时）'}
+      </button>
 
       <div>
         <div class="font-bold text-[11px] lm-t2 uppercase tracking-wider mb-1.5">课程与课时</div>
@@ -427,6 +438,25 @@
         </div>`}
       </div>
 
+      ${refundLogs.length ? `
+      <div>
+        <div class="font-bold text-[11px] lm-t2 uppercase tracking-wider mb-1.5"><i class="fa-solid fa-circle-minus" style="color:#d5304f;"></i> 退款记录（最近 ${refundLogs.length} 次）</div>
+        <div class="space-y-1">
+          ${refundLogs.map((l) => `
+          <div class="flex items-center justify-between bg-rose-50/60 border border-rose-100 px-3 py-2 rounded-lg text-[11px]">
+            <div>
+              <span class="font-bold lm-t1">${l.courseName}</span>
+              <span class="font-bold text-rose-600 ml-1.5">退 ${l.refundLessons || 0} 节</span>
+              ${l.remarks ? `<span class="lm-t3 ml-1">${l.remarks}</span>` : ''}
+            </div>
+            <div class="text-right shrink-0 ml-2">
+              <div class="font-black text-rose-600">${fmtMoney(l.paymentAmount)}</div>
+              <div class="text-[9px] lm-t3">${(l.date || (l.checkInTime || '').slice(0, 10))}</div>
+            </div>
+          </div>`).join('')}
+        </div>
+      </div>` : ''}
+
       ${leaves.length ? `
       <div>
         <div class="font-bold text-[11px] lm-t2 uppercase tracking-wider mb-1.5"><i class="fa-solid fa-umbrella-beach"></i> 请假记录（最近 ${leaves.length} 次）</div>
@@ -439,6 +469,17 @@
         </div>
       </div>` : ''}
     `;
+
+    // 退款入口：与「充值」同层（详情页是退款唯一入口，不再另开第二个）
+    const refundBtn = document.getElementById('detailRefundBtn');
+    if (refundBtn) refundBtn.addEventListener('click', () => {
+      if (!refundableCourses(student).length) {
+        showToast('该学员没有可退的课时（余额为 0 或欠课）', 'circle-info');
+        return;
+      }
+      hideModal('modalStudentDetail');
+      setTimeout(() => openRefundModal(student), 280);
+    });
 
     showModal('modalStudentDetail');
   }
@@ -1017,6 +1058,86 @@
     saveData();
     refreshView();
     showToast(`💳 ${student.name} 充值「${courseName}」${lessons} 节${remark}`, 'circle-check');
+  }
+
+  // ==========================================
+  // 退款（F12）
+  // ==========================================
+  // 语义：把「学员预交、但没上」的课时退掉，并把钱从当月收入里减出来。
+  // 记账复用 checkInLogs（全站唯一的财务痕迹），靠三个字段表达，**零数据层改动**：
+  //   · deductedLessons = 0   → 退的是没上过的课，不该动「本月课消节数」
+  //   · paymentAmount   = -金额 → 「课消价值 / 收入 / 环比 / 明细」全部自动被扣减
+  //   · type            = 'refund' → 与消课记录区分（老数据没有该字段，缺省按消课处理）
+  // 这样撤销快照、云同步、跨标签同步、老师视角过滤都是现成路径，不用按 7 处 × 2 文件去抄。
+  function isRefundLog(l) { return !!(l && l.type === 'refund'); }
+
+  // 退款流水（字段基座与 recordCheckInLog 一致，便于同一张表里混排）
+  function recordRefundLog(student, course, lessons, amount, remarks) {
+    const now = new Date();
+    checkInLogs.push({
+      id: 'cil_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+      type: 'refund',
+      scheduleId: '',
+      studentId: student.id,
+      studentName: student.name,
+      courseName: course.name,
+      deductedLessons: 0,
+      paymentAmount: -Math.abs(amount || 0),
+      refundLessons: lessons,
+      checkInTime: now.toISOString(),
+      date: formatDate(now),
+      remarks: remarks || '',
+      teacherName: '',
+    });
+  }
+
+  // 可退的课程包：余额 > 0 才可退（欠课 / 已用光的不让退，否则会退出一个负余额的假账）
+  function refundableCourses(student) {
+    if (!student) return [];
+    normalizeStudent(student);
+    migrateStudentCourses(student);
+    return (student.courses || []).filter((c) => (Number(c.remainingLessons) || 0) > 0);
+  }
+
+  // 退款主流程。金额由调用方给出（弹窗里默认 = 节数 × 单价，允许手改）。
+  // 注意：退款只会让余额朝 0 变小，永远不会造出负余额 → 不需要碰欠课账（故不调 syncAllDebts）。
+  function executeRefund(studentId, courseKey, lessons, amount, remarks) {
+    const student = students.find((st) => st.id === studentId);
+    if (!student) return false;
+    normalizeStudent(student);
+    migrateStudentCourses(student);
+
+    const courses = student.courses || [];
+    const course = courses.find((c) => c.id === courseKey) || courses.find((c) => c.name === courseKey);
+    if (!course) { showToast('找不到该课程包', 'circle-info'); return false; }
+
+    const n = Math.floor(Number(lessons) || 0);
+    if (!(n > 0)) { showToast('退款节数至少 1 节', 'circle-info'); return false; }
+    const left = Number(course.remainingLessons) || 0;
+    if (left <= 0) {
+      showToast(`「${course.name}」没有可退课时（当前 ${left} 节）`, 'circle-info');
+      return false;
+    }
+    if (n > left) {
+      showToast(`「${course.name}」最多可退 ${left} 节`, 'circle-info');
+      return false;
+    }
+
+    const money = Math.max(0, Number(amount) || 0);
+
+    pushUndo(`退款 ${student.name}`);
+    course.remainingLessons = left - n;
+    recordRefundLog(student, course, n, money, remarks);
+    saveData();
+    refreshView();
+    offerUndo(`💸 已为 ${student.name} 退款「${course.name}」${n} 节 · ¥${money.toFixed(0)}`, 'circle-minus', `退款 ${student.name}`);
+    return true;
+  }
+
+  // 金额显示：负数统一写成 -¥1400（而不是 ¥-1400）
+  function fmtMoney(v) {
+    const n = Number(v) || 0;
+    return (n < 0 ? '-¥' : '¥') + Math.abs(n).toFixed(0);
   }
 
   // ==========================================
@@ -1630,8 +1751,8 @@
         </div>
         <div class="bg-white border border-[#efe9e0] rounded-2xl p-5">
           <div class="text-[11px] text-[#a8a29e] font-bold">本月收入</div>
-          <div class="text-3xl font-black text-[#111111] mt-1.5">¥${monthValue.toFixed(0)}</div>
-          <div class="text-[11px] font-semibold mt-1.5 text-[#a8a29e]">课消价值合计</div>
+          <div class="text-3xl font-black text-[#111111] mt-1.5">${fmtMoney(monthValue)}</div>
+          <div class="text-[11px] font-semibold mt-1.5 text-[#a8a29e]">课消价值合计（退款已扣减）</div>
         </div>
         <div class="bg-white border ${debtors.length ? 'border-rose-200' : 'border-[#efe9e0]'} rounded-2xl p-5">
           <div class="text-[11px] font-bold ${debtors.length ? 'text-rose-500' : 'text-[#a8a29e]'}">欠费预警</div>
@@ -1781,6 +1902,8 @@
     if (tStats) {
       const byTeacher = {};
       monthLogs.forEach((l) => {
+        // 退款不对应某一节课，算不进任何老师的课时排行（否则会冒出一行「未指定老师」）
+        if (isRefundLog(l)) return;
         const name = l.teacherName || '未指定老师';
         if (!byTeacher[name]) byTeacher[name] = { lessons: 0, value: 0 };
         byTeacher[name].lessons += l.deductedLessons || 0;
@@ -2065,7 +2188,9 @@
     const monthLogs = checkInLogs.filter((l) => (l.checkInTime || '').startsWith(monthPrefix)).slice().sort((a, b) => (b.checkInTime || '').localeCompare(a.checkInTime || ''));
 
     const monthLessons = monthLogs.reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
+    // 退款流水 deductedLessons=0 → 课消节数天然不受影响；paymentAmount 是负数 → 金额自动被扣减
     const monthValue = monthLogs.reduce((acc, l) => acc + (l.paymentAmount || 0), 0);
+    const monthRefund = monthLogs.filter(isRefundLog).reduce((acc, l) => acc + Math.abs(l.paymentAmount || 0), 0);
     const totalRemaining = students.reduce((acc, st) => acc + (st.courses || []).reduce((a, c) => a + Math.max(0, c.remainingLessons), 0), 0);
     const totalStockValue = students.reduce((acc, st) => acc + (st.courses || []).reduce((a, c) => a + Math.max(0, c.remainingLessons) * (c.unitPrice || 0), 0), 0);
     const debtors = debts.filter((d) => d.amount > 0);
@@ -2085,7 +2210,7 @@
     container.innerHTML = `
       <div class="grid grid-cols-2 xl:grid-cols-4 gap-3">
         ${kpiCard('fa-chart-simple', 'color:#111111;', '本月课消', `${monthLessons.toFixed(1)} <span class="text-xs font-bold lm-t3">节</span>`, '', momBadge(monthLessons, prevLessons, ' 节', (n) => n.toFixed(1), true))}
-        ${kpiCard('fa-coins', 'color:#ff5600;', '课消价值', `¥${monthValue.toFixed(0)}`, '', momBadge(monthValue, prevValue, ' 元', (n) => n.toFixed(0), true))}
+        ${kpiCard('fa-coins', 'color:#ff5600;', '课消价值', `${fmtMoney(monthValue)}`, '', momBadge(monthValue, prevValue, ' 元', (n) => n.toFixed(0), true))}
         ${kpiCard('fa-layer-group', 'color:#111111;', '待消存量', `${totalRemaining.toFixed(1)} <span class="text-xs font-bold lm-t3">节</span>`)}
         ${kpiCard('fa-triangle-exclamation', 'color:#d5304f;', '欠课学员', `${debtors.length} <span class="text-xs font-bold lm-t3">人</span>`, debtors.length ? 'style="background:#fff1f2;"' : '')}
       </div>
@@ -2094,8 +2219,8 @@
         <!-- 本月收入明细：桌面表格 -->
         <div class="lm-stat-card rounded-2xl xl:col-span-2">
           <div class="flex items-center justify-between px-4 pt-4 pb-2">
-            <div class="font-bold text-xs lm-t1 flex items-center gap-1.5"><i class="fa-solid fa-receipt" style="color:#ff5600;"></i> 本月收入明细（消课流水）</div>
-            <div class="text-[11px] font-bold lm-t2">${monthLogs.length} 笔 · ${monthLessons.toFixed(1)} 节 · ¥${monthValue.toFixed(0)}</div>
+            <div class="font-bold text-xs lm-t1 flex items-center gap-1.5"><i class="fa-solid fa-receipt" style="color:#ff5600;"></i> 本月收入明细</div>
+            <div class="text-[11px] font-bold lm-t2">${monthLogs.length} 笔 · ${monthLessons.toFixed(1)} 节 · 净 ${fmtMoney(monthValue)}${monthRefund > 0 ? ` <span class="text-rose-500">（已退 ¥${monthRefund.toFixed(0)}）</span>` : ''}</div>
           </div>
           ${monthLogs.length === 0 ? '<div class="text-[11px] lm-t3 py-8 text-center">本月暂无消课记录</div>' : `
           <div class="max-h-[480px] overflow-y-auto custom-scrollbar px-2 pb-2">
@@ -2111,15 +2236,18 @@
                 </tr>
               </thead>
               <tbody>
-                ${monthLogs.map((l) => `
-                <tr class="border-b border-[#f2ece4] hover:bg-[#faf8f3] transition">
-                  <td class="py-3 pl-2 font-bold lm-t1 whitespace-nowrap">${l.studentName}</td>
+                ${monthLogs.map((l) => {
+                  // 退款行：没有「消课节数」，金额是负数 —— 单独立样式，别混在消课行里读
+                  const ref = isRefundLog(l);
+                  return `
+                <tr class="border-b border-[#f2ece4] ${ref ? 'bg-rose-50/40' : 'hover:bg-[#faf8f3]'} transition">
+                  <td class="py-3 pl-2 font-bold lm-t1 whitespace-nowrap">${l.studentName}${ref ? '<span class="ml-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-600">退款</span>' : ''}</td>
                   <td class="py-3 lm-t2 whitespace-nowrap">${l.courseName}</td>
-                  <td class="py-3 lm-t3 max-w-[180px] truncate" title="${l.remarks || ''}">${l.remarks || '—'}</td>
-                  <td class="py-3 text-right lm-t2 whitespace-nowrap">${l.deductedLessons} 节</td>
-                  <td class="py-3 text-right font-bold ${l.paymentAmount > 0 ? 'lm-t1' : 'lm-t3'} whitespace-nowrap">${l.paymentAmount > 0 ? `¥${l.paymentAmount.toFixed(0)}` : '—'}</td>
+                  <td class="py-3 lm-t3 max-w-[180px] truncate" title="${l.remarks || ''}">${ref ? `退 ${l.refundLessons || 0} 节${l.remarks ? ' · ' + l.remarks : ''}` : (l.remarks || '—')}</td>
+                  <td class="py-3 text-right lm-t2 whitespace-nowrap">${ref ? '<span class="lm-t3">—</span>' : `${l.deductedLessons} 节`}</td>
+                  <td class="py-3 text-right font-bold whitespace-nowrap ${ref ? 'text-rose-600' : (l.paymentAmount > 0 ? 'lm-t1' : 'lm-t3')}">${l.paymentAmount ? fmtMoney(l.paymentAmount) : '—'}</td>
                   <td class="py-3 text-right lm-t3 whitespace-nowrap pr-2">${(l.checkInTime || '').replace('T', ' ').slice(5, 16)}</td>
-                </tr>`).join('')}
+                </tr>`;}).join('')}
               </tbody>
             </table>
           </div>`}
@@ -4350,7 +4478,7 @@
         </div>
         <div class="lm-soft rounded-lg p-2">
           <div class="flex items-center gap-1.5 text-[9px] lm-t3"><span>课消价值</span>${momBadge(monthValue, prevValue, ' 元', (n) => n.toFixed(0))}</div>
-          <div class="text-sm font-black lm-t1">¥${monthValue.toFixed(0)}</div>
+          <div class="text-sm font-black lm-t1">${fmtMoney(monthValue)}</div>
         </div>
         <div class="lm-soft rounded-lg p-2">
           <div class="text-[9px] lm-t3">待消存量</div>
@@ -4451,6 +4579,105 @@
       }
       modal.remove();
       purchaseCoursePack(student.id, courseName, lessons, price);
+    });
+  }
+
+  // 退款弹窗（部分退款：按课时退，金额默认 = 节数 × 单价，可手改）
+  function openRefundModal(student) {
+    normalizeStudent(student);
+    migrateStudentCourses(student);
+
+    const old = document.getElementById('refundModal');
+    if (old) old.remove();
+
+    const courses = refundableCourses(student);
+    if (!courses.length) { showToast('该学员没有可退的课时', 'circle-info'); return; }
+
+    const courseOptions = courses
+      .map((c) => `<option value="${c.id}">${c.name}（余 ${c.remainingLessons} 节${c.unitPrice > 0 ? ` · ¥${c.unitPrice}/节` : ''}）</option>`)
+      .join('');
+
+    const modal = document.createElement('div');
+    modal.id = 'refundModal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.className = 'fixed inset-0 lm-scrim backdrop-blur-xs z-50 flex items-center justify-center p-4';
+    modal.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5 space-y-3" onclick="event.stopPropagation()">
+        <div class="font-bold text-sm lm-t1 pb-2 border-b lm-hairline">
+          <i class="fa-solid fa-circle-minus" style="color:#d5304f;"></i>
+          为 ${student.name} 退款 / 退课时
+        </div>
+        <div>
+          <label class="block text-[11px] font-semibold lm-t2 mb-1">课程包</label>
+          <select id="refundCourseSelect" class="w-full px-3 py-2 border lm-hairline rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-300">
+            ${courseOptions}
+          </select>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[11px] font-semibold lm-t2 mb-1">退款节数</label>
+            <input type="number" id="refundLessons" min="1" step="1" value="1" class="w-full px-3 py-2 border lm-hairline rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300">
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold lm-t2 mb-1">退款金额 (元)</label>
+            <input type="number" id="refundAmount" min="0" step="0.01" inputmode="decimal" value="0" class="w-full px-3 py-2 border lm-hairline rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-300">
+          </div>
+        </div>
+        <div>
+          <label class="block text-[11px] font-semibold lm-t2 mb-1">原因 / 备注（可选）</label>
+          <input type="text" id="refundRemarks" placeholder="如：搬家停课" class="w-full px-3 py-2 border lm-hairline rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-300">
+        </div>
+        <div id="refundHint" class="text-[10px] lm-t3"></div>
+        <div class="flex gap-2 pt-1">
+          <button id="refundCancel" class="flex-1 py-2.5 rounded-xl btn-quiet font-bold text-xs">取消</button>
+          <button id="refundConfirm" class="flex-1 py-2.5 rounded-xl text-white font-bold text-xs" style="background:#d5304f;">确认退款</button>
+        </div>
+      </div>
+    `;
+
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+
+    const sel = modal.querySelector('#refundCourseSelect');
+    const lessonsEl = modal.querySelector('#refundLessons');
+    const amountEl = modal.querySelector('#refundAmount');
+    const hintEl = modal.querySelector('#refundHint');
+
+    const curCourse = () => courses.find((c) => c.id === sel.value) || courses[0];
+    // 节数一变就把金额按「节数 × 单价」重算（用户随后可手改金额；改课程包则整体重置）
+    const syncByLessons = () => {
+      const c = curCourse();
+      const left = Number(c.remainingLessons) || 0;
+      let n = Math.floor(Number(lessonsEl.value) || 0);
+      if (n < 1) n = 1;
+      if (n > left) n = left;
+      lessonsEl.value = String(n);
+      amountEl.value = String((Number(c.unitPrice) || 0) * n);
+      hintEl.textContent = `「${c.name}」当前剩 ${left} 节 → 退后剩 ${left - n} 节 · 金额 ¥${Number(amountEl.value || 0).toFixed(0)}`;
+    };
+
+    sel.addEventListener('change', () => { lessonsEl.value = '1'; syncByLessons(); });
+    lessonsEl.addEventListener('input', syncByLessons);
+    amountEl.addEventListener('input', () => {
+      const c = curCourse();
+      const left = Number(c.remainingLessons) || 0;
+      const n = Math.floor(Number(lessonsEl.value) || 0);
+      hintEl.textContent = `「${c.name}」当前剩 ${left} 节 → 退后剩 ${left - n} 节 · 金额 ¥${Number(amountEl.value || 0).toFixed(0)}`;
+    });
+    syncByLessons();
+
+    modal.querySelector('#refundCancel').addEventListener('click', () => modal.remove());
+    modal.querySelector('#refundConfirm').addEventListener('click', () => {
+      const lessons = Math.floor(Number(lessonsEl.value) || 0);
+      const amount = Number(amountEl.value) || 0;
+      const remarks = (modal.querySelector('#refundRemarks').value || '').trim();
+      const done = executeRefund(student.id, sel.value, lessons, amount, remarks);
+      if (done) {
+        modal.remove();
+        // 退款后把详情重新打开：课时余额与退款记录都得当场看到变化
+        setTimeout(() => openStudentDetail(student.id), 320);
+      }
     });
   }
 
