@@ -4076,6 +4076,29 @@
   }
 
   // 手机端财务视图渲染
+  // 环比徽章：本月累计 vs **上月整月**合计（口径不按日截断，只给方向感）。
+  // 与电脑端 js/app.js 的 momBadge 同语义同参数，**改口径必须两边一起改**。
+  // 上月为 0 时不给百分比（除零算出来的是假数据）；位置在卡片标题行右上方（margin-left:auto 顶开）。
+  function momBadge(cur, prev, unit, fmt, big) {
+    const cls = `lm-mom${big ? ' is-lg' : ''}`;
+    if (!(prev > 0)) return '';
+    const pct = ((cur - prev) / prev) * 100;
+    const tip = `上月整月 ${fmt(prev)}${unit} → 本月至今 ${fmt(cur)}${unit}`;
+    if (Math.abs(pct) < 0.5) return `<span class="${cls} is-flat" style="margin-left:auto" title="${tip}">持平</span>`;
+    const up = pct > 0;
+    const abs = Math.abs(pct);
+    const txt = abs >= 999 ? '999%+' : `${abs.toFixed(0)}%`;
+    return `<span class="${cls} ${up ? 'is-up' : 'is-down'}" style="margin-left:auto" title="${tip}">${up ? '▲' : '▼'} ${txt}</span>`;
+  }
+
+  // 上月整月消课流水（跨年由 Date 自动回退）；老师视角由调用方再过滤
+  function prevMonthLogs() {
+    const now = new Date();
+    const pm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const pfx = `${pm.getFullYear()}-${String(pm.getMonth() + 1).padStart(2, '0')}`;
+    return checkInLogs.filter((l) => (l.checkInTime || '').startsWith(pfx));
+  }
+
   function renderMobileFinance() {
     const container = document.getElementById('mobileFinanceContent');
     if (!container) return;
@@ -4090,6 +4113,13 @@
 
     const monthLessons = monthLogs.reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
     const monthValue = monthLogs.reduce((acc, l) => acc + (l.paymentAmount || 0), 0);
+
+    // 环比（与上月整月比）：只在能由消课流水直接推出的两项上放徽章；
+    // 「待消存量 / 欠课学员」没有历史快照，硬算会出假数。老师视角按同一口径过滤。
+    let prevScoped = prevMonthLogs();
+    if (isTeacherView()) prevScoped = prevScoped.filter(logRelatedToTeacher);
+    const prevLessons = prevScoped.reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
+    const prevValue = prevScoped.reduce((acc, l) => acc + (l.paymentAmount || 0), 0);
 
     // 老师视角：待消存量/欠课学员/续费清单只统计**自己授课科目**的课时；管理员看全部
     const relStudents = isTeacherView() ? students.filter(studentRelatedToTeacher) : students;
@@ -4109,11 +4139,11 @@
     container.innerHTML = `
       <div class="grid grid-cols-2 gap-2.5">
         <div class="lm-card p-4">
-          <div class="text-[11px] text-[#9c9fa5] font-medium flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full" style="background:#111"></span> 本月课消</div>
+          <div class="text-[11px] text-[#9c9fa5] font-medium flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full" style="background:#111"></span> 本月课消${momBadge(monthLessons, prevLessons, ' 节', (n) => n.toFixed(1), true)}</div>
           <div class="lm-stat-v text-[#111111] mt-1">${monthLessons.toFixed(1)} <span class="text-[11px] font-medium">节</span></div>
         </div>
         <div class="lm-card p-4">
-          <div class="text-[11px] text-[#9c9fa5] font-medium flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full" style="background:#059669"></span> 课消价值</div>
+          <div class="text-[11px] text-[#9c9fa5] font-medium flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full" style="background:#059669"></span> 课消价值${momBadge(monthValue, prevValue, ' 元', (n) => n.toFixed(0), true)}</div>
           <div class="lm-stat-v text-[#059669] mt-1">¥${monthValue.toFixed(0)}</div>
         </div>
         <div class="lm-card p-4">

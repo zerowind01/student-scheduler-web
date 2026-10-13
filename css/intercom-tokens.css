@@ -260,3 +260,24 @@
   letter-spacing: -0.4px;
   font-variant-numeric: tabular-nums;
 }
+
+/* ---- 环比徽章：本月累计 vs 上月整月（卡片标题行右上方，label 左 / 徽章右） ----
+   ⚠️ 来源：css/legacy-tokens.css 末尾的同名类，两份必须逐字一致（手机端引的是本文件，
+   电脑端**不引本文件**——只加一边会出现「手机有底色、电脑没有」这类半边生效问题）。
+   升=绿、降=玫红、持平=暖灰，不碰琥珀色（全站禁用）。 */
+.lm-mom {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.lm-mom.is-lg { font-size: 10px; padding: 2.5px 6px; }
+.lm-mom.is-up { color: #0a7d52; background: #e6f6ee; }
+.lm-mom.is-down { color: #b3233d; background: #fdecef; }
+.lm-mom.is-flat { color: #78716c; background: #f3f0ea; font-weight: 700; }

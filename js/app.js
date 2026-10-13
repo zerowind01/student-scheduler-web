@@ -2070,16 +2070,22 @@
     const totalStockValue = students.reduce((acc, st) => acc + (st.courses || []).reduce((a, c) => a + Math.max(0, c.remainingLessons) * (c.unitPrice || 0), 0), 0);
     const debtors = debts.filter((d) => d.amount > 0);
 
-    const kpiCard = (icon, iconStyle, label, valueHtml, extraAttr) => `
+    // 环比（与上月整月比）：只给能由消课流水直接推出的两项
+    // 「待消存量 / 欠课学员」没有历史快照（充值不进流水、欠课账只存当前值），硬算会出假数，故不放徽章
+    const pLogs = prevMonthLogs();
+    const prevLessons = sumLessons(pLogs);
+    const prevValue = sumValue(pLogs);
+
+    const kpiCard = (icon, iconStyle, label, valueHtml, extraAttr, momHtml) => `
       <div class="lm-stat-card rounded-2xl p-4" ${extraAttr || ''}>
-        <div class="flex items-center gap-1.5 text-[11px] font-bold lm-t3"><i class="fa-solid ${icon}" style="${iconStyle}"></i> ${label}</div>
+        <div class="flex items-center gap-1.5 text-[11px] font-bold lm-t3"><i class="fa-solid ${icon}" style="${iconStyle}"></i> ${label}${momHtml || ''}</div>
         <div class="text-2xl font-black lm-t1 mt-1.5">${valueHtml}</div>
       </div>`;
 
     container.innerHTML = `
       <div class="grid grid-cols-2 xl:grid-cols-4 gap-3">
-        ${kpiCard('fa-chart-simple', 'color:#111111;', '本月课消', `${monthLessons.toFixed(1)} <span class="text-xs font-bold lm-t3">节</span>`)}
-        ${kpiCard('fa-coins', 'color:#ff5600;', '课消价值', `¥${monthValue.toFixed(0)}`)}
+        ${kpiCard('fa-chart-simple', 'color:#111111;', '本月课消', `${monthLessons.toFixed(1)} <span class="text-xs font-bold lm-t3">节</span>`, '', momBadge(monthLessons, prevLessons, ' 节', (n) => n.toFixed(1), true))}
+        ${kpiCard('fa-coins', 'color:#ff5600;', '课消价值', `¥${monthValue.toFixed(0)}`, '', momBadge(monthValue, prevValue, ' 元', (n) => n.toFixed(0), true))}
         ${kpiCard('fa-layer-group', 'color:#111111;', '待消存量', `${totalRemaining.toFixed(1)} <span class="text-xs font-bold lm-t3">节</span>`)}
         ${kpiCard('fa-triangle-exclamation', 'color:#d5304f;', '欠课学员', `${debtors.length} <span class="text-xs font-bold lm-t3">人</span>`, debtors.length ? 'style="background:#fff1f2;"' : '')}
       </div>
@@ -4279,6 +4285,33 @@
     updateFinancePanel();
   }
 
+  // 环比徽章：本月累计 vs **上月整月**合计（口径不按日截断，只给个方向感）。
+  // 上月为 0（当月没消课记录）时**不给百分比** —— 除零算出来的「+∞%」是假数据，宁可不显示。
+  // 悬停 title 里带两侧绝对值，涨幅口径一眼可核对（徽章样式见 css/legacy-tokens.css 末尾）。
+  // 位置约定：卡片标题行**右上方**（label 左、徽章右，中间用 margin-left:auto 顶开，不引新 tailwind 类）。
+  // 手机端 js/mobile.js 里有一份同名同语义的副本，改口径要两边一起改。
+  function momBadge(cur, prev, unit, fmt, big) {
+    const cls = `lm-mom${big ? ' is-lg' : ''}`;
+    if (!(prev > 0)) return '';
+    const pct = ((cur - prev) / prev) * 100;
+    const tip = `上月整月 ${fmt(prev)}${unit} → 本月至今 ${fmt(cur)}${unit}`;
+    if (Math.abs(pct) < 0.5) return `<span class="${cls} is-flat" style="margin-left:auto" title="${tip}">持平</span>`;
+    const up = pct > 0;
+    const abs = Math.abs(pct);
+    const txt = abs >= 999 ? '999%+' : `${abs.toFixed(0)}%`;
+    return `<span class="${cls} ${up ? 'is-up' : 'is-down'}" style="margin-left:auto" title="${tip}">${up ? '▲' : '▼'} ${txt}</span>`;
+  }
+
+  // 上月整月消课流水（跨年由 Date 自动回退）：只喂环比徽章，不改任何既有口径
+  function prevMonthLogs() {
+    const now = new Date();
+    const pm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const pfx = `${pm.getFullYear()}-${String(pm.getMonth() + 1).padStart(2, '0')}`;
+    return checkInLogs.filter((l) => (l.checkInTime || '').startsWith(pfx));
+  }
+  const sumLessons = (logs) => logs.reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
+  const sumValue = (logs) => logs.reduce((acc, l) => acc + (l.paymentAmount || 0), 0);
+
   // ==========================================
   // 财务看板（简单版，移植自 Teacher-manager）
   // ==========================================
@@ -4292,6 +4325,11 @@
 
     const monthLessons = monthLogs.reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
     const monthValue = monthLogs.reduce((acc, l) => acc + (l.paymentAmount || 0), 0);
+
+    // 上月整月（跨年由 Date 自动回退），只喂环比徽章，不改任何既有口径
+    const pLogs = prevMonthLogs();
+    const prevLessons = sumLessons(pLogs);
+    const prevValue = sumValue(pLogs);
     const totalRemaining = students.reduce(
       (acc, st) => acc + (st.courses || []).reduce((a, c) => a + Math.max(0, c.remainingLessons), 0), 0
     );
@@ -4307,11 +4345,11 @@
       </div>
       <div class="grid grid-cols-2 gap-1.5">
         <div class="lm-soft rounded-lg p-2">
-          <div class="text-[9px] lm-t3">本月课消</div>
+          <div class="flex items-center gap-1.5 text-[9px] lm-t3"><span>本月课消</span>${momBadge(monthLessons, prevLessons, ' 节', (n) => n.toFixed(1))}</div>
           <div class="text-sm font-black lm-t1">${monthLessons.toFixed(1)} 节</div>
         </div>
         <div class="lm-soft rounded-lg p-2">
-          <div class="text-[9px] lm-t3">课消价值</div>
+          <div class="flex items-center gap-1.5 text-[9px] lm-t3"><span>课消价值</span>${momBadge(monthValue, prevValue, ' 元', (n) => n.toFixed(0))}</div>
           <div class="text-sm font-black lm-t1">¥${monthValue.toFixed(0)}</div>
         </div>
         <div class="lm-soft rounded-lg p-2">

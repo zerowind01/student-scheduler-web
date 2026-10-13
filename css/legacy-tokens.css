@@ -196,3 +196,25 @@ body {
   border-color: #111111 !important;
   box-shadow: 0 0 0 2px rgba(30, 41, 59, 0.85) !important;
 }
+
+/* ---- 环比徽章：本月累计 vs 上月整月（卡片标题行右上方，label 左 / 徽章右） ----
+   升=绿（涨是好事）、降=玫红（沿用本项目「玫红=要跟进」的语义色）、持平=暖灰。
+   只用绿/玫红/中性灰，**不碰琥珀色**（全站禁用）。
+   .is-lg 给 11px 标题行的大卡用（卡片：财务页 4 卡、待排课抽屉的「本月经营」小卡）。
+   ⚠️ 与手机端 css/intercom-tokens.css 里的同名类必须保持一致（那边是并行的一份）。 */
+.lm-mom {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.lm-mom.is-lg { font-size: 10px; padding: 2.5px 6px; }
+.lm-mom.is-up { color: #0a7d52; background: #e6f6ee; }
+.lm-mom.is-down { color: #b3233d; background: #fdecef; }
+.lm-mom.is-flat { color: #78716c; background: #f3f0ea; font-weight: 700; }
