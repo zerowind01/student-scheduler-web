@@ -729,9 +729,13 @@ button, a, select, input, textarea {
   padding: 1px 4px 1px 3px;
   border-radius: 4px;
   text-align: left;
-  transition: background-color 120ms ease;
+  /* 显式列属性（禁 transition: all）：背景色走 hover，transform 走按压反馈 */
+  transition: background-color 120ms ease, transform 120ms var(--ease-out);
 }
 .month-ev:hover { background: rgba(239, 233, 224, 0.75); }
+/* 按压反馈：事件行点了会开该课的操作菜单，得有「按到了」的确认。
+   幅度收在 0.97（这一行本身就小，再大就晃）。 */
+.month-ev:active { transform: scale(0.97); }
 .month-ev-dot { width: 6px; height: 6px; border-radius: 999px; flex: none; }
 .month-ev-time { flex: none; color: #a8a29e; font-weight: 600; font-size: 10.5px; font-variant-numeric: tabular-nums; }
 .month-ev-title {
@@ -758,3 +762,91 @@ button, a, select, input, textarea {
 .month-evs::-webkit-scrollbar-thumb { background: transparent; border-radius: 999px; }
 .month-cell:hover .month-evs::-webkit-scrollbar-thumb { background: rgba(227, 219, 208, .95); }
 .month-evs:hover::-webkit-scrollbar-thumb { background: rgba(168, 162, 158, .85); }
+
+/* 18. 桌面「待排课学生」抽屉的进出场（#sidebarStudent + 遮罩）
+   抽屉是「可关闭浮层」，进出必须走同一条边（都从左侧滑）—— 只做进场不做退场
+   看起来就是坏的，所以退场由 JS 加 .lm-drawer-closing 再延迟摘 .hidden
+   （display:none 无法过渡，这是 .hidden 体系的固有约束；见 app.js collapseSidebar）。
+   起点用 @starting-style：不需要 JS 补帧，JS 挂了也只是没动画，不会卡在半路。
+   位移用百分比（-100%），不写死像素 —— 抽屉宽度受响应式影响。 */
+#sidebarStudent {
+  transition: transform 240ms var(--ease-out), opacity 180ms ease;
+  opacity: 0;
+  transform: translateX(-100%);
+}
+#sidebarStudent:not(.hidden) {
+  opacity: 1;
+  transform: translateX(0);
+}
+@starting-style {
+  #sidebarStudent:not(.hidden) {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+}
+/* 退场比进场快（进 240 / 出 180），非对称 */
+#sidebarStudent.lm-drawer-closing {
+  opacity: 0;
+  transform: translateX(-100%);
+  transition-duration: 180ms, 140ms;
+}
+
+/* 遮罩跟着一起淡；它没有位移，单独一条 */
+#batchSidebarBackdrop {
+  transition: opacity 180ms ease;
+  opacity: 0;
+}
+#batchSidebarBackdrop:not(.hidden) { opacity: 1; }
+@starting-style {
+  #batchSidebarBackdrop:not(.hidden) { opacity: 0; }
+}
+#batchSidebarBackdrop.lm-drawer-closing {
+  opacity: 0;
+  transition-duration: 140ms;
+}
+
+/* 19. 「点击排课」浮动指示条（#mobileTapScheduleBanner）
+   原先挂 Tailwind 的 animate-bounce —— 整条横幅持续弹跳属于「循环动画」，
+   anim.js 文件头明令禁止，对视前庭敏感用户也不友好，本次换成一次性进场。
+   注意：这条横幅的居中靠 -translate-x-1/2（原本写在 Tailwind 类里），
+   动 transform 就必须把 -50% 一起带上，否则会跳到屏幕左侧。 */
+.lm-tap-banner {
+  transform: translateX(-50%) translateY(120%);
+  opacity: 0;
+  transition: transform 220ms var(--ease-out), opacity 160ms ease;
+  will-change: transform, opacity;
+}
+.lm-tap-banner:not(.hidden) {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+@starting-style {
+  .lm-tap-banner:not(.hidden) {
+    transform: translateX(-50%) translateY(120%);
+    opacity: 0;
+  }
+}
+/* 退场：同一条边反向、比进场快 */
+.lm-tap-banner.lm-tap-banner-out {
+  transform: translateX(-50%) translateY(120%);
+  opacity: 0;
+  transition-duration: 160ms, 140ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* 减弱而非归零：保留极短淡入，去掉位移（位移才是眩晕来源）。
+     注意 -50% 的水平居中是布局，不是动效，任何状态下都必须留着。 */
+  #sidebarStudent,
+  #sidebarStudent:not(.hidden),
+  #sidebarStudent.lm-drawer-closing {
+    transform: none;
+    transition: opacity 120ms ease;
+  }
+  .lm-tap-banner,
+  .lm-tap-banner:not(.hidden),
+  .lm-tap-banner.lm-tap-banner-out {
+    transform: translateX(-50%);
+    transition: opacity 120ms ease;
+  }
+}
+

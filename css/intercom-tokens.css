@@ -38,6 +38,15 @@
   border: none;
   border-radius: 20px;
   box-shadow: var(--lm-card-shadow);
+  /* 显式列属性（禁 transition: all —— 那是个会带上 filter/backdrop-filter 的 9 属性子集） */
+  transition: transform 120ms var(--ease-out, ease), box-shadow 120ms ease;
+}
+/* 按压反馈：学员卡 / 日程卡点了都会开详情或操作菜单，缺一个「按到了」的确认。
+   只给「真会被点」的卡加（.lm-card 在本项目里就是这两类），静态容器不加。
+   注意：电脑端不引本文件，共享原子类要在 css/legacy-tokens.css 再抄一份（AGENTS 第 19 条）。 */
+.lm-card:active {
+  transform: scale(0.98);
+  box-shadow: var(--lm-card-shadow-lg, var(--lm-card-shadow));
 }
 
 /* ---- 顶栏：融入画布，无重底色 ---- */

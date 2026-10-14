@@ -151,3 +151,41 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
     - 已消课整行灰化（`.is-done`）；请假是**玫红 + 删除线 + 空心圆点**（`.is-leave`），对齐 Google 的「已谢绝」事件。
     - 窄列（1280 下约 108px/列）事件标题会截断成「19:30 钢琴 …」——这是「保右栏」的既定代价，不是 bug。
     核对脚本 `tmp/month-gcal-check.mjs`（78 项，宽屏 1600 + 窄屏 1280 各一遍），出图 `tmp/month-gcal-shots.mjs`。
+
+32. **「点击后大块区域瞬换」要有一条空间线索，但只给每天/每屏看几次的地方加。**
+    2026-10-14 用 `find-animation-opportunities` 技能扫了一遍双端，结论是**动效已经接近刚好，缺的是「桥」而不是数量**。
+    落地四项，规则如下：
+    - **月视图「选中日清单」进场**：桌面 `renderMonthDayList(..., animate)`、手机 `renderCalGrid()` 末尾调
+      `uiAnim.listIn(el)`（`js/anim.js` 第 4.5 节，淡入 + 上浮 6px，0.18s `power2.out`，`clearProps` 收尾）。
+      **只有用户主动换一天才播**：桌面由 `renderMonthView({ dayListIn: true })` 传入，调用点是「点格子 / 翻月 / 回今天」；
+      **进入月视图本身不播**（那里已有 `viewIn(monthWrap)`，会重复）。
+      手机端**拖动中（`calDrag`）绝对不播** —— 那一刻整页在跟手改高度，再插一个补间会互相抢。
+      容器是常驻节点，所以 `listIn` 内部先 `killTweensOf` 再起新的（连点格子必须能被打断重放）。
+    - **桌面「待排课学生」抽屉**（`#sidebarStudent` + `#batchSidebarBackdrop`，`css/styles.css` 第 18 节）：
+      从左侧滑入 / 原路滑出。`display:none` 无法过渡，所以退场是「先加 `.lm-drawer-closing` 播动画 → 延迟 200ms 摘 `.hidden`」。
+      **两个必须保留的硬保证**：① 定时器一定会跑完（transitionend 不来也照摘，否则遮罩会卡住界面）；
+      ② `cancelDrawerHide()` 要能被重开取消。**`#btnBatchSchedule` 的判据看「最终会不会是开着」，不是「此刻有没有 `.hidden`」** ——
+      退场途中节点还没带 `.hidden`，按 hidden 判会再走一次 collapse，而 collapse 在退场中会直接 return，
+      症状就是「点了没反应、然后自己关掉」（本轮真实翻车，靠脚本里的「退场途中重开」用例抓出来的）。
+      例外：**拖拽开始时的自动收起仍走直接切类**（`dragstart` 里那处）—— 拖拽要的是遮罩立刻消失，不该等退场动画。
+    - **按压反馈**：`.month-ev:active`（月视图事件行）与 `.lm-card:active`（手机端学员/日程卡）加 `transform: scale(0.97~0.98)`，
+      `transition` 里**显式列出 `transform`**（禁 `transition: all`）。**不要给 `.schedule-event-card` 加 `:active` 缩放** ——
+      它被 `animateCardsStagger` 用 `clearProps:'opacity,transform'` 管着，两者会争同一个属性（会静默失效）。
+      另：`.lm-tile` 只在**未被任何 HTML 引用的** `css/desktop-theme.css` 里，是死代码，别去改它。
+    - **「点击排课」浮动指示条**（`#mobileTapScheduleBanner`，**在 `index.html` 里、不在 mobile.html**）：
+      **原先挂 Tailwind `animate-bounce`（整条横幅持续弹）**，属 `anim.js` 文件头明令禁止的「循环动画」，已删除，
+      改为 `.lm-tap-banner` 的 `opacity + translateY` 进出场（`css/styles.css` 第 19 节）。
+      **它靠 `left:50%` + `translateX(-50%)` 居中 —— 动 `transform` 就必须把 `-50%` 一起带上**，
+      所以居中从 Tailwind 的 `-translate-x-1/2` 搬进了这个类（漏掉会跳到屏幕左侧）。
+      退场同抽屉：先加 `.lm-tap-banner-out`，延迟 180ms 再摘 `.hidden`；**重开前必须先 `clearTimeout`**，
+      否则挂起的定时器会把刚显示的横幅又藏掉。点上的 `animate-ping`（呼吸点）**保留**，它是「进行中」的状态指示。
+    - **reduced-motion**：`css/tokens.css` 的全局兜底会把 `transition-duration` 压到 0.01ms，但**位移要单独去掉**（位移才是眩晕来源），
+      上面两个组件都在第 18/19 节的 `@media (prefers-reduced-motion: reduce)` 里改成「只留 120ms 淡入」。
+      **注意 `translateX(-50%)` 是布局不是动效，RM 下也必须保留**（指示条那条已按此处理）。
+    - **明确不做**：底部 tab / 侧边栏切页整页淡入（高频 + 撞最重的重渲染帧，代码里早有注释，别翻案）；
+      学员列表 stagger（搜索框即搜即渲，每敲一个字会重播一遍）；看板/财务数字与柱状图的进场（**用户在读的功能性数据**，
+      且云同步 2s 轮询会反复打断重播）；`.lm-tile`/`.nav-page-btn` 之类死代码或纯导航元素的按压。
+    - 核对脚本 `tmp/motion-gaps-check.mjs`（39 项：机制 / 终态 / 真实路径接线 / 连点稳定 / RM 降级），出图 `tmp/motion-shots.mjs`。
+      **踩坑**：`file://` 下 `document.styleSheets[].cssRules` 全部读不到（CORS）→ 断言「规则是否存在」只能查 CSS **源文本**；
+      **`display:none` 的元素 `getComputedStyle().transform` 恒为 `none`**，测位移前必须先让它可见；
+      **元素在 0×0 容器里时 transform 也恒为 `none`**（构造成「没切到课表页就点月视图」会误判成「过渡没生效」）。

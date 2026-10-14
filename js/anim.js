@@ -164,6 +164,23 @@ function flashSchedule(scheduleId) {
   setTimeout(() => document.removeEventListener('lm:rendered', reflash), 400);
 }
 
+/* ---- 4.5 侧栏清单进场（月视图「选中日安排」这类随点击整块换内容的面板）----
+   场景：点日历格子 → 右栏/下方清单整块重建。属于「点击后大块区域瞬换」，
+   没有过渡时用户会丢失「这份清单是从我点的那格来的」这条空间线索。
+   只做一次很轻的淡入 + 上浮，绝不拖长。容器是常驻节点，连点格子必须能被打断重放，
+   所以每次都 killTweensOf 再起新的（和 animateViewIn 同一个理由）。
+   注意：**不要在拖动 / 手势进行中调用** —— 会搅乱跟手的几何补间。 */
+function animateListIn(el) {
+  if (!el) return;
+  uiAnimate((gsap) => {
+    gsap.killTweensOf(el);
+    gsap.fromTo(el,
+      { opacity: 0, y: 6 },
+      { opacity: 1, y: 0, duration: 0.18, ease: 'power2.out', clearProps: 'opacity,transform' }
+    );
+  });
+}
+
 /* ---- 5. 上滑弹层（运行时动态创建的底部操作菜单）----
    归属说明（别和第 1 节搞混）：
    - styles.css 第 7 节那套 CSS 系统管的是「常驻在 HTML 里、靠 .hidden 显隐」的
@@ -331,6 +348,7 @@ function emitRendered() {
 window.uiAnim = {
   number: animateNumber,
   viewIn: animateViewIn,
+  listIn: animateListIn,
   cardsStagger: animateCardsStagger,
   flash: flash,
   flashSchedule: flashSchedule,

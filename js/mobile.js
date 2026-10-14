@@ -3250,6 +3250,10 @@
 
     // dateBar 文字与标题同步
     syncCalDateText();
+
+    // 选中日清单进场：点格子 / 翻页换了「哪一天」时，给下方清单一条空间线索。
+    // 拖动中（calDrag）绝对不动 —— 那一刻整页在跟手改高度，再插一个补间会互相抢。
+    if (!calDrag && window.uiAnim && window.uiAnim.listIn) window.uiAnim.listIn(listEl);
   }
 
   // 周/月翻页：周档平移一周；月档翻月（保持"选中日序号"尽量不变）

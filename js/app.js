@@ -46,6 +46,12 @@
     return (remoteTeachers || []).map((t) => (pinById.has(t.id) ? { ...t, accessPin: pinById.get(t.id) } : t));
   }
 
+  /* 「点击排课」指示条的退场状态（配合 styles.css 第 19 节）。
+     display:none 无法过渡，所以退场是「先加 .lm-tap-banner-out 播动画 → 再延迟摘 .hidden」。
+     硬保证：定时器一定会跑完；中途又选中学员则取消挂起的摘除（否则横幅会突然消失）。 */
+  let tapBannerTimer = null;
+  const TAP_BANNER_EXIT_MS = 180; // 略大于 CSS 的 160ms，留一帧余量
+
   function selectStudentForTap(student, cardElement) {
     document.querySelectorAll('.student-card').forEach((c) => c.classList.remove('lm-picked'));
 
@@ -61,6 +67,8 @@
     const nameEl = document.getElementById('tapStudentName');
     if (banner && nameEl) {
       nameEl.textContent = student.name;
+      if (tapBannerTimer) { clearTimeout(tapBannerTimer); tapBannerTimer = null; }
+      banner.classList.remove('lm-tap-banner-out');
       banner.classList.remove('hidden');
     }
   }
@@ -69,7 +77,13 @@
     selectedStudentForTap = null;
     document.querySelectorAll('.student-card').forEach((c) => c.classList.remove('lm-picked'));
     const banner = document.getElementById('mobileTapScheduleBanner');
-    if (banner) banner.classList.add('hidden');
+    if (!banner || banner.classList.contains('hidden') || tapBannerTimer) return;
+    banner.classList.add('lm-tap-banner-out');
+    tapBannerTimer = setTimeout(() => {
+      tapBannerTimer = null;
+      banner.classList.add('hidden');
+      banner.classList.remove('lm-tap-banner-out');
+    }, TAP_BANNER_EXIT_MS);
   }
 
   // ==========================================
@@ -1216,9 +1230,9 @@
         setCalendarViewMode('month');
       }
     });
-    safeBind('btnMonthPrev', 'click', () => { currentMonth.setMonth(currentMonth.getMonth() - 1); renderMonthView(); });
-    safeBind('btnMonthNext', 'click', () => { currentMonth.setMonth(currentMonth.getMonth() + 1); renderMonthView(); });
-    safeBind('btnMonthToday', 'click', () => { currentMonth = new Date(); monthSelectedDate = formatDate(getToday()); renderMonthView(); });
+    safeBind('btnMonthPrev', 'click', () => { currentMonth.setMonth(currentMonth.getMonth() - 1); renderMonthView({ dayListIn: true }); });
+    safeBind('btnMonthNext', 'click', () => { currentMonth.setMonth(currentMonth.getMonth() + 1); renderMonthView({ dayListIn: true }); });
+    safeBind('btnMonthToday', 'click', () => { currentMonth = new Date(); monthSelectedDate = formatDate(getToday()); renderMonthView({ dayListIn: true }); });
 
     // 月视图格子：事件行 → 该课操作菜单（对齐 Google 点事件）；点格子空白 → 切换选中日（右栏跟着走）
     // 事件委托只绑一次（网格 innerHTML 每次渲染都会重建，绑在网格本体上才不会丢）
@@ -1235,7 +1249,7 @@
       const day = cell.getAttribute('data-month-day');
       if (day && day !== monthSelectedDate) {
         monthSelectedDate = day;
-        renderMonthView();
+        renderMonthView({ dayListIn: true });
       }
     };
 
@@ -1412,15 +1426,44 @@
     const btnBatchSchedule = document.getElementById('btnBatchSchedule');
     const batchBackdrop = document.getElementById('batchSidebarBackdrop');
 
+    /* 抽屉进出场（CSS 在 styles.css 第 18 节）。
+       display:none 无法过渡，所以退场是「先加 .lm-drawer-closing 播动画 → 再摘」。
+       两条硬保证，避免遮罩把界面卡死：
+       ① 延迟摘除有超时兜底，transitionend 没来也一定会摘；
+       ② 动画期间又点开 → 取消挂起的摘除并清掉 closing 类，抽屉原地滑回来。 */
+    const DRAWER_EXIT_MS = 200; // 略大于 CSS 的 180ms，留一帧余量
+    let drawerHideTimer = null;
+
+    function cancelDrawerHide() {
+      if (drawerHideTimer) { clearTimeout(drawerHideTimer); drawerHideTimer = null; }
+      if (sidebar) sidebar.classList.remove('lm-drawer-closing');
+      if (batchBackdrop) batchBackdrop.classList.remove('lm-drawer-closing');
+    }
+
     function collapseSidebar() {
-      if (sidebar) {
+      if (drawerHideTimer) return; // 已在退场中，重复触发忽略
+      if (!sidebar || sidebar.classList.contains('hidden')) {
+        // 本来就是收起的：直接落终态，不用播动画
+        if (sidebar) { sidebar.classList.add('hidden'); sidebar.classList.remove('flex'); }
+        if (batchBackdrop) batchBackdrop.classList.add('hidden');
+        return;
+      }
+      sidebar.classList.add('lm-drawer-closing');
+      if (batchBackdrop) batchBackdrop.classList.add('lm-drawer-closing');
+      drawerHideTimer = setTimeout(() => {
+        drawerHideTimer = null;
         sidebar.classList.add('hidden');
         sidebar.classList.remove('flex');
-      }
-      if (batchBackdrop) batchBackdrop.classList.add('hidden');
+        sidebar.classList.remove('lm-drawer-closing');
+        if (batchBackdrop) {
+          batchBackdrop.classList.add('hidden');
+          batchBackdrop.classList.remove('lm-drawer-closing');
+        }
+      }, DRAWER_EXIT_MS);
     }
 
     function expandSidebar() {
+      cancelDrawerHide(); // 退场途中又点开：原地滑回来，别停在半路
       if (sidebar) {
         sidebar.classList.remove('hidden');
         sidebar.classList.add('flex');
@@ -1429,7 +1472,12 @@
     }
 
     if (btnBatchSchedule) btnBatchSchedule.addEventListener('click', () => {
-      if (sidebar && !sidebar.classList.contains('hidden')) {
+      /* 判据要看「最终会是什么状态」而不是「此刻有没有 .hidden」：
+         退场动画进行中时节点还没带 .hidden，若按 hidden 判会再次走 collapse —— 
+         而 collapse 在退场中会直接 return，结果就是「点了没反应、然后自己关掉」。
+         所以退场中（有挂起定时器）一律当成「已收起」→ 重新打开。 */
+      const willBeOpen = sidebar && !sidebar.classList.contains('hidden') && !drawerHideTimer;
+      if (willBeOpen) {
         collapseSidebar();
       } else {
         expandSidebar();
@@ -1488,7 +1536,7 @@
     }
   }
 
-  function renderMonthView() {
+  function renderMonthView(opts) {
     const wrap = document.getElementById('monthViewWrap');
     if (!wrap || wrap.classList.contains('hidden')) return;
     const grid = document.getElementById('monthViewGrid');
@@ -1575,11 +1623,13 @@
       grid.appendChild(cell);
     }
 
-    renderMonthDayList(byDate, todayStr, WEEKDAY_LABELS);
+    renderMonthDayList(byDate, todayStr, WEEKDAY_LABELS, !!(opts && opts.dayListIn));
   }
 
   // 月视图右栏：选中日的安排列表（卡片样式对齐手机版当日列表）
-  function renderMonthDayList(byDate, todayStr, WEEKDAY_LABELS) {
+  // animate：由「点格子 / 翻月 / 回今天」传入 —— 只有这些路径是用户主动换的一天，
+  // 右侧清单整块换内容需要一条空间线索；进入月视图本身已有 viewIn，不重复动。
+  function renderMonthDayList(byDate, todayStr, WEEKDAY_LABELS, animate) {
     const titleEl = document.getElementById('monthDayTitle');
     const listEl = document.getElementById('monthDayList');
     if (!listEl) return;
@@ -1598,6 +1648,7 @@
           <i class="fa-regular fa-calendar-check text-3xl mb-2 block"></i>
           <div class="text-sm">这一天还没有排课</div>
         </div>`;
+      if (animate && window.uiAnim && window.uiAnim.listIn) window.uiAnim.listIn(listEl);
       return;
     }
 
@@ -1626,6 +1677,8 @@
         ${badge}
       </button>`;
     }).join('');
+
+    if (animate && window.uiAnim && window.uiAnim.listIn) window.uiAnim.listIn(listEl);
   }
 
   // ==========================================

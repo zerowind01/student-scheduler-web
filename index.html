@@ -21,7 +21,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <!-- Custom CSS -->
   <link rel="stylesheet" href="css/tokens.css?v=12">
-  <link rel="stylesheet" href="css/styles.css?v=33">
+  <link rel="stylesheet" href="css/styles.css?v=34">
   <link rel="stylesheet" href="css/legacy-tokens.css?v=15">
   <!-- GSAP 动效：本地内置优先（cdnjs 曾实测超时，CDN 挂掉会让全部 GSAP 动效静默消失）。
        本地缺失时才回落到 CDN；两者都失败也不影响功能——anim.js 检测不到 window.gsap 会退化为静态。 -->
@@ -31,12 +31,12 @@
       document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"><\/script>');
     }
   </script>
-  <script src="js/anim.js?v=12"></script>
+  <script src="js/anim.js?v=13"></script>
   <!-- Tailwind：预生成的静态样式（替代 cdn.tailwindcss.com 的运行时 JIT）。
        改完 class 要重新生成：tools\build-tailwind.cmd
        ⚠ 必须留在 </head> 之前（即所有自有样式之后），复刻 Play CDN 把 <style>
        append 到 head 末尾的层叠顺序；挪到前面会翻转优先级。 -->
-  <link rel="stylesheet" href="css/tailwind.css?v=6">
+  <link rel="stylesheet" href="css/tailwind.css?v=7">
 </head>
 <body class="text-[#111111] font-sans h-screen flex flex-col overflow-hidden select-none" style="background: var(--surface-page);">
 
@@ -871,7 +871,11 @@
   <div id="sidebarBackdrop" class="fixed inset-0 bg-[#1c1917]/40 backdrop-blur-2xs z-20 hidden transition-opacity"></div>
 
   <!-- 移动端/触摸设备 点击点击排课浮动指示条 -->
-  <div id="mobileTapScheduleBanner" class="fixed bottom-14 sm:bottom-6 left-1/2 -translate-x-1/2 bg-[#1c1917]/95 text-white px-3.5 py-2 rounded-2xl shadow-2xl z-40 hidden flex items-center gap-2.5 text-xs font-semibold backdrop-blur-md border border-[#3f3b37] animate-bounce">
+  <!-- 去掉 animate-bounce：整条横幅持续上下弹是「循环动画」，anim.js 文件头明令禁止，
+       且常驻弹跳对视前庭敏感用户不友好（动效清单 A/B 批次也没批过它）。
+       进出场改由 .lm-tap-banner 的 opacity + translateY 承担（styles.css 第 19 节）；
+       水平居中（原 -translate-x-1/2）一并搬进那个类，避免动 transform 时丢掉 -50%。 -->
+  <div id="mobileTapScheduleBanner" class="lm-tap-banner fixed bottom-14 sm:bottom-6 left-1/2 bg-[#1c1917]/95 text-white px-3.5 py-2 rounded-2xl shadow-2xl z-40 hidden flex items-center gap-2.5 text-xs font-semibold backdrop-blur-md border border-[#3f3b37]">
     <div class="flex items-center gap-1.5">
       <span class="w-2 h-2 rounded-full bg-[#111111] animate-ping"></span>
       <span>已选中 <strong id="tapStudentName" class="text-[#a8a29e] font-bold">张伟</strong>，点击日历格排课</span>
@@ -1008,7 +1012,7 @@
   </div>
 
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=40"></script>
+  <script src="js/app.js?v=41"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
