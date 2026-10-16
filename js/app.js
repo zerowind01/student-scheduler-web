@@ -29,7 +29,11 @@
   let courseTypes = [];   // 课程类型（如 钢琴/美术/乐理）
   let checkInLogs = [];   // 消课流水（财务核心）
   let debts = [];         // 学员欠课账 { id, studentId, courseName, amount(节) }
-  let selectedTeacherFilter = 'all'; // 筛选老师：all 或 teacherId
+  let selectedTeacherFilter = 'all'; // 课表页筛选老师：all 或 teacherId
+  // 财务页的「查看视角」：all = 全校，否则是 teacherId。
+  // **故意不复用 selectedTeacherFilter** —— 顶栏那个筛选器只在课表页可见（switchPage 里 mainTopbar 只在
+  // schedule 页显示），若共用，用户在课表页筛了某老师、切到财务页会看到数字变了却找不到原因。
+  let financeTeacherFilter = 'all';
   let currentWeekStart = getMonday(new Date()); // 当前视图对应的周一
   let calendarViewMode = 'week';      // 'week' | 'month'（月历总览）
   let monthSelectedDate = null;       // 月视图当前选中日（对齐手机版：点格子选中，右栏出当日安排）
@@ -1181,6 +1185,47 @@
   // 行内文案：0 节说「已用完」比「剩 0 节」更像人话
   function lowLessonText(left) { return left === 0 ? '已用完' : `剩 ${left} 节`; }
 
+  // ============ 老师口径（财务页「查看视角」用） ============
+  // ⚠️ 与手机端 js/mobile.js 的 studentRelatedToTeacher / courseRelatedToTeacher / logRelatedToTeacher
+  //    **必须同语义** —— 那边靠 teacherSession（老师登录态）驱动，桌面端没有登录态，改由 teacherId 参数驱动。
+  //    改这里的判定逻辑时，两边一起改（核对脚本 H 段会拿手机端老师登录态的行集合与电脑端逐条比对）。
+  //    teacherId 为 'all' / 空 → 一律 true（全校视角，等价于不过滤）。
+  const isAllTeachers = (teacherId) => !teacherId || teacherId === 'all';
+
+  // 学员是否与该老师有关：显式关联名单（st.teacherIds）、或主讲/助教上过/将上该学员的课
+  function teacherRelatedStudent(st, teacherId) {
+    if (isAllTeachers(teacherId)) return true;
+    if ((st.teacherIds || []).includes(teacherId)) return true;
+    return schedules.some((s) => s.studentId === st.id && (s.teacherId === teacherId || s.assistantTeacherId === teacherId));
+  }
+
+  // 某条学员课程包是否属于该老师的教学范围：
+  // 排课记录里该老师（主讲或助教）上过/将上这门课 → 归该老师
+  function teacherRelatedCourse(st, courseName, teacherId) {
+    if (isAllTeachers(teacherId)) return true;
+    const c = (st.courses || []).find((x) => x.name === courseName);
+    return schedules.some((s) => s.studentId === st.id &&
+      (s.teacherId === teacherId || s.assistantTeacherId === teacherId) &&
+      ((s.subject || '') === courseName || (c && s.courseId === c.id)));
+  }
+
+  // 某条消课流水是否属于该老师的课：流水带 teacherId 直接判，老流水回退查排课。
+  // ⚠️ 兜底分支 `!sch` 意味着「既无 teacherId 又找不到排课」的流水对**每个**老师都返回 true ——
+  //    退款流水正是这种（scheduleId=''），所以老师视角必须额外排除退款，见 renderPageFinance。
+  function teacherRelatedLog(log, teacherId) {
+    if (isAllTeachers(teacherId)) return true;
+    if (log.teacherId) return log.teacherId === teacherId;
+    const sch = schedules.find((s) => s.id === log.scheduleId);
+    return !sch || sch.teacherId === teacherId || sch.assistantTeacherId === teacherId;
+  }
+
+  // 视角下拉里显示的老师名（带科目）
+  function teacherViewLabel(teacherId) {
+    if (isAllTeachers(teacherId)) return '全校';
+    const t = teachers.find((x) => x.id === teacherId);
+    return t ? `${t.name} · ${t.subject || '全科'}` : '未知老师';
+  }
+
   // ==========================================
   // 3. 安全防崩溃事件监听配置
   // ==========================================
@@ -2284,23 +2329,44 @@
     const container = document.getElementById('pageFinanceContent');
     if (!container) return;
 
+    // 查看视角：'all' = 全校，否则是某位老师的 id（与手机端老师登录态同口径，见 teacherRelated* 系列）
+    const tId = financeTeacherFilter;
+    const scoped = !isAllTeachers(tId);
+    const vLabel = teacherViewLabel(tId);
+
     const now = new Date();
     const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const monthLogs = checkInLogs.filter((l) => (l.checkInTime || '').startsWith(monthPrefix)).slice().sort((a, b) => (b.checkInTime || '').localeCompare(a.checkInTime || ''));
+
+    // 老师视角：只统计该老师授课的消课记录（全校视角看全部）。
+    // 退款**不摊分到老师**：一笔退款不对应某一节课，走 teacherRelatedLog 的兜底分支（`!sch`）
+    // 会让每个老师都被同一笔退款重复扣一次 —— 与手机端 renderMobileFinance 完全一致。
+    let scopedLogs = checkInLogs.filter((l) => (l.checkInTime || '').startsWith(monthPrefix));
+    if (scoped) scopedLogs = scopedLogs.filter((l) => !isRefundLog(l) && teacherRelatedLog(l, tId));
+    const monthLogs = scopedLogs.slice().sort((a, b) => (b.checkInTime || '').localeCompare(a.checkInTime || ''));
 
     const monthLessons = monthLogs.reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
     // 退款流水 deductedLessons=0 → 课消节数天然不受影响；paymentAmount 是负数 → 金额自动被扣减
     const monthValue = monthLogs.reduce((acc, l) => acc + (l.paymentAmount || 0), 0);
+    // 老师视角下 monthLogs 已排除退款 → 这里天然为 0（退款是机构层面的账，不挂在某个老师头上）
     const monthRefund = monthLogs.filter(isRefundLog).reduce((acc, l) => acc + Math.abs(l.paymentAmount || 0), 0);
-    const totalRemaining = students.reduce((acc, st) => acc + (st.courses || []).reduce((a, c) => a + Math.max(0, c.remainingLessons), 0), 0);
-    const totalStockValue = students.reduce((acc, st) => acc + (st.courses || []).reduce((a, c) => a + Math.max(0, c.remainingLessons) * (c.unitPrice || 0), 0), 0);
-    const debtors = debts.filter((d) => d.amount > 0);
+
+    // 老师视角：待消存量 / 课时存量价值 / 欠课名单 / 续费预警 只算**该老师授课的课程包**
+    const relStudents = scoped ? students.filter((st) => teacherRelatedStudent(st, tId)) : students;
+    const myCoursesOf = (st) => scoped ? (st.courses || []).filter((c) => teacherRelatedCourse(st, c.name, tId)) : (st.courses || []);
+    const relIds = new Set(relStudents.map((s) => s.id));
+
+    const totalRemaining = relStudents.reduce((acc, st) => acc + myCoursesOf(st).reduce((a, c) => a + Math.max(0, c.remainingLessons), 0), 0);
+    const totalStockValue = relStudents.reduce((acc, st) => acc + myCoursesOf(st).reduce((a, c) => a + Math.max(0, c.remainingLessons) * (c.unitPrice || 0), 0), 0);
+    const debtors = scoped
+      ? debts.filter((d) => d.amount > 0 && relIds.has(d.studentId) && relStudents.some((st) => st.id === d.studentId && teacherRelatedCourse(st, d.courseName, tId)))
+      : debts.filter((d) => d.amount > 0);
     // 续费预警（余额 ≤2 节；欠课负数归右栏「欠课名单」，不在这里重复出现）
-    const lowRows = lowLessonRows(students);
+    const lowRows = lowLessonRows(relStudents, myCoursesOf);
 
     // 环比（与上月整月比）：只给能由消课流水直接推出的两项
     // 「待消存量 / 欠课学员」没有历史快照（充值不进流水、欠课账只存当前值），硬算会出假数，故不放徽章
-    const pLogs = prevMonthLogs();
+    let pLogs = prevMonthLogs();
+    if (scoped) pLogs = pLogs.filter((l) => !isRefundLog(l) && teacherRelatedLog(l, tId));
     const prevLessons = sumLessons(pLogs);
     const prevValue = sumValue(pLogs);
 
@@ -2311,6 +2377,21 @@
       </div>`;
 
     container.innerHTML = `
+      <!-- 查看视角：全校 / 单个老师（独立状态，与课表页顶栏那个老师筛选互不影响） -->
+      <div class="lm-stat-card rounded-2xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-user-tie text-[#78716c] text-xs"></i>
+          <label for="financeTeacherSelect" class="text-xs font-bold lm-t2">查看视角</label>
+          <select id="financeTeacherSelect" class="bg-white border border-[#efe9e0] rounded-lg px-2 py-1 text-xs font-bold text-[#111111] outline-none focus:ring-1 focus:ring-[#a8a29e] cursor-pointer max-w-[200px]">
+            <option value="all">全校老师（全部）</option>
+            ${teachers.map((t) => `<option value="${t.id}">${t.name} · ${t.subject || '全科'}</option>`).join('')}
+          </select>
+        </div>
+        <div class="text-[11px] font-bold ${scoped ? 'text-[#fe4c02]' : 'lm-t3'}">
+          ${scoped ? `<i class="fa-solid fa-filter mr-1"></i>只统计「${vLabel}」授课的学员与流水` : '全部学员 · 全部流水'}
+        </div>
+      </div>
+
       <div class="grid grid-cols-2 xl:grid-cols-4 gap-3">
         ${kpiCard('fa-chart-simple', 'color:#111111;', '本月课消', `${monthLessons.toFixed(1)} <span class="text-xs font-bold lm-t3">节</span>`, '', momBadge(monthLessons, prevLessons, ' 节', (n) => n.toFixed(1), true))}
         ${kpiCard('fa-coins', 'color:#ff5600;', '课消价值', `${fmtMoney(monthValue)}`, '', momBadge(monthValue, prevValue, ' 元', (n) => n.toFixed(0), true))}
@@ -2322,7 +2403,7 @@
         <!-- 本月收入明细：桌面表格 -->
         <div class="lm-stat-card rounded-2xl xl:col-span-2">
           <div class="flex items-center justify-between px-4 pt-4 pb-2">
-            <div class="font-bold text-xs lm-t1 flex items-center gap-1.5"><i class="fa-solid fa-receipt" style="color:#ff5600;"></i> 本月收入明细</div>
+            <div class="font-bold text-xs lm-t1 flex items-center gap-1.5"><i class="fa-solid fa-receipt" style="color:#ff5600;"></i> 本月收入明细${scoped ? `<span class="text-[10px] font-bold lm-t3">· ${vLabel}</span>` : ''}</div>
             <div class="text-[11px] font-bold lm-t2">${monthLogs.length} 笔 · ${monthLessons.toFixed(1)} 节 · 净 ${fmtMoney(monthValue)}${monthRefund > 0 ? ` <span class="text-rose-500">（已退 ¥${monthRefund.toFixed(0)}）</span>` : ''}</div>
           </div>
           ${monthLogs.length === 0 ? '<div class="text-[11px] lm-t3 py-8 text-center">本月暂无消课记录</div>' : `
@@ -2359,7 +2440,7 @@
         <!-- 右栏：续费预警 + 欠课名单 + 课时存量价值 -->
         <div class="space-y-4">
           <div class="lm-stat-card rounded-2xl p-4">
-            <div class="font-bold text-xs lm-t1 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-bell" style="color:#fe4c02;"></i> 续费预警 <span class="text-[10px] font-bold lm-t3">（剩余 ≤2 节）</span></div>
+            <div class="font-bold text-xs lm-t1 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-bell" style="color:#fe4c02;"></i> 续费预警 <span class="text-[10px] font-bold lm-t3">（剩余 ≤2 节${scoped ? ` · ${vLabel}` : ''}）</span></div>
             ${lowRows.length === 0 ? '<div class="text-[11px] lm-t3 py-4 text-center">暂无需要续费的学员 👍</div>' : `
             <div class="space-y-1.5 max-h-64 overflow-y-auto custom-scrollbar">
               ${lowRows.map((r) => `
@@ -2372,7 +2453,7 @@
           </div>
 
           <div class="lm-stat-card rounded-2xl p-4">
-            <div class="font-bold text-xs lm-t1 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-triangle-exclamation" style="color:var(--lm-pink);"></i> 欠课名单</div>
+            <div class="font-bold text-xs lm-t1 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-triangle-exclamation" style="color:var(--lm-pink);"></i> 欠课名单${scoped ? `<span class="text-[10px] font-bold lm-t3">· ${vLabel}</span>` : ''}</div>
             ${debtors.length === 0 ? '<div class="text-[11px] lm-t3 py-4 text-center">没有欠课学员，太棒了 🎉</div>' : `
             <div class="space-y-1.5">
               ${debtors.map((d) => {
@@ -2390,12 +2471,24 @@
             <div class="font-bold text-xs lm-t1 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-wallet"></i> 课时存量价值</div>
             <div class="flex items-baseline gap-2">
               <span class="text-2xl font-black lm-t1">¥${totalStockValue.toFixed(0)}</span>
-              <span class="text-[10px] lm-t3">全部学员剩余课时按单价折算</span>
+              <span class="text-[10px] lm-t3">${scoped ? `「${vLabel}」授课课程剩余课时按单价折算` : '全部学员剩余课时按单价折算'}</span>
             </div>
           </div>
         </div>
       </div>
     `;
+
+    // 查看视角切换 → 整页按该老师重算
+    const vSel = document.getElementById('financeTeacherSelect');
+    if (vSel) {
+      vSel.value = tId;
+      // 该老师已被删除 → 视图值落空，静默回退全校（不重渲染，避免递归）
+      if (!vSel.value) { financeTeacherFilter = 'all'; vSel.value = 'all'; }
+      vSel.addEventListener('change', () => {
+        financeTeacherFilter = vSel.value;
+        renderPageFinance();
+      });
+    }
 
     // 续费预警行 → 直通充值（预选到该课程包，单价一并带出）
     container.querySelectorAll('.renew-low-row').forEach((el) => {

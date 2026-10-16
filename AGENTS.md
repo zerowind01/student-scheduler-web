@@ -189,3 +189,33 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       **踩坑**：`file://` 下 `document.styleSheets[].cssRules` 全部读不到（CORS）→ 断言「规则是否存在」只能查 CSS **源文本**；
       **`display:none` 的元素 `getComputedStyle().transform` 恒为 `none`**，测位移前必须先让它可见；
       **元素在 0×0 容器里时 transform 也恒为 `none`**（构造成「没切到课表页就点月视图」会误判成「过渡没生效」）。
+
+33. **电脑端财务页支持「按老师查看」（2026-10-16）。** 需求原话：「除了全校的财务信息，也要能分别看每个老师单独的」。
+    - **状态是 `financeTeacherFilter`（`'all'` 或 teacherId），故意不复用课表页的 `selectedTeacherFilter`**：
+      顶栏那个选择器只在课表页可见（`switchPage` 里 `mainTopbar` 加 `header-hide-desktop` 的条件是 `page !== 'schedule'`），
+      若共用，用户在课表页筛了某老师、切到财务页会看到数字变了却找不到原因（选择器根本不在屏幕上）。
+    - **取数三件套**：`teacherRelatedStudent(st, teacherId)` / `teacherRelatedCourse(st, courseName, teacherId)` /
+      `teacherRelatedLog(log, teacherId)`，与手机端 `js/mobile.js` 的 `studentRelatedToTeacher` / `courseRelatedToTeacher` /
+      `logRelatedToTeacher` **同语义**（那边靠 `teacherSession` 登录态，这边靠参数）。**改判定逻辑必须两边一起改**，
+      核对脚本 `tmp/finance-teacher-check.mjs` 的 I 段会拿手机端老师登录态的实测行集合与电脑端逐条比对。
+    - **切到某老师后「全部指标」都收窄**（用户拍的板）：4 张 KPI（本月课消 / 课消价值 / 待消存量 / 欠课学员）+
+      本月收入明细 + 续费预警 + 欠课名单 + 课时存量价值 + **环比徽章**。少收窄任何一个都会出现「这个数到底是谁的」。
+    - **退款不摊分到老师**（与手机端一致）：一笔退款不对应某一节课，`scheduleId=''` 会让 `teacherRelatedLog` 的兜底分支
+      （`!sch` → true）对**每个**老师都返回 true → 一笔退款被重复扣。故老师视角先 `!isRefundLog(l)` 过滤，
+      于是 `monthRefund` 在老师视角下天然为 0、表头的「已退 ¥N」也不会出现。
+    - **课程包归属只看排课**（照抄手机端）：`teacherRelatedCourse` 查的是 `schedules` 里该老师（主讲或助教）上过/将上的课，
+      **不看 `st.teacherIds`**。所以「被 `teacherIds` 关联但零排课」的学员会算进 `relStudents`（人在名单里）却一个课程包都不归该老师
+      → 待消存量计 0。这是既有语义，别顺手"修"成看 teacherIds，否则两端立刻不一致。
+    - **同一学员可拆给两位老师**：孙八的竖琴（排课给 t1）算 t1、长笛（排课给 t2）算 t2 → t1 视角只看到竖琴那 2 节，
+      长笛的欠课也不进 t1 的欠课名单。核对脚本 B16/B17 用「孙八出现但『长笛』一个字都不该露」钉住这点。
+    - **老师被删除 → 静默回退全校**：`vSel.value = tId` 落空时（下拉里没这个 option）把状态重置成 `'all'` 并重设 value，
+      **不重渲染**（避免递归）。
+    - 核对脚本 `tmp/finance-teacher-check.mjs`（60 项：全校 14 / t1 17+1 / t2 11 / 视角隔离 5 / 窄屏与零老师 4 / 跨端 7），
+      出图 `tmp/finance-teacher-shots.mjs` → `tmp/fin-f1-all / f2-t1 / f3-t2-narrow.png`。
+    - **两个测试坑（踩过）**：
+      ① **`page.addInitScript(fn)` 会把函数序列化后丢进浏览器执行 —— 函数体里引用的外部常量在那边根本不存在**，
+         静默抛 `ReferenceError`，而**函数里排在前面的字面量 `setItem` 已经成功写入了**。
+         症状极迷惑：`students` / `teachers` / `debts` 都生效，只有引用了 `T1` / `MONTH` 的 `schedules` / `checkin_logs` 是空的
+         → 现象是「全校视角课消/明细全是 0，但待消存量和欠课人数正常」。
+         **fixture 必须完全自包含**（日期在函数内部自算），或走 `addInitScript(fn, arg)` 传参。
+      ② **环比徽章排在数值前面**（「本月课消 ▲ 300% 4.0 节」）→ 断言别取「第一个数字」（会抠到百分比）。按单位匹配 `/\d+\.\d 节/`。
