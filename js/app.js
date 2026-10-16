@@ -553,6 +553,18 @@
     return debts.filter((d) => d.studentId === studentId && d.amount > 0);
   }
 
+  // 「按节课」渲染时的欠课账查询：判的是**这一行的科目**，不是学员级。
+  // 欠课账 debts 是 (studentId × courseName) 维度的 —— 只看 studentId 会让
+  // 「声乐欠费」的学员在钢琴课那行也挂上欠课，老师会以为这节课的钱也没收到。
+  // 科目名优先取排课指向的课程包名（courseId → name），回退到 s.subject。
+  function scheduleDebt(sch, student) {
+    if (!sch || !student) return null;
+    const c = sch.courseId ? (student.courses || []).find((x) => x.id === sch.courseId) : null;
+    const name = c ? c.name : sch.subject;
+    if (!name) return null;
+    return debts.find((d) => d.studentId === student.id && d.courseName === name && d.amount > 0) || null;
+  }
+
   function loadData() {
     const rawStudents =
       localStorage.getItem(STORAGE_KEY_STUDENTS) ||
@@ -1941,7 +1953,10 @@
                    <svg class="lm-cb-check" viewBox="0 0 24 24" aria-hidden="true"><path pathLength="100" d="M4.5 12.6 L9.7 17.8 L19.5 6.6"/></svg>
                  </button>`;
           const student = students.find((st) => st.id === s.studentId);
-          const debtTag = student ? (debts.find((d) => d.studentId === student.id && d.amount > 0) ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-600 ml-1.5">欠课</span>' : '') : '';
+          // 欠课标签按**这一行的科目**判（scheduleDebt 里说明）：声乐欠费的学员，她的钢琴课那行不挂标签。
+          // hover 写明是哪个课程包欠几节，免得只看到「欠课」两个字还得去猜是谁欠、欠什么。
+          const sd = scheduleDebt(s, student);
+          const debtTag = sd ? `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-600 ml-1.5" title="${escAttr(sd.courseName)} 欠课 ${sd.amount} 节">欠课</span>` : '';
           // 待补课：行内直接给「排补课」，不用先点开菜单
           const makeupBtn = pend ? `<button class="lm-mini-btn dash-makeup-btn" data-id="${s.id}">排补课</button>` : '';
           const mkChip = isMakeupLesson(s) ? '<span class="lm-chip-makeup">补课</span>' : '';
