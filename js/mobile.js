@@ -3256,7 +3256,14 @@
     if (!calDrag && window.uiAnim && window.uiAnim.listIn) window.uiAnim.listIn(listEl);
   }
 
-  // 周/月翻页：周档平移一周；月档翻月（保持"选中日序号"尽量不变）
+  // 周/月翻页：周档**按天步进**；月档翻月（保持"选中日序号"尽量不变）
+  //
+  // ⚠️ 周档必须是 ±1 天，不是 ±7 天。这条被改坏过一次，别再改回去：
+  //   66d87a4 明确做过「week-calendar swipe now steps one day (was a full week)」，
+  //   之后 f7ed5ce（三档视图整合）把这里写回 dir * 7，手势就退化成"翻上下周"了。
+  //   周档手势的真实语义是「换选中日」——网格本身渲染整月，靠裁剪+上移露出选中周，
+  //   所以按天步进跨周时网格会自动上移一行，用户看到的就是"一格一格挪"。
+  //   月档才该整月翻页，因为那才是"翻页"而不是"选日"。
   function shiftCalPage(dir) {
     const sel = new Date(calSelected + 'T00:00:00');
     if (isMonthView()) {
@@ -3265,7 +3272,7 @@
       const d = new Date(targetMonth.getFullYear(), targetMonth.getMonth(), Math.min(sel.getDate(), lastDay));
       calSelected = formatDate(d);
     } else {
-      calSelected = formatDate(addDays(sel, dir * 7));
+      calSelected = formatDate(addDays(sel, dir));
     }
     renderCalGrid();
   }
@@ -3304,8 +3311,10 @@
     }
     const p = document.getElementById('btnMobilePrev');
     const n = document.getElementById('btnMobileNext');
-    const prevLabel = calView === 'day3' ? '前3天' : (calView === 'week' ? '前周' : '前月');
-    const nextLabel = calView === 'day3' ? '后3天' : (calView === 'week' ? '后周' : '后月');
+    // 文案必须与 shiftCalPage 的真实步长一致：周档按天（不是按周），
+    // 否则按钮写着「前周」却只跳一天 —— 这种"文案骗人"比手势本身更费解。
+    const prevLabel = calView === 'day3' ? '前3天' : (calView === 'week' ? '前一天' : '前月');
+    const nextLabel = calView === 'day3' ? '后3天' : (calView === 'week' ? '后一天' : '后月');
     if (p) p.innerHTML = '<i class="fa-solid fa-chevron-left text-[10px]"></i> ' + prevLabel;
     if (n) n.innerHTML = nextLabel + ' <i class="fa-solid fa-chevron-right text-[10px]"></i>';
   }

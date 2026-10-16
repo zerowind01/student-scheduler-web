@@ -241,3 +241,32 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
     - **一个测试选择器的坑**：`#studentListContainer` 是**课表页那个「待排课学生」抽屉**的容器；
       学员管理页的列表是 `#pageStudentsList`，且卡片类名是 `lm-stat-card` + `data-student-page-id`（**不是** `.student-card`）。
       两个别搞混（本轮断言先踩了一次）。
+
+35. **手机端三档日历的翻页步长：只有「周」档是按天，别再改回按周**（2026-10-16 修复回归）
+    - 三档共用同一条 `#mobileDateBar`（翻页按钮 + `#mobileDateText`）和 `shiftCalPage(dir)`：
+      **3日档 ±3 天**（`mobileStartDate` 整窗平移，走 `setupCalendarSwipe` 里的 `dir * 3`）/
+      **周档 ±1 天**（`calSelected` 按天步进）/ **月档 ±1 月**（保持"选中日序号"）。
+    - **为什么周档是按天而不是按周**：周档渲染的其实是**整月网格**（`#calGrid` 从 `getMonday(月初)` 到月末），
+      只是靠「裁剪到一行 + 上移」露出选中周。所以它的操作对象是**唯一的选中日游标**，
+      手势语义就是「换选中的那一天」；跨周时网格自己上移一行，用户看到的是"一格一格挪"。
+      月档才是真正的"翻页"（整月换），也才该整月跳。
+    - **⚠️ 回归史（这是第三次被改坏的风险点）**：
+      `66d87a4` 专门做过「week-calendar swipe now steps one day (was a full week)」；
+      之后 `f7ed5ce`（三档视图整合）把 `shiftCalPage` 的周档分支写回 `addDays(sel, dir * 7)`，
+      **没有任何测试报红**，直到用户报「又变成上下周了」。改这段前先看 `shiftCalPage` 上方那段注释。
+    - **按钮文案必须与真实步长一致**，唯一写入点是 `syncCalViewChrome()`：
+      周档「前一天 / 后一天」、3日档「前3天 / 后3天」、月档「前月 / 后月」。
+      按钮与手势**共用** `shiftCalPage`，所以改了步长就必须改文案 ——
+      写着「前周」却只跳一天，比手势本身更让人费解。`mobile.html` 里的静态文案也要同步（首屏不闪）。
+    - 手势判定（`setupCalSwipe`，绑 `#viewCalweek`）：`|dx| > 48px` 且 `|dx| > |dy| * 1.2` 且耗时 `< 900ms`，
+      move 阶段以 `|dx| > 14 && |dx| > |dy|` 锁定横向。别顺手放宽阈值 —— 按天步进本来就更"敏感"，
+      放宽后会跟纵向滚动抢手势。
+    - 跨周的断言**不要写「首行日期变了」**：跨周但没跨月时，网格范围仍是同一个整月，
+      首行永远是那月的第一个周一（`firstRowDate` 不该变）。要断言的是
+      **「选中格在网格里的布局位移 + 网格 transform 位移 ≈ 0」**（= 选中格在屏幕上纹丝不动），
+      以及反向滑同样次数能精确回位（按天步进不能有累积漂移）。
+    - 核对脚本 `tmp/cal-swipe-day-check.mjs`（38 项：A 初始态 / B 按天步进与按钮同口径 / C 跨周网格跟随与可逆性 /
+      D 月档仍翻月 / E 3日档仍跳 3 天 / F 短距·纵向·慢速守卫 / G 点格子）。
+      **护栏自检法**：把 `addDays(sel, dir)` 临时改回 `dir * 7` 再跑，应看到 B1~B7 + C1/C3/C4 报红；
+      这 9 条就是用户在真机上遇到的现象，改完一定复查它们还绿着。
+      出图 `tmp/cal-swipe-day-shots.mjs` → `tmp/swipe-day-1today / 2next / 3nextweek.png`。
