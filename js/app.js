@@ -134,6 +134,7 @@
           schedules = (data.schedules || []).map(normalizeSchedule);
           migrateSeriesIds();
           teachers = mergeTeachersKeepPin(data.teachers, teachers);
+          migrateLessonUnits();
           // 欠课账校准：负课时（欠课）同步进欠课账
           syncAllDebts();
           saveDataLocalOnly();
@@ -537,6 +538,47 @@
     });
   }
 
+  // ============ 历史账目校准：一节课 = 1 节（2026-10-17，见 AGENTS 第 37 条）============
+  // 旧版 getLessonCost 按 durationMinutes 折算（桌面 /60、手机 /45），一节 90 分钟的课被记成 2 节：
+  //   · 消课流水 deductedLessons = 2、paymentAmount = 2 × 单价
+  //   · 课程包 remainingLessons 多扣（只有「消课」会扣课时，别处不按节数扣）
+  // 消课流水的节数只可能是 1（正常）或 0（退款），所以 **>1 的必定是旧折算产物**。
+  // 把多记的节数/金额回正、课时加回课程包 —— 跑完不会再有 >1 的记录，天然幂等。
+  // 必须在 schedule 解析之后调用（要靠 courseId 定位课时包），且要在 syncAllDebts 之前
+  // （欠课账是按 remainingLessons 反推的，先改余额再对账）。
+  let lessonUnitsFixed = 0;
+  let lessonUnitsNoticeQueued = false;
+  function migrateLessonUnits() {
+    let fixed = 0;
+    checkInLogs.forEach((l) => {
+      if (!l || isRefundLog(l)) return;            // 退款行没有节数概念，别碰
+      const oldUnits = Number(l.deductedLessons) || 0;
+      if (oldUnits <= 1) return;                   // 0 / 1 本来就是对的
+      const delta = oldUnits - 1;
+      // 找课时包：优先用排课的 courseId（流水上的 courseName 是 subject，可能不等于课时包名）
+      const sch = l.scheduleId ? schedules.find((s) => s.id === l.scheduleId) : null;
+      const student = students.find((st) => st.id === l.studentId);
+      const course = student
+        ? (student.courses || []).find((c) => (sch && sch.courseId && c.id === sch.courseId) || c.name === l.courseName)
+        : null;
+      if (course) course.remainingLessons = (Number(course.remainingLessons) || 0) + delta;
+      // 金额按比例回正（旧值 = 节数 × 单价，除回节数就是单价；单价 0 的课保持 0）
+      l.paymentAmount = Math.round((Number(l.paymentAmount) || 0) / oldUnits);
+      l.deductedLessons = 1;
+      l.remarks = (l.remarks ? l.remarks + '；' : '') + `历史校准：旧口径记的 ${oldUnits} 节已回正为 1 节`;
+      fixed++;
+    });
+    if (fixed > 0) {
+      lessonUnitsFixed += fixed;
+      // 只提示一次：加载与云端拉取会各跑一遍，别弹两次
+      if (!lessonUnitsNoticeQueued) {
+        lessonUnitsNoticeQueued = true;
+        setTimeout(() => showToast(`📐 已校准 ${lessonUnitsFixed} 条历史消课记录：一节就是 1 节，多扣的课时已加回`, 'circle-info'), 900);
+      }
+    }
+    return fixed;
+  }
+
   // 归还欠课（新购/充值时自动抵扣）：返回实际抵扣掉的节数
   function repayDebt(studentId, courseName, amount) {
     const d = debts.find((x) => x.studentId === studentId && x.courseName === courseName);
@@ -647,6 +689,9 @@
     schedules = schedules.map(normalizeSchedule);
     migrateSeriesIds();
 
+    // 历史账目校准：旧口径把长课时记成多节 → 先回正节数/金额/课时余额，再对欠课账
+    migrateLessonUnits();
+
     // 欠课账校准：负课时（手动填的欠课）同步进欠课账，保证财务页欠课名单完整
     syncAllDebts();
 
@@ -744,6 +789,9 @@
             checkInLogs = remoteData.checkInLogs || [];
             debts = (remoteData.debts || []).map(normalizeDebt);
 
+            // 云端拿回来的仍可能是旧口径数据 → 每次覆盖后都校准一次（幂等）
+            migrateLessonUnits();
+
             // 欠课账校准：负课时（欠课）同步进欠课账
             syncAllDebts();
 
@@ -818,9 +866,13 @@
   // 教务核心操作（移植自 Teacher-manager App）
   // ==========================================
 
-  // 从排课推导扣费节数（与排课时的扣课逻辑一致：1小时=1节，最低1节）
-  function getLessonCost(schedule) {
-    return Math.max(1, Math.round((schedule.durationMinutes || 60) / 60));
+  // 一节课永远 = 1 节（2026-10-17 定口径，见 AGENTS 第 37 条）。
+  // **不按时长折算**：旧实现是 Math.max(1, Math.round(durationMinutes / 60))，90 分钟的课被算成 2 节，
+  // 节数、消课金额、课程包余额三处一起多扣。课程时长只影响课表排版/冲突检测，与计费无关。
+  // 保留函数（而不是各处写死 1）是为了将来若要支持「一节课记 N 节」仍只有一个改动点；
+  // 也保留入参签名 —— 调用点都传了 schedule，别为了好看把它删掉。
+  function getLessonCost() {
+    return 1;
   }
 
   // ============ 补课链路（F11） ============

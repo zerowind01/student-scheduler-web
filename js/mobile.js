@@ -825,6 +825,40 @@
     });
   }
 
+  // ============ 历史账目校准：一节课 = 1 节（与 js/app.js 同语义，见 AGENTS 第 37 条）============
+  // 旧版 getLessonCost 按 durationMinutes 折算（手机 /45、桌面 /60），90 分钟的课被记成 2 节：
+  // 流水 deductedLessons = 2 / paymentAmount = 2 × 单价 / 课程包 remainingLessons 多扣。
+  // 消课流水节数只可能是 1（正常）或 0（退款），**>1 的必定是旧折算产物** → 回正后天然幂等。
+  let lessonUnitsFixed = 0;
+  let lessonUnitsNoticeQueued = false;
+  function migrateLessonUnits() {
+    let fixed = 0;
+    checkInLogs.forEach((l) => {
+      if (!l || isRefundLog(l)) return;
+      const oldUnits = Number(l.deductedLessons) || 0;
+      if (oldUnits <= 1) return;
+      const delta = oldUnits - 1;
+      const sch = l.scheduleId ? schedules.find((s) => s.id === l.scheduleId) : null;
+      const student = students.find((st) => st.id === l.studentId);
+      const course = student
+        ? (student.courses || []).find((c) => (sch && sch.courseId && c.id === sch.courseId) || c.name === l.courseName)
+        : null;
+      if (course) course.remainingLessons = (Number(course.remainingLessons) || 0) + delta;
+      l.paymentAmount = Math.round((Number(l.paymentAmount) || 0) / oldUnits);
+      l.deductedLessons = 1;
+      l.remarks = (l.remarks ? l.remarks + '；' : '') + `历史校准：旧口径记的 ${oldUnits} 节已回正为 1 节`;
+      fixed++;
+    });
+    if (fixed > 0) {
+      lessonUnitsFixed += fixed;
+      if (!lessonUnitsNoticeQueued) {
+        lessonUnitsNoticeQueued = true;
+        setTimeout(() => showToast(`📐 已校准 ${lessonUnitsFixed} 条历史消课记录：一节就是 1 节，多扣的课时已加回`), 900);
+      }
+    }
+    return fixed;
+  }
+
   function repayDebt(studentId, courseName, amount) {
     const d = debts.find((x) => x.studentId === studentId && x.courseName === courseName);
     if (!d || d.amount <= 0) return 0;
@@ -840,8 +874,11 @@
     return debts.filter((d) => d.studentId === studentId && d.amount > 0);
   }
 
-  function getLessonCost(schedule) {
-    return Math.max(1, Math.round((schedule.durationMinutes || 45) / 45));
+  // 一节课永远 = 1 节（与 js/app.js 同口径，见 AGENTS 第 37 条）。
+  // 旧实现是 Math.round(durationMinutes / 45)：45 分钟=1 节、90 分钟=2 节 ——
+  // 与电脑端（/60）还不一致，同一节课在两端扣的节数都可能不同。时长与计费无关，别改回去。
+  function getLessonCost() {
+    return 1;
   }
 
   // ============ 补课链路（F11） ============
@@ -1161,6 +1198,9 @@
     schedules = schedules.map(normalizeSchedule);
     migrateSeriesIds();
 
+    // 历史账目校准：旧口径把长课时记成多节 → 先回正节数/金额/课时余额，再对欠课账
+    migrateLessonUnits();
+
     // 欠课账校准：负课时（手动填的欠课）同步进欠课账
     syncAllDebts();
 
@@ -1253,6 +1293,9 @@
             courseTypes = remoteData.courseTypes || courseTypes;
             checkInLogs = remoteData.checkInLogs || [];
             debts = (remoteData.debts || []).map(normalizeDebt);
+
+            // 云端拿回来的仍可能是旧口径数据 → 每次覆盖后都校准一次（幂等）
+            migrateLessonUnits();
 
             // 欠课账校准：负课时（欠课）同步进欠课账
             syncAllDebts();

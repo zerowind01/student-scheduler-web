@@ -299,3 +299,35 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
     - **写 ICS 断言的两个坑**：① 别用 `BEGIN:VEVENT[\s\S]*?VALARM` 判"某节课有没有提醒"，
       非贪婪会越过 `END:VEVENT` 抓到**后面**那节课的 VALARM（本轮先踩了这个，伪造出一个"失败"）；
       ② `DTEND` 是 **UTC**，跨天课别拿本地日期算（23:30 CST + 60min = 次日 00:30 CST = **当日** 16:30Z）。
+
+37. **一节课永远 = 1 节，计费不按时长折算**（2026-10-17 修，Jackson 定的口径）
+    - **症状**：财务页「本月课消」节数和「课消价值」偏大；90 分钟的课在流水里是 `deductedLessons = 2`、
+      金额 = 2 × 单价、课程包余额多扣 1 节。
+    - **根因**：`getLessonCost()` 按时长折算，而且**两端基准还不一样**：
+      `js/app.js` = `Math.max(1, Math.round(durationMinutes / 60))`，`js/mobile.js` = `Math.max(1, Math.round(durationMinutes / 45))`
+      → 90 分钟的课两边都 = 2 节；一台电脑上一节 60 分钟课 = 1 节，同一节课在手机上再算一遍可能又是别的数。
+    - **口径**：**与 durationMinutes 完全无关**。时长只影响课表排版、冲突检测、ICS 的 DTEND。
+      这条是**用户明确要求**的（"不管我设置的课程是多长，就是算一节课的钱"）。
+    - **改法**：`getLessonCost()` 恒 `return 1`（两端各一份，**保留函数和入参签名**——
+      将来若要支持「一节课记 N 节」只需改这一处，别在各处写死 1）。
+    - **历史账目一起回正**：新增 `migrateLessonUnits()`（两端同语义），在 `loadData()` /
+      `pullFromCloudSync()` / `checkUrlSyncData()` 里各调一次，且**必须在 `syncAllDebts()` 之前**
+      （欠课账是按 `remainingLessons` 反推的，先改余额再对账）。规则：
+      1. 只看 `checkInLogs` 里 `deductedLessons > 1` 的记录 —— 消课流水的节数只可能是 1（正常）或 0（退款），
+         **>1 的必定是旧折算产物**，所以跑完不会再有 >1 → **天然幂等**，刷新/多设备各跑一遍都安全；
+      2. 流水：节数回 1、金额 `/= oldUnits`（旧值就是 节数 × 单价）、`remarks` 追加「历史校准：…」；
+      3. 课时包：`remainingLessons += oldUnits - 1`，定位顺序 = 排课的 `courseId` → 流水上的 `courseName`
+         （流水的 `courseName` 存的是 `schedule.subject`，可能不等于课时包名）；
+      4. **退款流水（`isRefundLog`）一律不碰** —— 它没有节数概念，`deductedLessons` 本来就是 0；
+      5. 负余额不要清零：0 节时上了一节 90 分钟的课，正确欠课是 1 节（旧口径记成 2 节欠账）。
+    - **坑：测试种子数据不能再用「一笔 N 节」**。`tmp/refund-check.mjs` 原来用一条 `deductedLessons: 3 / ¥600`
+      的种子，被校准成 1 节 / ¥200 后 12 项断言全红；要表达「本月已消 3 节」请写成**三条 1 节记录**。
+      `tmp/dash-bars-test.mjs` 同理（柱高按天聚合，同一天 3 节 = 同一天 3 条记录）。
+    - 核对脚本 `tmp/lesson-unit-check.mjs`（39 项）：A 45/60/75/90/120 分钟消课都 = 1 节 /
+      B 历史校准（含负余额与退款不被碰）/ C 操作菜单文案「消课签到（1节）」/
+      D 老数据无 `durationMinutes` 与 `=0` 不炸 / E 财务 KPI 跟着走 / F 刷新幂等 / G 手机端同口径。
+      **护栏自检**：把 `getLessonCost` 改回按 `/60` 折算 → A5/A6/A7/A8 报红（90/120 分钟变 2 节、¥400、余额 8）；
+      把 `migrateLessonUnits()` 注释掉 → B1~B7 报红。
+    - **已知但本次未改**：`handleDeleteScheduleWithCleanup()` 删除**待上课**（scheduled）的课时会给课程包
+      `+= 1`，但排课环节**从来不扣**课时（只有消课会扣）→ 等于「删一节待上的课白送一节课时」，
+      手机端删课也没有这个退还（两端不一致）。改它会动删除语义，先跟用户确认再动。
