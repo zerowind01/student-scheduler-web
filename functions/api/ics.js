@@ -109,8 +109,13 @@ function buildIcs(data, teacherLabel) {
 
   schedules.forEach((s, i) => {
     if (!s || !s.date || s.date < minDate || s.date > maxDate) return;
-    // 白名单：只有排课中和已完成（透明占位）进日历；请假/取消等一切其他状态一律不计入
-    if (s.status !== 'scheduled' && s.status !== 'completed') return;
+    // 状态：**缺省按「待上课」处理**，与前端 normalizeSchedule 同口径。
+    // ⚠️ 必须容忍 status 缺失：新建排课的记录在云端可能压根没有 status 字段
+    //    （前端 makeSchedule 曾漏写，见 AGENTS 第 36 条），而这里是**白名单**判断，
+    //    严格 `!== 'scheduled'` 会把这类课整批漏掉 —— 症状就是「界面上有课，日历订阅里没有」。
+    //    白名单只排除请假/取消，缺省不等于排除。
+    const st = s.status || 'scheduled';
+    if (st !== 'scheduled' && st !== 'completed') return;
     if (!s.teacherId && !s.assistantTeacherId && !s.teacherName) return;
 
     const studentName =
@@ -123,7 +128,7 @@ function buildIcs(data, teacherLabel) {
     const dtStart = toIcsUtc(startMs);
     const dtEnd = toIcsUtc(startMs + dur * 60000);
 
-    const completed = s.status === 'completed';
+    const completed = st === 'completed';
 
     lines.push(
       'BEGIN:VEVENT',

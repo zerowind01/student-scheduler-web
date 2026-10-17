@@ -270,3 +270,32 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       **护栏自检法**：把 `addDays(sel, dir)` 临时改回 `dir * 7` 再跑，应看到 B1~B7 + C1/C3/C4 报红；
       这 9 条就是用户在真机上遇到的现象，改完一定复查它们还绿着。
       出图 `tmp/cal-swipe-day-shots.mjs` → `tmp/swipe-day-1today / 2next / 3nextweek.png`。
+
+36. **新建排课必须显式写 `status`，否则 ICS 日历订阅会整条漏掉**（2026-10-17 修）
+    - **症状**：界面上明明有这节课，但手机日历订阅（ICS）里没有；老课都在，**偏偏新排的没有**。
+    - **根因链**：
+      1. `makeSchedule()`（`js/app.js` + `js/mobile.js` 各一份）构造排课对象时**没写 `status` 字段**；
+      2. `saveData()` → `pushToCloudSync()` 是 `JSON.stringify(schedules)` **原样推送**，不做任何补全；
+      3. 于是云端那条记录**压根没有 `status` 这个键**；
+      4. `functions/api/ics.js` 用的是**白名单**判断 `if (s.status !== 'scheduled' && s.status !== 'completed') return;`
+         → `undefined` 不等于任何一项 → 整条被跳过。
+    - **为什么界面看不出问题**：`normalizeSchedule()`（`if (!sch.status) sch.status = 'scheduled'`）只挂在
+      **加载 / 云端同步 / 导入**这几条入口上（`js/app.js` 的 134/1385/647/740/776 行）。
+      新建的对象**不经过它**直接 push 进数组，而界面渲染按「非完成、非请假」处理，恰好表现正常。
+      一刷新页面 → 加载时 normalize → 内存对象补上 `status` → 下次保存才会推回去。
+      **所以这个 bug 有"自愈"的假象：刷新一下就好了，很难复现**。
+    - **修法（三处，缺一不可）**：
+      1. 两个 `makeSchedule` 都显式加 `status: SCHEDULE_STATUS.SCHEDULED`（治本）；
+      2. 数据导入（`importScheduleData` 的 overwrite / merge 两条分支）都要 `.map(normalizeSchedule)`；
+      3. `functions/api/ics.js` 改成 `const st = s.status || 'scheduled';`（**兜底**）——
+         这一步是**必须**的：已经推到云端的那批缺 `status` 记录不会自己变好（除非用户刷新页面再保存一次）。
+         兜底口径与前端 `normalizeSchedule` 完全一致，不会误收请假/取消。
+    - **改 `ics.js` 的判断时记住它是白名单**：`completed` 分支也要用同一个 `st`（`const completed = st === 'completed'`）。
+    - **运维提醒**：`functions/api/ics.js` 是 Cloudflare Pages Function，**必须重新 deploy 才生效**（不是改静态文件就行）。
+    - 核对脚本 `tmp/ics-check.mjs`（35 项，用假 Upstash 真跑 `onRequest`，不依赖网络/真实同步码）：
+      A 缺 status 必须进日历（用户场景）/ B 状态白名单与完成课透明化 / C 老师三字段匹配 / D 时间窗与跨天 /
+      E ICS 结构（UID/DTSTAMP/折行 ≤75 字节/CRLF）/ F 参数校验与 `no-store` / G 按老师姓名订阅。
+      **护栏自检法**：把兜底改回 `const st = s.status;` 再跑，应看到 A2/A3/A4 报红、事件清单里少掉那条课。
+    - **写 ICS 断言的两个坑**：① 别用 `BEGIN:VEVENT[\s\S]*?VALARM` 判"某节课有没有提醒"，
+      非贪婪会越过 `END:VEVENT` 抓到**后面**那节课的 VALARM（本轮先踩了这个，伪造出一个"失败"）；
+      ② `DTEND` 是 **UTC**，跨天课别拿本地日期算（23:30 CST + 60min = 次日 00:30 CST = **当日** 16:30Z）。

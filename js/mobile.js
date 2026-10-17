@@ -4172,6 +4172,8 @@
 
       const makeSchedule = (id, d) => ({
         id,
+        // 同桌面端：云端存原样 JSON，缺 status 会被 ICS 白名单漏掉（AGENTS 第 36 条）
+        status: SCHEDULE_STATUS.SCHEDULED,
         studentId,
         studentName: student ? student.name : '未知学生',
         courseId,

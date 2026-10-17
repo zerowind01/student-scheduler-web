@@ -3814,6 +3814,11 @@
 
       const makeSchedule = (id, d) => ({
         id,
+        // ⚠️ 必须显式写 status：云端存的是这个对象的原样 JSON，缺了它整条记录就没有 status。
+        //    normalizeSchedule 只在「加载/同步/导入」时补缺省值，新建的对象不经过它，
+        //    所以缺字段会被原样推上云 —— ICS 订阅是白名单判断，会把这节课整条漏掉。
+        //    见 AGENTS 第 36 条（「界面上有课，日历里没有」）。
+        status: SCHEDULE_STATUS.SCHEDULED,
         studentId,
         studentName: student ? student.name : '未知学生',
         courseId,
@@ -4535,11 +4540,14 @@
       }
 
       if (data.schedules && Array.isArray(data.schedules)) {
+        // 导入的排课同样要过 normalizeSchedule：外部 JSON 很可能没有 status 字段，
+        // 原样入库会被原样推上云 → ICS 白名单漏掉（AGENTS 第 36 条）
         if (mode === 'overwrite') {
-          schedules = data.schedules;
+          schedules = data.schedules.map(normalizeSchedule);
         } else {
           data.schedules.forEach((sch) => {
-            if (!schedules.some((x) => x.id === sch.id)) schedules.push(sch);
+            const ns = normalizeSchedule(sch);
+            if (!schedules.some((x) => x.id === ns.id)) schedules.push(ns);
           });
         }
         importedSchedulesCount = data.schedules.length;
