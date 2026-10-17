@@ -328,6 +328,36 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       D 老数据无 `durationMinutes` 与 `=0` 不炸 / E 财务 KPI 跟着走 / F 刷新幂等 / G 手机端同口径。
       **护栏自检**：把 `getLessonCost` 改回按 `/60` 折算 → A5/A6/A7/A8 报红（90/120 分钟变 2 节、¥400、余额 8）；
       把 `migrateLessonUnits()` 注释掉 → B1~B7 报红。
-    - **已知但本次未改**：`handleDeleteScheduleWithCleanup()` 删除**待上课**（scheduled）的课时会给课程包
-      `+= 1`，但排课环节**从来不扣**课时（只有消课会扣）→ 等于「删一节待上的课白送一节课时」，
-      手机端删课也没有这个退还（两端不一致）。改它会动删除语义，先跟用户确认再动。
+    - 当时发现的「删除排课白送课时」问题已在第 38 条修掉。
+
+
+38. **删除排课 = 回滚这节课「真实发生过」的一切；退还课时只认消课流水，不看 status**（2026-10-17 修）
+    - **症状**：删一节**待上课**的课，课程包 `remainingLessons` 反而 +1 —— 待消存量越删越多（白送课时）。
+    - **根因**：`handleDeleteScheduleWithCleanup()`（桌面）用 `if (sch.status === SCHEDULED) remainingLessons += getLessonCost(sch)`
+      来"退还"。但**排课环节从来不扣课时**（`makeSchedule` 只写对象、不碰余额），只有消课（`executeCheckIn`）才扣。
+      所以给待上课退课时 = 凭空加一节。手机端更糟：`deleteMobileScheduleWithScope()` 既不退课时、**也不删消课流水**
+      （删掉一节已消课的课，财务流水还挂在那儿，指向一个不存在的排课 id）。
+    - **口径（两端统一）**：删除一节课 = 把这节课存在过的所有痕迹一起回滚。
+      而"这节课扣过多少课时"的唯一可信来源，就是它自己的**消课流水之和**：
+      ```js
+      const deductedUnits = checkInLogs
+        .filter((l) => l.scheduleId === id && !isRefundLog(l))
+        .reduce((sum, l) => sum + (Number(l.deductedLessons) || 0), 0);
+      ```
+      → `deductedUnits` 就是该退的节数，退完再删流水。四种状态自动正确：
+      待上课（无流水）= 0 节不退 ✅ / 已消课（1 条 1 节）= 退 1 节 ✅ / 请假（无流水）= 不退 ✅ / 退款流水（`deductedLessons=0`）= 不计 ✅。
+      **别再用 status 猜**，也别读 `getLessonCost(sch)` —— 那是在"这节课该扣几节"，不是在问"它到底扣过没有"。
+    - **同时把手机端对齐到桌面语义**：删课也要 `checkInLogs.filter(l => l.scheduleId !== id)`。
+      否则两端删同一节课，一边财务回滚、一边数字不动。
+    - **确认文案跟着改**：`'确定删除该课程？待上课状态的课程会退还已扣课时。'` →
+      `'确定删除该课程？已消课的记录会一并撤销，并退还对应课时。'`（旧文案描述的是错的语义）。
+    - **撤销安全**：`pushUndo()` 快照本来就含 `students` + `checkInLogs`，所以课时加减都能被撤销还原，不用额外处理。
+    - **欠课账不在这里同步**：`debts` 是按 `remainingLessons` 反推的派生数据，全站约定是**加载时**由 `syncAllDebts()` 校准
+      （撤销消课、改请假这些同样改余额的路径也都不当场同步），别在这个函数里单独调，否则口径分叉。
+    - 核对脚本 `tmp/delete-credit-check.mjs`（39 项，桌面 A 段 + 手机 M 段）：
+      A0 基线 / A2 删待上课不退（旧实现 10→11）/ A3 确认文案 / A4 撤销还原 /
+      A6·A8 删已消课退 1 节且流水同步移除 / A10 删请假不退 / A12 退款伪流水不计退还 / A13 无关流水不被误删 /
+      A15·A16 「本次及之后」系列逐节清理；M 段同语义逐条比对。
+      **护栏自检**：把桌面端改回 `if (status === SCHEDULED) += getLessonCost()`，应见 A2/A6/A8/A10/A12/A16 共 6 条报红。
+      ⚠️ 本地 `file://` 打开时 favicon 是绝对路径 `/icons/...`，控制台必有一条 `Failed to load resource`，
+      那是打开方式的噪音，脚本里已过滤；别把它当成 JS 报错。

@@ -1093,17 +1093,26 @@
   }
 
   // 删除排课时同步清理流水
+  // ⚠️ 退还课时的唯一依据是「这节课真的扣过多少」= 该排课的消课流水之和，**不能按 status 猜**：
+  //    排课环节从来不扣课时（只有消课会扣），所以给「待上课」的课退课时 = 白送一节，
+  //    删得越多待消存量越高（旧实现的 bug，见 AGENTS 第 38 条）。
+  //    按流水反推还顺带修正了另一个方向：删「已消课」的课会把流水一起删掉（财务回滚），
+  //    那就必须把那一节课时也还回去，否则课没上、钱没记、课时却少了一节。
   function handleDeleteScheduleWithCleanup(schId) {
     const sch = schedules.find((s) => s.id === schId);
+    const deductedUnits = checkInLogs
+      .filter((l) => l.scheduleId === schId && !isRefundLog(l))
+      .reduce((sum, l) => sum + (Number(l.deductedLessons) || 0), 0);
+
     checkInLogs = checkInLogs.filter((l) => l.scheduleId !== schId);
     cleanupMakeupLinks(schId);   // 断补课链路：删的可能是源请假课，也可能是补课课次
     schedules = schedules.filter((s) => s.id !== schId);
-    if (sch && sch.status === SCHEDULE_STATUS.SCHEDULED) {
-      // 待上课的课程删除时退还课时（保持"课时只随消课消耗"的一致性）
+
+    if (sch && deductedUnits > 0) {
       const student = students.find((st) => st.id === sch.studentId);
       if (student) {
         const course = (student.courses || []).find((c) => c.id === sch.courseId || c.name === sch.subject);
-        if (course) course.remainingLessons += getLessonCost(sch);
+        if (course) course.remainingLessons += deductedUnits;
       }
     }
     saveData();
@@ -3237,7 +3246,8 @@
     };
 
     if (laterCount === 0) {
-      if (!confirm('确定删除该课程？待上课状态的课程会退还已扣课时。')) return;
+      // 文案要对得上真实语义：待上课本来就没扣课时，没什么可退；已消课的才回滚流水+退课时
+      if (!confirm('确定删除该课程？已消课的记录会一并撤销，并退还对应课时。')) return;
       doDelete([sch.id], '已删除该课程');
       return;
     }

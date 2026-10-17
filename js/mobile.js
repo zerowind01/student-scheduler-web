@@ -4291,7 +4291,24 @@
     const doDelete = (ids, msg) => {
       // 删除是不可逆感最强的操作，撤销优先级最高
       pushUndo('删除排课', sch.id);
-      ids.forEach((id) => cleanupMakeupLinks(id));   // 断补课链路：源课没了/补课没了都要解绑
+      ids.forEach((id) => {
+        const target = schedules.find((s) => s.id === id);
+        // 退还课时的唯一依据 = 这节课真实扣过的节数（消课流水之和），不按 status 猜。
+        // 排课环节从不扣课时 → 删「待上课」不该退；删「已消课」要连流水带课时一起回滚。
+        // 与桌面端 handleDeleteScheduleWithCleanup 同语义（见 AGENTS 第 38 条）。
+        const deductedUnits = checkInLogs
+          .filter((l) => l.scheduleId === id && !isRefundLog(l))
+          .reduce((sum, l) => sum + (Number(l.deductedLessons) || 0), 0);
+        checkInLogs = checkInLogs.filter((l) => l.scheduleId !== id);
+        cleanupMakeupLinks(id);   // 断补课链路：源课没了/补课没了都要解绑
+        if (target && deductedUnits > 0) {
+          const student = students.find((st) => st.id === target.studentId);
+          if (student) {
+            const course = (student.courses || []).find((c) => c.id === target.courseId || c.name === target.subject || c.name === target.courseName);
+            if (course) course.remainingLessons += deductedUnits;
+          }
+        }
+      });
       schedules = schedules.filter((s) => !ids.includes(s.id));
       saveData();
       offerUndo(msg, '删除排课');
@@ -4299,7 +4316,8 @@
     };
 
     if (laterCount === 0) {
-      if (!confirm('确定删除该课程？待上课状态的课程会退还已扣课时。')) return;
+      // 文案要对得上真实语义：待上课本来就没扣课时，没什么可退；已消课的才回滚流水+退课时
+      if (!confirm('确定删除该课程？已消课的记录会一并撤销，并退还对应课时。')) return;
       doDelete([sch.id], '已删除该课程');
       return;
     }
