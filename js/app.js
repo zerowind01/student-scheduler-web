@@ -1810,7 +1810,14 @@
     if (isAllTeachers(teacherId)) return true;
     if (log.teacherId) return log.teacherId === teacherId;
     const sch = schedules.find((s) => s.id === log.scheduleId);
-    return !sch || sch.teacherId === teacherId || sch.assistantTeacherId === teacherId;
+    if (sch) return sch.teacherId === teacherId || sch.assistantTeacherId === teacherId;
+    // 历史导入的流水**只有老师名字**：没有 teacherId、也没有排课。
+    // 不按名字兜底就会落到「无排课 = 算这位老师的」，把每一笔历史课重复算进每一位老师。
+    if (log.teacherName) {
+      const t = teachers.find((x) => x.id === teacherId);
+      return !!t && t.name === log.teacherName;
+    }
+    return true; // 既无排课也无老师名（退款等）→ 保持旧口径
   }
 
   // 视角下拉里显示的老师名（带科目）

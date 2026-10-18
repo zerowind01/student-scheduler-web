@@ -110,7 +110,10 @@
     if (!teacherSession) return true;
     if (log.teacherId) return log.teacherId === teacherSession.teacherId;
     const sch = schedules.find((s) => s.id === log.scheduleId);
-    return !sch || sch.teacherId === teacherSession.teacherId || sch.assistantTeacherId === teacherSession.teacherId;
+    if (sch) return sch.teacherId === teacherSession.teacherId || sch.assistantTeacherId === teacherSession.teacherId;
+    // 历史导入的流水只有老师名字（无 teacherId / 无排课）→ 按名字归属，否则会重复算进每位老师
+    if (log.teacherName) return log.teacherName === teacherSession.name;
+    return true;
   }
 
   function getToday() {

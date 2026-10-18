@@ -529,3 +529,17 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
     - 测试侧两个坑：① `addInitScript` 每次导航都跑，`page.reload()` 会把 localStorage 重种一遍 →
       种子函数要先查标记位（否则"刷新后还在不在"这类断言必假红）。② reload 后引导层会重新挂上，
       要再摘一次 `syncGateOverlay/teacherLoginGate/modalSyncGate` 才能点设置页。
+
+45. **历史流水按「老师名」归属，别再让无 teacherId 的流水算进所有老师**（2026-10-18 第 6 轮，Jackson 拿
+    「淳艺音乐社」真账单来验，暴露出来的）。
+    - 现象：历史导入只写 `teacherName`（没有 `teacherId`、`scheduleId` 也是空串），
+      `teacherRelatedLog()` 旧写法 `return !sch || sch.teacherId === ...` 对无排课流水**恒 true** →
+      财务页「查看视角」切到任何老师，都会把**全部**历史课算进他头上（手机上 `logRelatedToTeacher()` 同病）。
+      实测：温沛愉 9 月一节没上，她视角却显示「上月整月 3.0 节」（那 3 节是任凌枫的）。
+    - 口径：`teacherId` → 回退查排课 → **有 `teacherName` 就按名字在 `teachers` 里反查**（手机端直接比
+      `teacherSession.name`）→ 连名字都没有（退款等）才维持原「算全校、不进任何老师」。
+      顺序不能倒：名字兜底必须放在「查排课失败」之后，否则同名的两位老师会互串。
+    - 影响面只在本月/上月课消与明细（`2954` / `2979` 两个调用点）；金额为 0 时只错节数与环比。
+    - 回归 `tmp/finance-teacher-check.mjs` J1~J8（60 → 68）：3 节钢琴归欧阳、2 节乐理归陈、退款谁都不要；
+      **护栏自检**：把名字兜底删掉 → J3/J4/J6/J7/J8 立刻报红（两位老师都显示 5.0 节）。
+    - 校验真账单的脚本另行留在 `tmp/chunyi-validate.mjs`（桌面 15 断言）/ `chunyi-mobile.mjs` / `chunyi-teacher-scope.mjs`。
