@@ -488,13 +488,13 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
     - 列位置：表头认别名（`加入时间/加入日期/入学时间/入学日期/报名时间/报名日期/开课日期`），顺序随意；
       无表头时按第 8 列读（模板里也放在最后，老文件 7 列不受影响）。
     - **「一共上过几节课」= 现有消课 + 历史导入**，不用另算：历史导入本来就落在 `checkInLogs` 里，
-      `totalLoggedLessons` 一条求和就是全部。历史那部分只在「占一部分」时才标出来
-      （`historyLoggedLessons > 0 && < total` → 「含历史 N 节」），全是历史时不重复念。
-    - 展示位：渲染成 `[data-detail-life]` 一行（`2025-09-01 加入 · 累计已上 4 节（含历史 3 节）`），
+      `totalLoggedLessons` 一条求和就是全部。有历史课时把两段构成写明
+      （`现有 X 节 + 历史 Y 节`；全是历史时写「全部为历史导入」）—— 2026-10-19 第 7 轮改成这个写法，
+      Jackson 要的是「现有 + 历史 = 总共」，只说「含历史」看不出加法关系。
+    - 展示位：渲染成 `[data-detail-life]` 一行（`2025-09-01 加入 · 累计已上 4 节（现有 1 节 + 历史 3 节）`），
       两端同构；没有加入时间又没消课时整行不渲染。退款不计入（`isRefundLog` 已在 `allLogs` 过滤）。
-    - 核对 `history-import-check`（65 项）：Q 段解析与落库（含「看不懂不废行」「覆盖」「新建学员」）、
-      R 段两个学员各自算各自的、S 段手机端同口径。护栏自检 = 把覆盖改回 `st.joinDate || date`
-      应见 Q5/R4/S3 报红。
+    - 核对 `history-import-check`（122 项）：Q 段解析与落库（含「看不懂不废行」「覆盖」「新建学员」）、
+      R 段两个学员各自算各自的、S 段手机端同口径、X/Y 段现有学员不补课程包。
 
 44. **历史导入模板改成「一个 Excel 两个工作表」**（2026-10-18 第 5 轮，Jackson：「模板改一下，学员一个分页，
     消课记录一个分页」）
@@ -579,3 +579,25 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
     - 回归：`tmp/archive-check.mjs`（37 项：在读/历史两个范围、预警与欠课排除、详情移入移回、导入默认归档、
       已有学员不被误改、手机端同口径）。护栏自检：把财务欠课改回 `debts.filter(...)` → 立刻报红。
     - 后续接「停课 / 结课」：按钮只需 `toggleStudentArchive(st, true)` + 自定义 `archiveReason`，不用另起一套结构。
+
+48. **导入时文件里出现「现有学员」：只覆盖加入时间 + 累加已上，一个课程包都不补**（2026-10-19 第 8 轮，
+    Jackson：「如果文件里有现有学员，只覆盖加入时间，以及用目前 lessonmate 上面的课时数加上历史消课数
+    统计总共上课多少次。不要补充任何课程包」）
+    - 匹配：按名字（`String(name).replace(/\s+/g, '')`，全角/半角空格一律忽略）。命中就复用原 `id`，不新建。
+    - **只做两件事**：① `st.joinDate = date`（以文件为准覆盖，口径同第 43 条）；② 往 `checkInLogs` 追加
+      `source:'history'` 流水 —— 于是「累计已上 = 现有 + 历史」自动成立，不用另存字段。
+    - **不补课程包**：`buildHistoryPlan` 里 `plan.newCourses` 只收「`students` 里找不到的人」（= 本次新建），
+      已有学员的课程名对不上任何包时只计数 `plan.noPackCourses`，预览写「N 门只记流水，不建课程包」。
+      原因：余额 0 的包会撞进 `lowLessonRows`（`0 <= left <= 2` → 显示「已用完」）把预警刷满，
+      而课程名往往只是同一科目的另一种写法（「钢琴」vs「钢琴课」）。
+    - 历史流水的 `courseName` 允许没有对应课程包：`summaryCourseNames` 从 `courses` **和** `logs` 两边取名，
+      所以总结图里照样出现；按课程看剩余时 `hasPack=false` → 显示 `—`（不拿 0 节骗人）。
+      `syncAllDebts` 只遍历 `st.courses`，凭空多出来的课程名也不会生成欠课。
+    - 余额不变（除勾「历史合计作初始余额」）。**那个开关只往已存在的包里加**；对不上包的分节数无处可放，
+      `applyHistoryPlan` 返回 `seedDropped`，toast 里明说「N 节无处可放」，不静默吞。
+    - 归档状态不动：`setStudentArchived` 只在 `plan.newStudents.forEach` 里调用，所以在读的仍是在读、
+      已归档的仍在历史库，导入不会「复活」任何人。弹层勾选只作用于本次新建（第 47 条）。
+    - 预览交代：`现有学员 N 人 · 只覆盖加入时间、累加已上节数`（`plan.existingInFile`，含只出现在名单页的人）。
+    - 回归：`tmp/history-import-check.mjs` X 段（桌面 12 项）/ Y 段（手机 7 项）—— 课程包没被补、余额没动、
+      加入时间被覆盖、3 条流水（含 2 条无包课程）照写、累计 4 节 = 现有 1 + 历史 3。
+      护栏自检：把 `applyHistoryPlan` 里那段「给已有学员补包」加回去 → X4/X5/Y3 应报红。

@@ -405,14 +405,20 @@
     const totalLoggedLessons = allLogs.reduce((acc, l) => acc + (Number(l.deductedLessons) || 0), 0);
     const totalLoggedAmount = allLogs.reduce((acc, l) => acc + (Number(l.paymentAmount) || 0), 0);
     // 「一共上过几节课」= 现有消课 + 导入的历史消课（历史导入也落在 checkInLogs 里，一条求和就够）
+    // 与电脑端同语义：把「现有 X 节 + 历史 Y 节」两段构成说清楚
     const historyLoggedLessons = allLogs
       .filter((l) => l.source === 'history')
       .reduce((acc, l) => acc + (Number(l.deductedLessons) || 0), 0);
+    const ownLoggedLessons = totalLoggedLessons - historyLoggedLessons;
     const lifeText = [
       student.joinDate ? `${student.joinDate} 加入` : '',
       totalLoggedLessons > 0 ? `累计已上 ${totalLoggedLessons} 节` : '',
     ].filter(Boolean).join(' · ')
-      + (historyLoggedLessons > 0 && historyLoggedLessons < totalLoggedLessons ? `（含历史 ${historyLoggedLessons} 节）` : '');
+      + (historyLoggedLessons > 0
+        ? (ownLoggedLessons > 0
+          ? `（现有 ${ownLoggedLessons} 节 + 历史 ${historyLoggedLessons} 节）`
+          : '（全部为历史导入）')
+        : '');
     const logs = detailLogExpanded ? allLogs : allLogs.slice(0, DETAIL_LOG_PAGE);
     // 退款记录单列（退款不是「消课」，混进消课记录里会把节数读糊涂）
     const refundLogs = checkInLogs
@@ -1766,6 +1772,7 @@
       joinDateCount: 0,                 // 会写入加入时间的人数（新建 / 原本为空 / 换日期）
       joinDateUpdate: 0,                // 其中会改掉已有日期的人数
       joinDateWarn: 0,                  // 填了加入时间但看不懂的行数
+      noPackCourses: 0,                 // 已有学员里课程名对不上课程包的（只记流水，不建包）
       archiveNew: true,                 // 新建的学员是否直接进历史学员库（弹层勾选，默认开）
     };
     {
@@ -1797,13 +1804,22 @@
       d.isNewStudent = plan.newStudents.some((x) => x.id === d.studentId);
     });
 
-    // 课程包：不存在则计划新建（余额默认 0 —— 历史课都已经上完了，凭空给节数会虚增存量）
+    // 课程包：**只给本次新建的学员建**（余额 0 —— 历史课都上完了，凭空给节数会虚增存量）。
+    // 已有学员一律不补包（AGENTS 48，与电脑端同语义）。
     const newCourseKey = new Set();
+    const noPackKey = new Set();
     drafts.forEach((d) => {
+      const key = d.studentId + '|' + d.course;
       const st = students.find((s) => s.id === d.studentId);
-      const has = st && (st.courses || []).some((c) => c.name === d.course);
-      if (has || newCourseKey.has(d.studentId + '|' + d.course)) return;
-      newCourseKey.add(d.studentId + '|' + d.course);
+      if (st) {
+        if (!(st.courses || []).some((c) => c.name === d.course) && !noPackKey.has(key)) {
+          noPackKey.add(key);
+          plan.noPackCourses++;
+        }
+        return;
+      }
+      if (newCourseKey.has(key)) return;
+      newCourseKey.add(key);
       plan.newCourses.push({ studentId: d.studentId, course: d.course });
     });
 
@@ -1847,6 +1863,15 @@
     plan.rosterOnly = plan.newStudents
       .filter((ns) => !plan.accepted.some((d) => d.studentId === ns.id)).length;
 
+    // 文件里命中现有档案的人数（与电脑端同语义：只覆盖加入时间 + 累加已上，不动课程包）
+    const preIds = new Set(students.map((s) => s.id));
+    const fileIds = new Set(drafts.map((d) => d.studentId));
+    rosterList.forEach((r) => {
+      const sid = byName.get(String(r.name).replace(/\s+/g, ''));
+      if (sid) fileIds.add(sid);
+    });
+    plan.existingInFile = Array.from(fileIds).filter((id) => preIds.has(id)).length;
+
     plan.joinDates.forEach((date, sid) => {
       plan.joinDateCount++;                                                  // 会写入的学员数
       const st = students.find((s) => s.id === sid);
@@ -1881,13 +1906,7 @@
       students.push(st);
     });
 
-    // 已有学员：只补他还没有的课程包（余额同样给 0）
-    plan.newCourses.forEach((nc, i) => {
-      if (plan.newStudents.some((ns) => ns.id === nc.studentId)) return;
-      const st = students.find((s) => s.id === nc.studentId);
-      if (!st) return;
-      st.courses.push({ id: 'course_hist_' + Date.now() + '_' + i, name: nc.course, remainingLessons: 0, unitPrice: 0 });
-    });
+    // 已有学员：**不动课程包**，只覆盖加入时间 + 历史流水累进「累计已上」（AGENTS 48）
 
     // 加入时间**以文件为准**（覆盖）：表格是这个字段的唯一来源，也只有这样才能改掉导错的日期
     plan.joinDates.forEach((date, sid) => {
@@ -1917,16 +1936,19 @@
       });
     });
 
+    // 勾了「历史合计作初始余额」：只往已存在的课程包加；对不上包的无处可放，计数上报
+    let seedDropped = 0;
     if (seedRemaining) {
       totals.forEach((n, key) => {
         const [sid, course] = key.split('|');
         const st = students.find((s) => s.id === sid);
         const pack = st && (st.courses || []).find((c) => c.name === course);
         if (pack) pack.remainingLessons = (Number(pack.remainingLessons) || 0) + n;
+        else seedDropped += n;
       });
     }
 
-    return { batchId, count: plan.accepted.length, students: plan.newStudents.length, courses: plan.newCourses.length };
+    return { batchId, count: plan.accepted.length, students: plan.newStudents.length, courses: plan.newCourses.length, seedDropped };
   }
 
   function historyImportLogs() {
@@ -2018,9 +2040,10 @@
         </div>
         <div class="px-3 py-2 space-y-0.5 text-[11px] text-slate-600">
           <div>可导入 <b class="text-[#ff5600]">${plan.accepted.length}</b> 条 · 学员 <b class="text-slate-800">${plan.studentsInFile}</b> 人${plan.newStudents.length ? `（新建 ${plan.newStudents.length}）` : ''}</div>
+          ${plan.existingInFile ? `<div>现有学员 <b class="text-slate-800">${plan.existingInFile}</b> 人 · 只覆盖加入时间、累加已上节数</div>` : ''}
           ${plan.newStudents.length && plan.archiveNew ? `<div>新建的 ${plan.newStudents.length} 人 → <b class="text-slate-800">历史学员库</b></div>` : ''}
           ${plan.rosterCount ? `<div>名单 <b class="text-slate-800">${plan.rosterCount}</b> 人${plan.rosterOnly ? `（${plan.rosterOnly} 人暂无消课记录）` : ''}</div>` : ''}
-          <div>课程 <b class="text-slate-800">${plan.coursesInFile}</b> 门${plan.newCourses.length ? `（新建 ${plan.newCourses.length} 个课程包）` : ''} · 合计 <b class="text-slate-800">${plan.amount > 0 ? fmtMoney(plan.amount) : '—'}</b></div>
+          <div>课程 <b class="text-slate-800">${plan.coursesInFile}</b> 门${plan.newCourses.length ? `（新建 ${plan.newCourses.length} 个课程包）` : ''}${plan.noPackCourses ? `（${plan.noPackCourses} 门只记流水）` : ''} · 合计 <b class="text-slate-800">${plan.amount > 0 ? fmtMoney(plan.amount) : '—'}</b></div>
           ${plan.joinDateCount ? `<div>加入时间 <b class="text-slate-800">${plan.joinDateCount}</b> 人${plan.joinDateUpdate ? `（${plan.joinDateUpdate} 人将更新）` : ''}</div>` : ''}
         </div>
         ${plan.accepted.length ? `<div class="px-3 pb-2">${rowsHtml}${plan.accepted.length > 6 ? `<div class="text-[10px] text-slate-400 py-1">…下面是另 ${plan.accepted.length - 6} 条</div>` : ''}</div>` : (plan.rosterCount ? '<div class="px-3 pb-2 text-[11px] text-slate-500">本次只导入学员名单，没有消课记录</div>' : '<div class="px-3 pb-2 text-[11px] text-rose-500">没有可导入的行</div>')}
@@ -2111,7 +2134,8 @@
     refreshMobileAll();
     historyPlanCache = null;
     hideModal('modalMobileHistoryImport');
-    showToast(`已导入 ${res.count} 条历史消课记录${res.students ? `，新建 ${res.students} 位学员` : ''}`);
+    showToast(`已导入 ${res.count} 条历史消课记录${res.students ? `，新建 ${res.students} 位学员` : ''}`
+      + (res.seedDropped ? `（${res.seedDropped} 节无处可放）` : ''));
   }
 
   function handleClearMobileHistoryLogs() {
