@@ -451,8 +451,10 @@
       .filter((l) => l.source === 'history')
       .reduce((acc, l) => acc + (Number(l.deductedLessons) || 0), 0);
     const ownLoggedLessons = totalLoggedLessons - historyLoggedLessons;
+    // 加入时间：没填的老学员用「第一节课」顶上来（joinDateOf），只是显示，不改档案
+    const joinShow = joinDateOf(student);
     const lifeText = [
-      student.joinDate ? `${student.joinDate} 加入` : '',
+      joinShow ? `${joinShow} 加入` : '',
       totalLoggedLessons > 0 ? `累计已上 ${totalLoggedLessons} 节` : '',
     ].filter(Boolean).join(' · ')
       + (historyLoggedLessons > 0
@@ -482,7 +484,7 @@
         <div class="flex-1">
           <div class="font-bold text-sm lm-t1 flex items-center gap-1.5 flex-wrap">${student.name}${isArchivedSt(student) ? `<span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full lm-soft lm-t3">历史学员${student.archivedAt ? ' · ' + student.archivedAt : ''}</span>` : ''}</div>
           <div class="text-[11px] lm-t2">${student.phone ? '<i class="fa-solid fa-phone text-[9px]"></i> ' + student.phone : '未填电话'}</div>
-          ${lifeText ? `<div class="text-[10px] lm-t3 mt-0.5" data-detail-life>${student.joinDate ? '<i class="fa-solid fa-calendar-plus text-[9px]"></i> ' : ''}${lifeText}</div>` : ''}
+          ${lifeText ? `<div class="text-[10px] lm-t3 mt-0.5" data-detail-life>${joinShow ? '<i class="fa-solid fa-calendar-plus text-[9px]"></i> ' : ''}${lifeText}</div>` : ''}
         </div>
         <div class="text-right">
           <div class="text-lg font-black ${totalOwed > 0 ? 'text-rose-600' : 'lm-t1'}">${totalLessons}</div>
@@ -3011,11 +3013,30 @@
     return { total, history, last };
   }
 
+  // 现有学员没填加入时间时，拿「第一节课」顶上来**显示**（不写库）：
+  // 第一节 = 该学员最早一条消课记录（含历史导入；退款不算）。空着比写个错日期更难解释。
+  function firstLessonDate(studentId) {
+    let first = '';
+    checkInLogs.forEach((l) => {
+      if (l.studentId !== studentId || isRefundLog(l)) return;
+      const d = logDateText(l);
+      if (d && (!first || d < first)) first = d;
+    });
+    return first;
+  }
+
+  // 对外只认这一个入口：有 `joinDate` 用它，没有就用第一节课（两边渲染都走这里）
+  function joinDateOf(st) {
+    if (!st) return '';
+    return st.joinDate || firstLessonDate(st.id) || '';
+  }
+
   function archivedStudentCardHtml(student) {
     const themeColor = getThemeBadgeStyle(student.colorTheme || 'amber');
     const stat = studentLessonStats(student.id);
+    const joinShow = joinDateOf(student);
     const meta = [
-      student.joinDate ? `${student.joinDate} 加入` : '',
+      joinShow ? `${joinShow} 加入` : '',
       stat.total ? `累计 ${stat.total} 节` : '',
       stat.last ? `最后 ${stat.last}` : '',
     ].filter(Boolean).join(' · ');

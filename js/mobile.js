@@ -410,8 +410,9 @@
       .filter((l) => l.source === 'history')
       .reduce((acc, l) => acc + (Number(l.deductedLessons) || 0), 0);
     const ownLoggedLessons = totalLoggedLessons - historyLoggedLessons;
+    const joinShow = joinDateOf(student);
     const lifeText = [
-      student.joinDate ? `${student.joinDate} 加入` : '',
+      joinShow ? `${joinShow} 加入` : '',
       totalLoggedLessons > 0 ? `累计已上 ${totalLoggedLessons} 节` : '',
     ].filter(Boolean).join(' · ')
       + (historyLoggedLessons > 0
@@ -441,7 +442,7 @@
         <div class="flex-1">
           <div class="font-bold text-sm text-slate-800 flex items-center gap-1.5 flex-wrap">${student.name}${isArchivedSt(student) ? `<span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-500">历史学员${student.archivedAt ? ' · ' + student.archivedAt : ''}</span>` : ''}</div>
           <div class="text-[11px] text-slate-500">${student.phone ? '📞 ' + student.phone : '未填电话'}</div>
-          ${lifeText ? `<div class="text-[10px] text-slate-400 mt-0.5" data-detail-life>${student.joinDate ? '<i class="fa-solid fa-calendar-plus text-[9px]"></i> ' : ''}${lifeText}</div>` : ''}
+          ${lifeText ? `<div class="text-[10px] text-slate-400 mt-0.5" data-detail-life>${joinShow ? '<i class="fa-solid fa-calendar-plus text-[9px]"></i> ' : ''}${lifeText}</div>` : ''}
         </div>
         <div class="text-right">
           <div class="text-xl font-black ${totalOwed > 0 ? 'text-[#d5304f]' : 'text-[#fe4c02]'}">${totalLessons}</div>
@@ -5538,6 +5539,22 @@
     return { total, last };
   }
 
+  // 没填加入时间的老学员用「第一节课」顶上来显示（只显示，不写库；与电脑端同语义）
+  function firstLessonDate(studentId) {
+    let first = '';
+    checkInLogs.forEach((l) => {
+      if (l.studentId !== studentId || isRefundLog(l)) return;
+      const d = logDateText(l);
+      if (d && (!first || d < first)) first = d;
+    });
+    return first;
+  }
+
+  function joinDateOf(st) {
+    if (!st) return '';
+    return st.joinDate || firstLessonDate(st.id) || '';
+  }
+
   function syncMobileScopeTabs() {
     const tabs = document.getElementById('mStudentScopeTabs');
     if (!tabs) return;
@@ -5566,8 +5583,9 @@
     card.className = 'lm-card p-3 space-y-2';
     const av = avatarColorFor(st);
     const stat = mobileStudentStats(st.id);
+    const joinShow = joinDateOf(st);
     const meta = [
-      st.joinDate ? `${st.joinDate} 加入` : '',
+      joinShow ? `${joinShow} 加入` : '',
       stat.total ? `累计 ${stat.total} 节` : '',
       stat.last ? `最后 ${stat.last}` : '',
     ].filter(Boolean).join(' · ');

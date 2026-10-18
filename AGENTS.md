@@ -601,3 +601,17 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
     - 回归：`tmp/history-import-check.mjs` X 段（桌面 12 项）/ Y 段（手机 7 项）—— 课程包没被补、余额没动、
       加入时间被覆盖、3 条流水（含 2 条无包课程）照写、累计 4 节 = 现有 1 + 历史 3。
       护栏自检：把 `applyHistoryPlan` 里那段「给已有学员补包」加回去 → X4/X5/Y3 应报红。
+
+49. **没填加入时间的老学员：「加入时间」用第一节课顶上来显示**（2026-10-19 第 9 轮，
+    Jackson：「现有学员没有加入时间的，按照第一节课时间显示」）
+    - 唯一入口 `joinDateOf(st)`（两端同构）：`st.joinDate || firstLessonDate(st.id) || ''`。
+      `firstLessonDate` = 该学员**最早一条消课记录**的 `logDateText`（含历史导入；`isRefundLog` 排除）。
+      渲染加入时间的地方一律走 `joinDateOf`，别再直接读 `st.joinDate`——否则详情和归档卡片会不一致。
+    - **只显示，不写库**：`st.joinDate` 仍留空，等文件里带了日期再覆盖。派生值一旦落库，就再也分不清
+      「真的加入时间」和「第一节课时间」。
+    - 用到的地方：详情头部 `[data-detail-life]`（含日历图标的有无）、历史学员卡片的 meta。
+    - ⚠️ 连带坑：详情头部那行因此**可能多出 `<i>` 子节点**（之前 joinDate 空时没有图标）。`log-detail-check`
+      原来靠 `children.length >= 1` 找「累计 N 节」合计行，会被这行抢先命中 → A3/A4 报红。断言已改成跳过
+      `[data-detail-life]`。
+    - 回归：`history-import-check` Z 段（桌面 6 项）/ AA 段（手机 2 项）—— 有老流水但无 joinDate →
+      显示最早那节；一条流水都没有 → 用导入的第一节；已有 joinDate → 优先用它；且 `joinDate` 字段仍为空。
