@@ -495,3 +495,37 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
     - 核对 `history-import-check`（65 项）：Q 段解析与落库（含「看不懂不废行」「覆盖」「新建学员」）、
       R 段两个学员各自算各自的、S 段手机端同口径。护栏自检 = 把覆盖改回 `st.joinDate || date`
       应见 Q5/R4/S3 报红。
+
+44. **历史导入模板改成「一个 Excel 两个工作表」**（2026-10-18 第 5 轮，Jackson：「模板改一下，学员一个分页，
+    消课记录一个分页」）
+    - 用户选的口径：**一个 .xlsx 两个工作表**（不是两个 CSV）；「学员」页只要 **姓名 + 加入时间**。
+      CSV 天生装不下多个工作表，所以这轮把导入从「只读 CSV」升级成「能读 xlsx」。
+    - **模板三个表**：`学员`（姓名 / 加入时间）、`消课记录`（日期 / 学员 / 课程 / 节数 / 金额 / 老师 / 备注）、
+      `说明`（纯文字，导入时按表名跳过）。示例数据 1 + 2 + 1 节 = 4 条流水、2 个人。
+    - **自写 xlsx 读写（无依赖）**，两端同一份 `xlsxRead` / `xlsxWrite`：
+      - 读 = 解 ZIP（中央目录 + 兼容 data descriptor，大小以中央目录为准）→ **raw inflate**（bit 级
+        canonical Huffman：固定/动态/存储三种块都实现了）→ 正则取 XML。
+      - **日期单元格是「序列号 + 数字格式」**，必须查 `xl/styles.xml` 的 `cellXfs.numFmtId`
+        （内置 14~22/45~47 等 + 自定义格式串里带 y/m/d）再按 1900/1904 基准换算，
+        否则 2026-03-05 会读成 `46086`。1900 系统要处理那个不存在的 2/29（serial < 60 用 12-31 起算）。
+      - 写 = 只打 STORE（不压缩），省掉 deflate 实现。`fills` 要给两个（none + gray125）、
+        `cellStyles` 要有 Normal，否则 Excel 打开会提示"修复"。
+    - **工作表分工**（`historyPickSheets`）：先按表名（消课|上课|记录 / 学员|学生|名单），
+      认不到再看表头（有「节数」的是记录页、只有「姓名」的是名单页），**都不认才退回第一个表** ——
+      所以「说明」页放第一也没事，用户把表改名成 Sheet1/Sheet2 也能用。
+    - **名单是加入时间的权威来源**：同一人 `joinDate` 以「学员」页为准，**盖掉**消课记录里的行内值；
+      老 CSV（第 8 列 `加入时间`）仍然兼容，行内值只在名单没写时生效。
+    - **只有名单、没有消课记录也要能导**：这是合法输入（建学员本身有价值），
+      预览显示「本次只导入学员名单，没有消课记录」，按钮不禁用。
+    - ⚠️ **这类学员必须打 `noDefaultCourse: true`**：`normalizeStudent` 见到空 `courses` 会补
+      「基础课程 10 节」，下次 `loadData` 又补一遍 —— 等于凭空造 10 节存量（财务虚高）。
+      逃生口只由历史导入设置，其他入口不受影响。
+    - 解析层重构：`parseHistoryCsv` 先切二维表，再走 `historyParseMatrix` —— **xlsx 和 CSV 共用同一套
+      单元格→行的逻辑**，两条入口不会解析出不同结果。空行过滤但保留原始行号（报错说「第 8 行」仍准）。
+    - 核对 `tmp/history-import-check.mjs`（102 项）：T 模板结构（用 node 的 zlib 自己解一遍 zip 验工作表名/表头）/
+      U 模板原样导回（4 条 + 2 人 + 加入时间 + 重导幂等）/ V 只有名单、表名被改、真实日期单元格、
+      说明页在前、坏文件提示 / W 手机端同口径。fixtures 在 `tmp/fixtures/*.xlsx`（openpyxl 生成，
+      带真正的日期单元格）。**护栏自检**：删掉 `noDefaultCourse` 那行 → V7 立刻报红（补出「基础课程 10 节」）。
+    - 测试侧两个坑：① `addInitScript` 每次导航都跑，`page.reload()` 会把 localStorage 重种一遍 →
+      种子函数要先查标记位（否则"刷新后还在不在"这类断言必假红）。② reload 后引导层会重新挂上，
+      要再摘一次 `syncGateOverlay/teacherLoginGate/modalSyncGate` 才能点设置页。

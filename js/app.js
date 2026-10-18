@@ -181,6 +181,9 @@
   }
 
   function normalizeStudent(st) {
+    // 名单导入的学员（只有姓名 + 加入时间、还没买课）：没有课程包是正常状态，
+    // 补一个「基础课程 10 节」等于凭空造存量。这个标记只由历史导入设置。
+    if (st.noDefaultCourse && (!st.courses || !st.courses.length)) return st;
     if (!st.courses || !Array.isArray(st.courses) || st.courses.length === 0) {
       st.courses = [
         {
@@ -5172,6 +5175,443 @@
   //   2. 日期同时写 `date` 和 `checkInTime`，且 checkInTime 取**本地中午 12:00** 转 ISO：
   //      财务按月聚合用的是 checkInTime 的字符串前缀，取 00:00 会在月初滑到上个月。
   //   3. 重导同一份文件必须幂等 —— 去重键 studentId+date+course+金额，按「系统里已有几条」消耗。
+  // ==========================================
+  // 14b-0. 最小 XLSX 读写（无依赖，只服务历史导入模板）
+  // ==========================================
+  // 为什么自己写：本项目是纯静态 PWA，不引 npm 包；模板要「学员 / 消课记录」两个工作表，
+  // CSV 装不下两个表，只能上 xlsx。xlsx 本质 = ZIP + 一堆 XML：
+  //   读 = 解 zip（要 raw inflate）+ 解析 sharedStrings / styles / sheet；
+  //   写 = 打 zip（只存不压缩，STORE）+ 拼 XML，不需要 deflate。
+  // 只覆盖导入用得到的子集：共享字符串、内联字符串、数字、日期序列号。
+  // 单元格里的日期是「序列号 + 数字格式」，必须靠 xl/styles.xml 的 cellXfs 判断，
+  // 否则 2026-03-05 读出来是 46086 这种天文数字。
+  const XLSX_CRC_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) {
+      let c = i;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[i] = c >>> 0;
+    }
+    return t;
+  })();
+
+  function xlsxCrc32(u8) {
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < u8.length; i++) c = XLSX_CRC_TABLE[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  // raw deflate（RFC1951）。bitbuf 最多攒 32 位、单次取位 ≤16 位，不会溢出。
+  function xlsxInflate(input) {
+    const src = input;
+    let pos = 0; let bitbuf = 0; let bitcnt = 0;
+    let out = new Uint8Array(Math.max(1024, src.length * 5));
+    let olen = 0;
+    const grow = (n) => {
+      if (olen + n <= out.length) return;
+      let cap = out.length || 1024;
+      while (cap < olen + n) cap *= 2;
+      const nb = new Uint8Array(cap);
+      nb.set(out.subarray(0, olen));
+      out = nb;
+    };
+    const bits = (n) => {
+      if (!n) return 0;
+      while (bitcnt < n) {
+        if (pos >= src.length) throw new Error('压缩数据不完整');
+        bitbuf |= src[pos++] << bitcnt;
+        bitcnt += 8;
+      }
+      const v = bitbuf & ((1 << n) - 1);
+      bitbuf >>>= n;
+      bitcnt -= n;
+      return v;
+    };
+    const buildHuff = (lens) => {
+      let maxBits = 0;
+      for (let i = 0; i < lens.length; i++) if (lens[i] > maxBits) maxBits = lens[i];
+      const cnt = new Array(maxBits + 1).fill(0);
+      for (let i = 0; i < lens.length; i++) if (lens[i]) cnt[lens[i]]++;
+      const next = new Array(maxBits + 1).fill(0);
+      let code = 0;
+      for (let b = 1; b <= maxBits; b++) { code = (code + cnt[b - 1]) << 1; next[b] = code; }
+      const map = new Map();
+      for (let s = 0; s < lens.length; s++) {
+        const l = lens[s];
+        if (!l) continue;
+        map.set((l << 16) | next[l]++, s);
+      }
+      return { map, maxBits };
+    };
+    const decode = (h) => {
+      let code = 0;
+      for (let l = 1; l <= h.maxBits; l++) {
+        code = (code << 1) | bits(1);
+        const s = h.map.get((l << 16) | code);
+        if (s !== undefined) return s;
+      }
+      throw new Error('压缩数据损坏');
+    };
+    const LEN_BASE = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258];
+    const LEN_EXTRA = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0];
+    const DIST_BASE = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577];
+    const DIST_EXTRA = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13];
+    const CL_ORDER = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
+    const FIX_LIT = new Uint8Array(288);
+    for (let i = 0; i < 288; i++) FIX_LIT[i] = i < 144 ? 8 : i < 256 ? 9 : i < 280 ? 7 : 8;
+    let final = 0;
+    while (!final) {
+      final = bits(1);
+      const type = bits(2);
+      if (type === 0) {
+        bitbuf = 0; bitcnt = 0;                       // 存储块要按字节对齐
+        const len = src[pos] | (src[pos + 1] << 8);
+        const nlen = src[pos + 2] | (src[pos + 3] << 8);
+        if ((len ^ 0xFFFF) !== nlen) throw new Error('压缩数据损坏');
+        pos += 4;
+        grow(len);
+        out.set(src.subarray(pos, pos + len), olen);
+        olen += len; pos += len;
+        continue;
+      }
+      let litH; let distH;
+      if (type === 1) {
+        litH = buildHuff(FIX_LIT);
+        distH = buildHuff(new Uint8Array(30).fill(5));
+      } else if (type === 2) {
+        const hlit = bits(5) + 257;
+        const hdist = bits(5) + 1;
+        const hclen = bits(4) + 4;
+        const clLens = new Uint8Array(19);
+        for (let i = 0; i < hclen; i++) clLens[CL_ORDER[i]] = bits(3);
+        const clH = buildHuff(clLens);
+        const lens = new Uint8Array(hlit + hdist);
+        let i = 0;
+        while (i < lens.length) {
+          const sym = decode(clH);
+          if (sym < 16) { lens[i++] = sym; continue; }
+          let rep = 0; let val = 0;
+          if (sym === 16) { if (!i) throw new Error('压缩数据损坏'); val = lens[i - 1]; rep = 3 + bits(2); }
+          else if (sym === 17) { rep = 3 + bits(3); }
+          else { rep = 11 + bits(7); }
+          while (rep-- > 0 && i < lens.length) lens[i++] = val;
+        }
+        litH = buildHuff(lens.subarray(0, hlit));
+        distH = buildHuff(lens.subarray(hlit));
+      } else {
+        throw new Error('不支持的压缩方式');
+      }
+      for (;;) {
+        const sym = decode(litH);
+        if (sym === 256) break;
+        if (sym < 256) { grow(1); out[olen++] = sym; continue; }
+        const li = sym - 257;
+        if (li >= 29) throw new Error('压缩数据损坏');
+        const len = LEN_BASE[li] + bits(LEN_EXTRA[li]);
+        const di = decode(distH);
+        if (di >= 30) throw new Error('压缩数据损坏');
+        const dist = DIST_BASE[di] + bits(DIST_EXTRA[di]);
+        if (dist > olen) throw new Error('压缩数据损坏');
+        grow(len);
+        for (let k = 0; k < len; k++) { out[olen] = out[olen - dist]; olen++; }
+      }
+    }
+    return out.subarray(0, olen);
+  }
+
+  // 读 ZIP 中央目录，按需取条目（兼容 Excel 的 data descriptor：大小以中央目录为准）
+  function xlsxUnzip(buf) {
+    const dv = new DataView(buf);
+    const u8 = new Uint8Array(buf);
+    const td = new TextDecoder('utf-8');
+    let eocd = -1;
+    for (let i = buf.byteLength - 22; i >= 0 && i >= buf.byteLength - 65558; i--) {
+      if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    }
+    if (eocd < 0) throw new Error('不是有效的 xlsx');
+    const count = dv.getUint16(eocd + 10, true);
+    let off = dv.getUint32(eocd + 16, true);
+    const entries = new Map();
+    for (let i = 0; i < count; i++) {
+      if (off + 46 > buf.byteLength || dv.getUint32(off, true) !== 0x02014b50) break;
+      const method = dv.getUint16(off + 10, true);
+      const compSize = dv.getUint32(off + 20, true);
+      const nameLen = dv.getUint16(off + 28, true);
+      const extraLen = dv.getUint16(off + 30, true);
+      const cmtLen = dv.getUint16(off + 32, true);
+      const localOff = dv.getUint32(off + 42, true);
+      const name = td.decode(u8.subarray(off + 46, off + 46 + nameLen));
+      const lNameLen = dv.getUint16(localOff + 26, true);
+      const lExtraLen = dv.getUint16(localOff + 28, true);
+      entries.set(name, { method, compSize, start: localOff + 30 + lNameLen + lExtraLen });
+      off += 46 + nameLen + extraLen + cmtLen;
+    }
+    return {
+      text(name) {
+        const e = entries.get(name);
+        if (!e) return '';
+        const raw = u8.subarray(e.start, e.start + e.compSize);
+        const bytes = e.method === 0 ? raw : e.method === 8 ? xlsxInflate(raw) : null;
+        if (!bytes) throw new Error('xlsx 用了不支持的压缩方式');
+        return td.decode(bytes);
+      },
+    };
+  }
+
+  function xlsxUnescape(s) {
+    return String(s)
+      .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+      .replace(/&#x([0-9a-fA-F]+);/g, (m, h) => String.fromCodePoint(parseInt(h, 16)))
+      .replace(/&#(\d+);/g, (m, d) => String.fromCodePoint(parseInt(d, 10)))
+      .replace(/&amp;/g, '&');
+  }
+
+  function xlsxAttr(tag, name) {
+    const m = String(tag).match(new RegExp('\\s' + name + '\\s*=\\s*"([^"]*)"'));
+    return m ? xlsxUnescape(m[1]) : '';
+  }
+
+  // 内置日期格式号 + 自定义格式串（yyyy-mm-dd / m"月"d"日"）都要认
+  const XLSX_DATE_FMT_IDS = [14, 15, 16, 17, 18, 19, 20, 21, 22, 27, 30, 36, 45, 46, 47, 50, 57];
+
+  function xlsxIsDateFormat(code) {
+    const s = String(code || '')
+      .replace(/"[^"]*"/g, '')       // 去掉 "年" 这类字面量
+      .replace(/\[[^\]]*\]/g, '')    // 去掉 [$-409] / [红色]
+      .replace(/\\/g, '');
+    return /[ymd]/i.test(s) && !/^[#0.,%\s]+$/.test(s);
+  }
+
+  // Excel 序列号 → YYYY-MM-DD（1900 系统要处理那个不存在的 2 月 29 日：<60 的用 12-31 起算）
+  function xlsxSerialToDate(serial, date1904) {
+    const days = Math.floor(serial);
+    const base = date1904 ? Date.UTC(1904, 0, 1) : Date.UTC(1899, 11, days > 59 ? 30 : 31);
+    const d = new Date(base + days * 86400000);
+    const y = d.getUTCFullYear();
+    if (y < 1900 || y > 2200) return '';
+    return `${y}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+  }
+
+  // "AB12" → 1（0 基）
+  function xlsxColIndex(ref) {
+    const m = String(ref || '').match(/^([A-Z]+)/i);
+    if (!m) return -1;
+    const s = m[1].toUpperCase();
+    let n = 0;
+    for (let i = 0; i < s.length; i++) n = n * 26 + (s.charCodeAt(i) - 64);
+    return n - 1;
+  }
+
+  // 读整本工作簿 → [{ name, rows: [[单元格文本, ...], ...] }]
+  function xlsxRead(buf) {
+    const zip = xlsxUnzip(buf);
+    const wbXml = zip.text('xl/workbook.xml');
+    if (!wbXml) throw new Error('不是有效的 xlsx');
+    const relsXml = zip.text('xl/_rels/workbook.xml.rels');
+    const relMap = new Map();
+    (relsXml.match(/<Relationship\b[^>]*>/g) || []).forEach((tag) => {
+      const id = xlsxAttr(tag, 'Id');
+      let target = xlsxAttr(tag, 'Target');
+      if (!id || !target) return;
+      target = target.replace(/^\/?xl\//, '').replace(/^\.\//, '');
+      relMap.set(id, 'xl/' + target);
+    });
+
+    // 共享字符串：<si> 里可能有多个 <t>（富文本分段），必须拼起来
+    const sst = [];
+    const sstXml = zip.text('xl/sharedStrings.xml');
+    (sstXml.match(/<si\b[^>]*\/>|<si\b[\s\S]*?<\/si>/g) || []).forEach((si) => {
+      const parts = si.match(/<t\b[^>]*>[\s\S]*?<\/t>/g) || [];
+      sst.push(parts.map((t) => xlsxUnescape(t.replace(/<[^>]+>/g, ''))).join(''));
+    });
+
+    // 样式：cellXfs 里的 numFmtId 决定这格是不是日期
+    const stylesXml = zip.text('xl/styles.xml');
+    const customFmt = new Map();
+    (stylesXml.match(/<numFmt\b[^>]*>/g) || []).forEach((tag) => {
+      customFmt.set(xlsxAttr(tag, 'numFmtId'), xlsxAttr(tag, 'formatCode'));
+    });
+    const xfs = stylesXml.match(/<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs>/);
+    const xfDate = [];
+    if (xfs) {
+      (xfs[1].match(/<xf\b[^>]*>/g) || []).forEach((tag) => {
+        const id = parseInt(xlsxAttr(tag, 'numFmtId') || '0', 10);
+        xfDate.push(XLSX_DATE_FMT_IDS.indexOf(id) >= 0
+          || (customFmt.has(String(id)) && xlsxIsDateFormat(customFmt.get(String(id)))));
+      });
+    }
+    const date1904 = /date1904\s*=\s*"(1|true)"/.test(wbXml);
+
+    const sheets = [];
+    (wbXml.match(/<sheet\b[^>]*>/g) || []).forEach((tag, i) => {
+      const name = xlsxAttr(tag, 'name');
+      const rid = xlsxAttr(tag, 'r:id') || xlsxAttr(tag, 'id');
+      const xml = zip.text((rid && relMap.get(rid)) || ('xl/worksheets/sheet' + (i + 1) + '.xml'));
+      if (!xml) return;
+      const rows = [];
+      (xml.match(/<row\b[^>]*>[\s\S]*?<\/row>/g) || []).forEach((rowXml) => {
+        const cells = [];
+        (rowXml.match(/<c\b[^>]*\/>|<c\b[^>]*>[\s\S]*?<\/c>/g) || []).forEach((cXml) => {
+          const open = (cXml.match(/^<c\b[^>]*>/) || [cXml])[0];
+          const t = xlsxAttr(open, 't');
+          const s = parseInt(xlsxAttr(open, 's') || '-1', 10);
+          let val = '';
+          if (t === 'inlineStr') {
+            const parts = cXml.match(/<t\b[^>]*>[\s\S]*?<\/t>/g) || [];
+            val = parts.map((x) => xlsxUnescape(x.replace(/<[^>]+>/g, ''))).join('');
+          } else {
+            const vm = cXml.match(/<v\b[^>]*>([\s\S]*?)<\/v>/);
+            const raw = vm ? xlsxUnescape(vm[1]) : '';
+            if (t === 's') val = sst[parseInt(raw, 10)] || '';
+            else if (t === 'str' || t === 'b' || t === 'e') val = raw;
+            else if (raw !== '') {
+              const num = Number(raw);
+              val = (s >= 0 && xfDate[s] && Number.isFinite(num)) ? (xlsxSerialToDate(num, date1904) || raw) : raw;
+            }
+          }
+          const ci = xlsxColIndex(xlsxAttr(open, 'r'));
+          const idx = ci >= 0 ? ci : cells.length;
+          while (cells.length < idx) cells.push('');
+          cells[idx] = val;
+        });
+        rows.push(cells);
+      });
+      sheets.push({ name, rows });
+    });
+    return sheets;
+  }
+
+  // 写工作簿（只 STORE，不压缩 —— 模板只有几十行，体积无所谓，省掉 deflate 实现）
+  function xlsxWrite(sheets) {
+    const enc = new TextEncoder();
+    const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const colName = (i) => {
+      let s = '';
+      let n = i + 1;
+      while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
+      return s;
+    };
+    const sstMap = new Map();
+    const sstList = [];
+    const sstIndex = (v) => {
+      if (!sstMap.has(v)) { sstMap.set(v, sstList.length); sstList.push(v); }
+      return sstMap.get(v);
+    };
+    const files = [];
+    const add = (name, text) => files.push({ name, data: enc.encode(text) });
+    const sheetPaths = [];
+
+    sheets.forEach((s, i) => {
+      const body = s.rows.map((cells, ri) => {
+        const cs = cells.map((v, ci) => {
+          const ref = colName(ci) + (ri + 1);
+          if (v === '' || v == null) return `<c r="${ref}"/>`;
+          return `<c r="${ref}" t="s"><v>${sstIndex(String(v))}</v></c>`;
+        }).join('');
+        return `<row r="${ri + 1}">${cs}</row>`;
+      }).join('');
+      const p = `xl/worksheets/sheet${i + 1}.xml`;
+      add(p, '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        + `<sheetData>${body}</sheetData></worksheet>`);
+      sheetPaths.push(p);
+    });
+
+    add('xl/sharedStrings.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      + `<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${sstList.length}" uniqueCount="${sstList.length}">`
+      + sstList.map((s) => `<si><t xml:space="preserve">${esc(s)}</t></si>`).join('')
+      + '</sst>');
+
+    add('xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+      + '<sheets>' + sheets.map((s, i) => `<sheet name="${esc(s.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('') + '</sheets>'
+      + '</workbook>');
+
+    add('xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+      + sheets.map((s, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')
+      + `<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>`
+      + '</Relationships>');
+
+    // fills 至少两个（none + gray125）、cellStyles 要有 Normal，否则 Excel 会提示"修复"
+    add('xl/styles.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+      + '<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>'
+      + '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>'
+      + '<borders count="1"><border/></borders>'
+      + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+      + '<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+      + '<xf numFmtId="14" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>'
+      + '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
+      + '</styleSheet>');
+
+    add('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+      + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+      + '<Default Extension="xml" ContentType="application/xml"/>'
+      + '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+      + sheetPaths.map((p) => `<Override PartName="/${p}" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')
+      + '<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>'
+      + '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+      + '</Types>');
+
+    add('_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+      + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+      + '</Relationships>');
+
+    // ---- 打包（STORE）----
+    const chunks = [];
+    const central = [];
+    let offset = 0;
+    files.forEach((f) => {
+      const nameBytes = enc.encode(f.name);
+      const crc = xlsxCrc32(f.data);
+      const lh = new Uint8Array(30 + nameBytes.length);
+      const dv = new DataView(lh.buffer);
+      dv.setUint32(0, 0x04034b50, true);
+      dv.setUint16(4, 20, true);
+      dv.setUint16(6, 0x0800, true);         // 文件名 UTF-8
+      dv.setUint16(8, 0, true);              // STORE
+      dv.setUint32(14, crc, true);
+      dv.setUint32(18, f.data.length, true);
+      dv.setUint32(22, f.data.length, true);
+      dv.setUint16(26, nameBytes.length, true);
+      lh.set(nameBytes, 30);
+      chunks.push(lh, f.data);
+      central.push({ nameBytes, crc, size: f.data.length, offset });
+      offset += lh.length + f.data.length;
+    });
+    const cdStart = offset;
+    central.forEach((c) => {
+      const ch = new Uint8Array(46 + c.nameBytes.length);
+      const dv = new DataView(ch.buffer);
+      dv.setUint32(0, 0x02014b50, true);
+      dv.setUint16(4, 20, true);
+      dv.setUint16(6, 20, true);
+      dv.setUint16(8, 0x0800, true);
+      dv.setUint16(10, 0, true);             // STORE
+      dv.setUint32(16, c.crc, true);
+      dv.setUint32(20, c.size, true);
+      dv.setUint32(24, c.size, true);
+      dv.setUint16(28, c.nameBytes.length, true);
+      dv.setUint32(42, c.offset, true);
+      ch.set(c.nameBytes, 46);
+      chunks.push(ch);
+      offset += ch.length;
+    });
+    const eocd = new Uint8Array(22);
+    const edv = new DataView(eocd.buffer);
+    edv.setUint32(0, 0x06054b50, true);
+    edv.setUint16(8, central.length, true);
+    edv.setUint16(10, central.length, true);
+    edv.setUint32(12, offset - cdStart, true);
+    edv.setUint32(16, cdStart, true);
+    chunks.push(eocd);
+    return new Blob(chunks, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  }
+
   const HISTORY_HEADER_ALIASES = {
     date: ['日期', '上课日期', '上课时间', '课次日期', 'date'],
     student: ['学员', '学生', '姓名', '学员姓名', '学生姓名', 'student', 'name'],
@@ -5271,41 +5711,148 @@
     return Math.min(n, 20);                  // 一行 20 节以上基本是脏数据
   }
 
-  function parseHistoryCsv(text) {
-    const lines = historySplitLines(text);
-    if (!lines.length) return { rows: [], hasHeader: false, error: '文件是空的' };
-    const delim = historyDetectDelimiter(lines[0]);
-    const headMap = historyMapHeader(historySplitCells(lines[0], delim));
+  // ---------- 名单工作表（学员：姓名 + 加入时间） ----------
+  const ROSTER_HEADER_ALIASES = {
+    name: ['姓名', '学员', '学生', '学员姓名', '学生姓名', 'name', 'student'],
+    joinDate: ['加入时间', '加入日期', '入学时间', '入学日期', '报名时间', '报名日期', '开课日期', 'joindate', 'enroll'],
+  };
+
+  // 二维表 → 行对象。CSV 和 xlsx 共用这一套，保证两条入口解析口径完全一致
+  function historyParseMatrix(matrix, lineNos) {
+    const clean = [];
+    const nos = [];
+    matrix.forEach((r, i) => {
+      if (r && r.some((c) => String(c == null ? '' : c).trim() !== '')) {
+        clean.push(r);
+        nos.push(lineNos ? lineNos[i] : i + 1);
+      }
+    });
+    if (!clean.length) return { rows: [], hasHeader: false, error: '文件是空的' };
+    const headMap = historyMapHeader(clean[0]);
     const idx = headMap || { date: 0, student: 1, course: 2, lessons: 3, amount: 4, teacher: 5, remarks: 6, joinDate: 7 };
     const rows = [];
-    for (let i = headMap ? 1 : 0; i < lines.length; i++) {
-      const cells = historySplitCells(lines[i], delim);
-      const at = (k) => (idx[k] === undefined ? '' : String(cells[idx[k]] == null ? '' : cells[idx[k]]).trim());
-      const joinRaw = at('joinDate');
-      const row = {
-        line: i + 1,
-        date: historyParseDate(at('date')),
-        student: at('student').replace(/\s+/g, ''),
-        course: at('course'),
-        lessons: historyParseLessons(at('lessons')),
-        amount: historyParseAmount(at('amount')),
-        teacher: at('teacher'),
-        remarks: at('remarks'),
-        joinDate: historyParseDate(joinRaw),
-        // 加入时间看不懂只提醒、不废掉这一行 —— 它只是个附加信息，不该因为一个日期
-        // 把整条已经上过的课（和钱）丢掉
-        joinDateBad: !!joinRaw && !historyParseDate(joinRaw),
-        err: '',
-      };
-      if (!row.date) row.err = '日期看不懂';
-      else if (!row.student) row.err = '缺学员姓名';
-      else if (!row.course) row.err = '缺课程名';
-      else if (!Number.isFinite(row.lessons)) row.err = '节数看不懂';
-      else if (!Number.isFinite(row.amount)) row.err = '金额看不懂';
-      rows.push(row);
+    for (let i = headMap ? 1 : 0; i < clean.length; i++) {
+      rows.push(historyRowFromCells(clean[i], idx, nos[i]));
     }
     if (!rows.length) return { rows: [], hasHeader: !!headMap, error: headMap ? '只有表头，没有数据行' : '没有数据行' };
     return { rows, hasHeader: !!headMap, error: '' };
+  }
+
+  function historyRowFromCells(cells, idx, lineNo) {
+    const at = (k) => (idx[k] === undefined ? '' : String(cells[idx[k]] == null ? '' : cells[idx[k]]).trim());
+    const joinRaw = at('joinDate');
+    const row = {
+      line: lineNo,
+      date: historyParseDate(at('date')),
+      student: at('student').replace(/\s+/g, ''),
+      course: at('course'),
+      lessons: historyParseLessons(at('lessons')),
+      amount: historyParseAmount(at('amount')),
+      teacher: at('teacher'),
+      remarks: at('remarks'),
+      joinDate: historyParseDate(joinRaw),
+      // 加入时间看不懂只提醒、不废掉这一行 —— 它只是个附加信息，不该因为一个日期
+      // 把整条已经上过的课（和钱）丢掉
+      joinDateBad: !!joinRaw && !historyParseDate(joinRaw),
+      err: '',
+    };
+    if (!row.date) row.err = '日期看不懂';
+    else if (!row.student) row.err = '缺学员姓名';
+    else if (!row.course) row.err = '缺课程名';
+    else if (!Number.isFinite(row.lessons)) row.err = '节数看不懂';
+    else if (!Number.isFinite(row.amount)) row.err = '金额看不懂';
+    return row;
+  }
+
+  function parseHistoryCsv(text) {
+    const raw = String(text || '').replace(/^\uFEFF/, '').split(/\r\n|\r|\n/);
+    const lines = [];
+    const nos = [];
+    raw.forEach((l, i) => { if (l.trim() !== '') { lines.push(l); nos.push(i + 1); } });
+    if (!lines.length) return { rows: [], roster: [], hasHeader: false, error: '文件是空的' };
+    const delim = historyDetectDelimiter(lines[0]);
+    const matrix = lines.map((l) => historySplitCells(l, delim));
+    const res = historyParseMatrix(matrix, nos);
+    return { rows: res.rows, roster: [], hasHeader: res.hasHeader, error: res.error };
+  }
+
+  // 名单：姓名 + 加入时间（也认一行里多出来的列，用不到的忽略）
+  function parseHistoryRoster(rows) {
+    const clean = (rows || []).filter((r) => r && r.some((c) => String(c == null ? '' : c).trim() !== ''));
+    if (!clean.length) return [];
+    const head = clean[0].map((c) => String(c == null ? '' : c).trim().replace(/\s+/g, '').toLowerCase());
+    const map = {};
+    Object.keys(ROSTER_HEADER_ALIASES).forEach((k) => {
+      const aliases = ROSTER_HEADER_ALIASES[k];
+      for (let i = 0; i < head.length; i++) {
+        if (head[i] && aliases.some((a) => head[i] === a || head[i].indexOf(a) === 0)) { map[k] = i; break; }
+      }
+    });
+    // 认不到表头就按 [姓名, 加入时间] 的列序读（和模板一致）
+    const hasHead = map.name !== undefined;
+    const idx = hasHead ? map : { name: 0, joinDate: 1 };
+    const out = [];
+    for (let i = hasHead ? 1 : 0; i < clean.length; i++) {
+      const cells = clean[i];
+      const name = String(cells[idx.name] == null ? '' : cells[idx.name]).replace(/\s+/g, '');
+      if (!name) continue;
+      const jraw = idx.joinDate === undefined ? '' : String(cells[idx.joinDate] == null ? '' : cells[idx.joinDate]).trim();
+      out.push({ name, joinDate: historyParseDate(jraw), joinDateBad: !!jraw && !historyParseDate(jraw) });
+    }
+    return out;
+  }
+
+  // 工作表分工：先看表名，再看表头（用户可能把表改名成「Sheet1」）
+  function historyPickSheets(sheets) {
+    const find = (re) => sheets.find((s) => re.test(String(s.name || '')));
+    let records = find(/消课|上课|课次|流水|记录|record|lesson/i);
+    let roster = find(/学员|学生|名单|roster|student/i);
+    if (!records && !roster) {
+      sheets.forEach((s) => {
+        const head = (s.rows[0] || []).map((c) => String(c || ''));
+        const looksRecords = head.some((h) => /节数|课时|课次/.test(h));
+        const looksRoster = head.some((h) => /姓名|学员|学生/.test(h));
+        if (looksRecords && !records) records = s;
+        else if (looksRoster && !roster) roster = s;
+      });
+    }
+    if (!records && !roster) records = sheets[0] || null;
+    if (records && roster === records) roster = null;
+    return { records, roster };
+  }
+
+  function parseHistoryWorkbook(buf) {
+    const sheets = xlsxRead(buf);
+    if (!sheets.length) return { rows: [], roster: [], error: 'Excel 里没有工作表' };
+    const picked = historyPickSheets(sheets);
+    const rec = picked.records ? historyParseMatrix(picked.records.rows) : { rows: [], hasHeader: true, error: '' };
+    const roster = picked.roster ? parseHistoryRoster(picked.roster.rows) : [];
+    return {
+      rows: rec.rows,
+      roster,
+      hasHeader: !!rec.hasHeader,
+      // 只有名单、没有消课记录也是合法输入（名单本身有价值），所以不当错误
+      error: rec.error && !roster.length ? rec.error : '',
+    };
+  }
+
+  // 统一入口：xlsx / csv 都从这里进，返回 { rows, roster, hasHeader, error }
+  async function readHistoryFile(file) {
+    if (/\.xlsx$/i.test(file.name || '')) {
+      try {
+        return parseHistoryWorkbook(await file.arrayBuffer());
+      } catch (err) {
+        const why = (err && err.message) || '文件可能已损坏';
+        return { rows: [], roster: [], error: 'Excel 读取失败（' + why + '），可以另存为 CSV 再导入' };
+      }
+    }
+    const text = await new Promise((resolve, reject) => {
+      const rd = new FileReader();
+      rd.onload = () => resolve(String(rd.result || ''));
+      rd.onerror = () => reject(new Error('读取失败'));
+      rd.readAsText(file, 'UTF-8');
+    });
+    return parseHistoryCsv(text);
   }
 
   // 一行 N 节 → N 条 1 节流水，金额均摊（余数补到最后一条，保证合计一分不差）
@@ -5333,7 +5880,9 @@
   }
 
   // 生成「可执行计划」：预览和真正导入用的是同一份结果，不会出现"预览 42 条、实际导 45 条"
-  function buildHistoryPlan(rows) {
+  // 生成「可执行计划」：预览和真正导入用的是同一份结果，不会出现"预览 42 条、实际导 45 条"
+  function buildHistoryPlan(rows, roster) {
+    const rosterList = (roster || []).filter((r) => r && r.name);
     const plan = {
       errors: [],
       accepted: [],
@@ -5341,10 +5890,12 @@
       newStudents: [],
       newCourses: [],
       totalRows: rows.length,
-      joinDates: new Map(),      // studentId -> 加入时间（同一个人多行时取最早那天）
-      joinDateCount: 0,          // 会写入加入时间的人数（新建 / 原本为空 / 换日期）
-      joinDateUpdate: 0,         // 其中会改掉已有日期的人数
-      joinDateWarn: 0,           // 填了加入时间但看不懂的行数
+      rosterCount: rosterList.length,   // 名单页给了几个人
+      rosterOnly: 0,                    // 其中只有名单、一节课记录都没有的新学员
+      joinDates: new Map(),             // studentId -> 加入时间（同一个人多行时取最早那天）
+      joinDateCount: 0,                 // 会写入加入时间的人数（新建 / 原本为空 / 换日期）
+      joinDateUpdate: 0,                // 其中会改掉已有日期的人数
+      joinDateWarn: 0,                  // 填了加入时间但看不懂的行数
     };
     const drafts = [];
     rows.forEach((r) => {
@@ -5356,15 +5907,18 @@
     // 学员：按名字匹配（全角/半角空格一律忽略），匹配不到就在计划里排一个新建
     const byName = new Map();
     students.forEach((st) => { if (st && st.name) byName.set(String(st.name).replace(/\s+/g, ''), st.id); });
-    drafts.forEach((d) => {
-      const name = String(d.student).replace(/\s+/g, '');
+    const ensureStudent = (rawName) => {
+      const name = String(rawName || '').replace(/\s+/g, '');
       if (!byName.has(name)) {
         const id = 'stu_hist_' + (plan.newStudents.length + 1) + '_' + Math.random().toString(36).slice(2, 7);
         byName.set(name, id);
         plan.newStudents.push({ id, name });
       }
-      d.studentId = byName.get(name);
-      d.studentName = name;
+      return byName.get(name);
+    };
+    drafts.forEach((d) => {
+      d.studentId = ensureStudent(d.student);
+      d.studentName = String(d.student).replace(/\s+/g, '');
       d.isNewStudent = plan.newStudents.some((x) => x.id === d.studentId);
     });
 
@@ -5400,14 +5954,24 @@
     plan.studentsInFile = new Set(plan.accepted.map((d) => d.studentId)).size;
     plan.coursesInFile = new Set(plan.accepted.map((d) => d.course)).size;
 
-    // 加入时间：同一个人多行写不同值 → 取最早那天（学员属性只有一个，不能一行一个）。
-    // 用 drafts 而不是 accepted：加入时间是学员属性，就算这行课因为重复被跳过，
-    // 带来的加入时间仍然有效（否则「清空历史后重导」会补不上日期）
+    // 加入时间（老 CSV 的行内列）：同一个人多行写不同值 → 取最早那天。
+    // 用 drafts 而不是 accepted：该行课因重复被跳过时，带来的加入时间仍然有效
     drafts.forEach((d) => {
       if (!d.joinDate) return;
       const cur = plan.joinDates.get(d.studentId);
       if (!cur || d.joinDate < cur) plan.joinDates.set(d.studentId, d.joinDate);
     });
+
+    // 名单页：先保证人存在（哪怕一节记录都没有），再让它的加入时间**盖掉**行内的 ——
+    // 名单就是专门放学员属性的那一页，比在每节课后面重复写更可信
+    rosterList.forEach((r) => {
+      const sid = ensureStudent(r.name);
+      if (r.joinDateBad) plan.joinDateWarn++;
+      if (r.joinDate) plan.joinDates.set(sid, r.joinDate);
+    });
+    plan.rosterOnly = plan.newStudents
+      .filter((ns) => !plan.accepted.some((d) => d.studentId === ns.id)).length;
+
     plan.joinDates.forEach((date, sid) => {
       plan.joinDateCount++;                                                  // 会写入的学员数
       const st = students.find((s) => s.id === sid);
@@ -5422,7 +5986,9 @@
     const totals = new Map();   // studentId|course -> 合计节数（只在勾了"历史合计作初始余额"时用）
 
     // 新学员：课程包必须在 normalizeStudent **之前**就带好 ——
-    // 空数组会被补一个「基础课程 10 节」的默认包，等于凭空给历史学员 10 节存量（财务会虚高）
+    // 空数组会被补一个「基础课程 10 节」的默认包，等于凭空给历史学员 10 节存量（财务会虚高）。
+    // 只有名单、一节记录都没有的学员本来就是「还没买课」的状态：打 noDefaultCourse，
+    // 否则下次 loadData 又会被补默认包。
     plan.newStudents.forEach((ns, si) => {
       const courses = plan.newCourses
         .filter((c) => c.studentId === ns.id)
@@ -5432,10 +5998,10 @@
         name: ns.name,
         colorTheme: 'amber',
         phone: '',
-        courses,                       // 至少一条，normalize 就不会塞默认包
+        courses,
         importedAt: new Date().toISOString(),
       };
-      normalizeStudent(st);
+      if (courses.length) normalizeStudent(st); else st.noDefaultCourse = true;
       students.push(st);
     });
 
@@ -5498,20 +6064,49 @@
     return before - checkInLogs.length;
   }
 
+  // 模板：一个 Excel 两个工作表 —— 「学员」放姓名+加入时间，「消课记录」放每节课
   function downloadHistoryTemplate() {
-    const csv = '\uFEFF日期,学员,课程,节数,金额,老师,备注,加入时间\r\n'
-      + '2026-03-05,陈小雨,声乐,1,180,张老师,示例行，导入前请删掉,2025-09-01\r\n'
-      + '2026-03-12,陈小雨,声乐,2,360,张老师,一次连上两节就写节数 2,2025-09-01\r\n';
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const sheets = [
+      {
+        name: '学员',
+        rows: [
+          ['姓名', '加入时间'],
+          ['陈小雨', '2025-09-01'],
+          ['周小满', '2024-09-01'],
+        ],
+      },
+      {
+        name: '消课记录',
+        rows: [
+          ['日期', '学员', '课程', '节数', '金额', '老师', '备注'],
+          ['2026-03-05', '陈小雨', '声乐', '1', '180', '张老师', '示例行，导入前请删掉'],
+          ['2026-03-12', '陈小雨', '声乐', '2', '360', '张老师', '连上两节就写节数 2，金额会自动均摊'],
+          ['2026-03-08', '周小满', '声乐', '1', '180', '张老师', ''],
+        ],
+      },
+      {
+        name: '说明',
+        rows: [
+          ['怎么填（这页只是说明，导入时会跳过）'],
+          ['1. 「学员」页：一个人一行，写姓名 + 加入时间。加入时间留空也行。'],
+          ['2. 「消课记录」页：一行一节课。连上两节写节数 2，系统会拆成两条 1 节、金额自动均摊。'],
+          ['3. 日期 2026-03-05 / 2026/3/5 / 2026年3月5日 都认；Excel 里把列设成日期格式最省事。'],
+          ['4. 「学员」页没写的人，只要在消课记录里出现也会自动建；只写名单、没有记录也能导入。'],
+          ['5. 示例行请删掉再导入。同一份文件重复导入不会重复记账（按 学员+日期+课程+金额 去重）。'],
+          ['6. 只补历史消课记录，不改已有排课、不动已有课时余额。'],
+        ],
+      },
+    ];
+    const blob = xlsxWrite(sheets);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'LessonMate_历史消课模板.csv';
+    a.download = 'LessonMate_历史消课模板.xlsx';
     document.body.appendChild(a);
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
-    showToast('模板已下载，用 Excel 填好后另存为 CSV 再来导入', 'circle-check');
+    showToast('模板已下载：学员 / 消课记录两个工作表', 'circle-check');
   }
 
   let historyPlanCache = null;
@@ -5549,6 +6144,7 @@
         <div class="px-3 py-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
           <span class="lm-t2">可导入 <b class="text-[#fe4c02]">${plan.accepted.length}</b> 条流水</span>
           <span class="lm-t2">涉及学员 <b class="lm-t1">${plan.studentsInFile}</b> 人${plan.newStudents.length ? `（新建 ${plan.newStudents.length} 人）` : ''}</span>
+          ${plan.rosterCount ? `<span class="lm-t2">名单 <b class="lm-t1">${plan.rosterCount}</b> 人${plan.rosterOnly ? `（${plan.rosterOnly} 人暂无消课记录）` : ''}</span>` : ''}
           ${plan.joinDateCount ? `<span class="lm-t2">加入时间 <b class="lm-t1">${plan.joinDateCount}</b> 人${plan.joinDateUpdate ? `（${plan.joinDateUpdate} 人将更新）` : ''}</span>` : ''}
           <span class="lm-t2">课程 <b class="lm-t1">${plan.coursesInFile}</b> 门${plan.newCourses.length ? `（新建 ${plan.newCourses.length} 个课程包，余额 0）` : ''}</span>
           <span class="lm-t2">课时费合计 <b class="lm-t1">${plan.amount > 0 ? fmtMoney(plan.amount) : '—'}</b></span>
@@ -5560,7 +6156,9 @@
             <tbody>${rowsHtml}</tbody>
           </table>
           ${plan.accepted.length > 8 ? `<div class="text-[10px] lm-t3 py-1">…下面是另 ${plan.accepted.length - 8} 条</div>` : ''}
-        </div>` : '<div class="px-3 pb-2 text-[11px] text-rose-500">没有可导入的行</div>'}
+        </div>` : (plan.rosterCount
+          ? '<div class="px-3 pb-2 text-[11px] lm-t2">本次只导入学员名单，没有消课记录</div>'
+          : '<div class="px-3 pb-2 text-[11px] text-rose-500">没有可导入的行</div>')}
         ${errHtml ? `<div class="px-3 py-2 border-t border-[#f2ece4] space-y-0.5">${errHtml}</div>` : ''}
       </div>`;
   }
@@ -5593,33 +6191,45 @@
     showModal('modalHistoryImport');
   }
 
-  function handleHistoryFileChange(e) {
+  async function handleHistoryFileChange(e) {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     const nameEl = document.getElementById('historyFileName');
     if (nameEl) nameEl.textContent = file.name;
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const parsed = parseHistoryCsv(evt.target.result);
-      const btn = document.getElementById('btnConfirmHistoryImport');
-      if (parsed.error) {
-        historyPlanCache = null;
-        renderHistoryPreview();
-        if (btn) btn.disabled = true;
-        showToast(parsed.error, 'triangle-exclamation');
-        return;
-      }
-      historyPlanCache = buildHistoryPlan(parsed.rows);
+    const btn = document.getElementById('btnConfirmHistoryImport');
+    let parsed;
+    try {
+      parsed = await readHistoryFile(file);
+    } catch (err) {
+      historyPlanCache = null;
       renderHistoryPreview();
-      if (btn) btn.disabled = historyPlanCache.accepted.length === 0;
-      if (!parsed.hasHeader) showToast('没认到表头，按「日期,学员,课程,节数,金额,老师,备注,加入时间」的顺序读的', 'circle-info');
-    };
-    reader.onerror = () => showToast('文件读取失败，请重试', 'triangle-exclamation');
-    reader.readAsText(file, 'UTF-8');
+      if (btn) btn.disabled = true;
+      showToast('文件读取失败，请重试', 'triangle-exclamation');
+      return;
+    }
+    if (parsed.error) {
+      historyPlanCache = null;
+      renderHistoryPreview();
+      if (btn) btn.disabled = true;
+      showToast(parsed.error, 'triangle-exclamation');
+      return;
+    }
+    historyPlanCache = buildHistoryPlan(parsed.rows, parsed.roster);
+    renderHistoryPreview();
+    // 只有名单、没有消课记录也允许导入（新建学员本身就有价值）
+    if (btn) btn.disabled = !historyPlanCache.accepted.length && !historyPlanCache.newStudents.length;
+    if (!parsed.hasHeader) {
+      showToast(parsed.roster.length
+        ? '「学员」页没认到表头，按「姓名,加入时间」的列序读的'
+        : '没认到表头，按「日期,学员,课程,节数,金额,老师,备注」的列序读的', 'circle-info');
+    }
   }
 
   function handleConfirmHistoryImport() {
-    if (!historyPlanCache || !historyPlanCache.accepted.length) { showToast('先选一个 CSV 文件', 'circle-info'); return; }
+    if (!historyPlanCache || (!historyPlanCache.accepted.length && !historyPlanCache.newStudents.length)) {
+      showToast('先选一个 Excel 或 CSV 文件', 'circle-info');
+      return;
+    }
     const seedEl = document.getElementById('historySeedRemaining');
     const res = applyHistoryPlan(historyPlanCache, { seedRemaining: !!(seedEl && seedEl.checked) });
     saveData();
