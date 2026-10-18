@@ -407,7 +407,7 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
     - **取数**：`count = 0` 表示"全部"，但**上限 `SUMMARY_MAX_ROWS = 40`**（再长一张图在微信里就糊了），
       被截断时 `rangeText` 会写「最近 40 节（共 N 节记录）」。日期范围与节数**叠加生效**（先过滤再截前 N）。
     - **KPI**：本期上报节数（`Σ deductedLessons`，不是条数）、本期课时费（`Σ paymentAmount`，为 0 显示 `—`
-      而不是 `¥0`）、当前剩余课时（**所有课程包合计**，负数显示「欠 N 节」+ 红）。
+      而不是 `¥0`）、当前剩余课时（默认**所有课程包合计**；按课程出图时只算该课程包，见下条）。
       明细下方还有一行科目汇总（「钢琴 7 节 · 声乐 2 节」），家长最关心这个。
     - **保存 / 分享**：先 `navigator.canShare({ files: [file] })` → `navigator.share()`（手机能直接发微信），
       不支持（桌面）再退回 `<a download>`。`AbortError` 是用户自己取消，**必须静默返回**，不能当失败提示。
@@ -419,6 +419,24 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       `buildLessonSummaryCanvas` / `exportSummaryImage` 同名同语义，弹层 id 前缀 `summary*` / `mSummary*`。
     - **坑：`max-h-[52vh]` 这类任意值 class 必须重建 tailwind**，否则类不存在、静默没样式 ——
       本轮改预览框限高时就是这样，截图看着"没变化"，其实是 CSS 里根本没这条。
-    - 核对脚本 `tmp/lesson-summary-check.mjs`（28 项）：S 入口与默认值 / T 取数范围→图片高度 /
-      U 像素采样（橙带、暖白底、深色文字数）/ V 下载文件名 / P 手机同尺寸 / Q 走分享不重复下载 / E 空数据。
-      出图 `tmp/lesson-summary-shots.mjs` → `summary-d1-detail / d2-modal / d3-preview / img-10 / m1-detail / m2-preview.png`。
+    - 核对脚本 `tmp/lesson-summary-check.mjs`（48 项）：S 入口与默认值 / T 取数范围→图片高度 /
+      U 像素采样（橙带、暖白底、深色文字数）/ V 下载文件名 / P 手机同尺寸 / Q 走分享不重复下载 /
+      G 多课程按课程出图 / M 手机端同上 / E 空数据。
+      出图 `tmp/lesson-summary-shots.mjs` → `summary-d1-detail / d2-modal / d3-preview / d4-course-modal /
+      d5-course-preview / img-10 / img-course / m1-detail / m2-preview.png`。
+
+41. **按课程出总结图：一个学员多门课必须能分开出**（2026-10-18 第 2 轮，Jackson：「有不同课程的学生，需要按课程生成总结图」）
+    - **课程下拉只在课程数 ≥ 2 时渲染**（`#summaryCourse` / `#mSummaryCourse`）。只有一门课时不出现，
+      别为了"两端一致"补个单选题。选项来源 `summaryCourseNames()` = **课程包 ∪ 消课流水出现过的课程名**
+      —— 历史改名/课程包已删的旧课也要能选到，否则那部分钱永远出不了图。
+    - **过滤顺序：课程 → 日期 → 节数**。「最近 10 节」的口径是**这门课**最近 10 节，不是"全科最近 10 节里挑这门课的"。
+      传给 `buildSummaryMeta` 的 `allLogs` 必须是**课程收窄后**的集合，否则截断文案「共 N 节记录」会算错。
+    - **剩余课时跟着课程走**：选了课程只累加该课程包的 `remainingLessons`（家长问的是"这门课还剩几节"）。
+      课程包匹配不到（只剩历史流水）时显示 `—` 而不是 `0 节` —— 别谎报。
+    - **图片标题带课程名**：`课时总结 · 声乐`（`meta.titleText`，`summaryFit` 限宽避免撞右侧"生成于"）。
+      同一学员的多张图在微信里必须一眼分得清。文件名同步带课程：`课时总结_学员_课程_日期.png`。
+    - **换条件就收起旧预览**：`courseSel/countSel/fromInput/toInput` 的 `change` 一律 `pendingCanvas = null`
+      ＋ 隐藏预览框。否则预览里挂着上一门课的图，用户点保存就发出去了（生成失败分支同样要收起）。
+    - 单课程学员路径完全不变，所以 G/M 段用**多课程种子**（钢琴 3 + 声乐 7 + 古筝 1 + 一分没上过的乐理）：
+      高度断言天然能证明过滤生效（7 条 vs 3 条 vs 11 条不可能同时成立）。
+      手机端找学员卡片是 `.lm-card`（**不是** `div[class*="bg-white"]`，按名字找认准这个类）。

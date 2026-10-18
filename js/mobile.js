@@ -580,6 +580,24 @@
     return out + '…';
   }
 
+  // 一个学员常常报了不止一门课（声乐 + 钢琴 + 乐理），总结图必须能按课程分开出
+  // 选项来源 = 课程包 ∪ 消课流水里出现过的课程名（历史改名/已删课程包也能选到）
+  function summaryCourseNames(student, logs) {
+    const names = [];
+    const push = (n) => { if (n && names.indexOf(n) < 0) names.push(n); };
+    (student.courses || []).forEach((c) => push(c && c.name));
+    logs.forEach((l) => push(l.courseName));
+    return names;
+  }
+
+  function summaryEsc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
   function buildSummaryRows(logs) {
     return logs.map((l) => {
       const sch = l.scheduleId ? schedules.find((s) => s.id === l.scheduleId) : null;
@@ -600,9 +618,14 @@
   }
 
   function buildSummaryMeta(student, rows, allLogs, opts) {
+    const course = opts.course || '';
     const sumLessons = rows.reduce((a, r) => a + r.lessons, 0);
     const sumAmount = rows.reduce((a, r) => a + r.amount, 0);
-    const remain = (student.courses || []).reduce((a, c) => a + (Number(c.remainingLessons) || 0), 0);
+    // 选了课程就只算这个课程包的剩余（家长问的是「这门课还剩几节」，不是全科合计）
+    // 课程包找不到时给 —（别拿 0 节骗人，历史流水里的课程名可能已经没有对应课程包）
+    const packs = (student.courses || []).filter((c) => !course || c.name === course);
+    const hasPack = !course || packs.length > 0;
+    const remain = packs.reduce((a, c) => a + (Number(c.remainingLessons) || 0), 0);
     const byCourse = [];
     rows.forEach((r) => {
       const hit = byCourse.find((x) => x.name === r.courseName);
@@ -614,11 +637,12 @@
       ? `最近 ${rows.length} 节`
       : (clipped ? `最近 ${rows.length} 节（共 ${allLogs.length} 节记录）` : `全部 ${rows.length} 节`);
     return {
+      titleText: course ? `课时总结 · ${course}` : '课时总结',
       lessonCount: sumLessons,
       amountText: sumAmount > 0 ? fmtMoney(sumAmount) : '—',
       remain,
-      remainText: remain < 0 ? `欠 ${-remain} 节` : `${remain} 节`,
-      remainOwed: remain < 0,
+      remainText: !hasPack ? '—' : (remain < 0 ? `欠 ${-remain} 节` : `${remain} 节`),
+      remainOwed: hasPack && remain < 0,
       subjectText: byCourse.map((x) => `${x.name} ${x.n} 节`).join(' · '),
       rangeText: dates.length ? `${dates[0]} ~ ${dates[dates.length - 1]} · ${scope}` : scope,
       generatedAt: `生成于 ${formatDate(new Date())}`,
@@ -657,7 +681,8 @@
     ctx.textBaseline = 'alphabetic';
     ctx.font = summaryFont(30, 700);
     ctx.fillStyle = '#fe4c02';
-    ctx.fillText('课时总结', PAD, 108);
+    // 按课程出图时标题要带上课程名，否则同一学员的多张图在微信里分不清
+    ctx.fillText(summaryFit(ctx, meta.titleText || '课时总结', CW - 250), PAD, 108);
     ctx.textAlign = 'right';
     ctx.font = summaryFont(26, 400);
     ctx.fillStyle = '#a8a29e';
@@ -811,8 +836,8 @@
   }
 
   // 保存 / 分享：手机优先走系统分享（能直接发微信），不支持再回退成下载
-  async function exportSummaryImage(canvas, student) {
-    const name = `课时总结_${student.name}_${formatDate(new Date())}.png`;
+  async function exportSummaryImage(canvas, student, course) {
+    const name = `课时总结_${student.name}${course ? '_' + course : ''}_${formatDate(new Date())}.png`;
     const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
     if (!blob) { showToast('图片生成失败，试试缩小范围'); return; }
     const file = new File([blob], name, { type: 'image/png' });
@@ -848,9 +873,22 @@
     const body = document.getElementById('mobileLessonSummaryBody');
     if (!body) return;
 
+    // 多课程学员默认让用户选一门再出图；只有一门课就直接出，别多一步
+    const courseNames = summaryCourseNames(student, allLogs);
+    const courseBlock = courseNames.length > 1 ? `
+      <div>
+        <div class="font-bold text-[11px] text-slate-500 mb-1.5">按课程</div>
+        <select id="mSummaryCourse" class="w-full px-3 py-3 border border-slate-200 rounded-xl font-bold text-slate-800 outline-none bg-white">
+          <option value="">全部课程（合并成一张）</option>
+          ${courseNames.map((n) => `<option value="${summaryEsc(n)}">${summaryEsc(n)}</option>`).join('')}
+        </select>
+        <div class="text-[10px] text-slate-400 mt-1">选一门课只统计这门课的记录，剩余课时也只算这个课程包。</div>
+      </div>` : '';
+
     body.innerHTML = `
       <div class="text-[11px] text-slate-500 leading-relaxed">生成一张图片直接发微信给家长：本期上了哪些课、几节、多少钱、还剩多少节。</div>
       ${allLogs.length === 0 ? '<div class="text-[11px] text-slate-400 py-6 text-center bg-slate-50 rounded-2xl">该学员还没有消课记录，先消课再来生成</div>' : `
+      ${courseBlock}
       <div>
         <div class="font-bold text-[11px] text-slate-500 mb-1.5">取多少节</div>
         <select id="mSummaryCount" class="w-full px-3 py-3 border border-slate-200 rounded-xl font-bold text-slate-800 outline-none bg-white">
@@ -884,27 +922,42 @@
 
     if (!allLogs.length) return;
 
+    const courseSel = body.querySelector('#mSummaryCourse');
     const countSel = body.querySelector('#mSummaryCount');
     const fromInput = body.querySelector('#mSummaryFrom');
     const toInput = body.querySelector('#mSummaryTo');
     const previewBox = body.querySelector('#mSummaryPreview');
     const previewImg = body.querySelector('#mSummaryImg');
     let pendingCanvas = null;
+    let pendingCourse = '';
 
     body.querySelector('#mSummaryGenerate').addEventListener('click', () => {
+      const course = courseSel ? courseSel.value : '';
       const count = parseInt(countSel.value, 10) || 0;
       const from = fromInput.value || '';
       const to = toInput.value || '';
-      let picked = allLogs.slice();
+      // 先按课程收窄，再按节数/日期收窄 —— 「最近 10 节」的口径是「这门课最近 10 节」
+      const scoped = course ? allLogs.filter((l) => (l.courseName || '课程') === course) : allLogs;
+      if (!scoped.length) {
+        // 上一张图还留在预览区会让人把旧图发出去，失败时一并收起来
+        pendingCanvas = null;
+        previewBox.classList.add('hidden');
+        showToast(`「${course}」还没有消课记录`);
+        return;
+      }
+      let picked = scoped.slice();
       if (from) picked = picked.filter((l) => logDateText(l) >= from);
       if (to) picked = picked.filter((l) => logDateText(l) <= to);
       picked = count > 0 ? picked.slice(0, count) : picked.slice(0, SUMMARY_MAX_ROWS);
       if (!picked.length) {
+        pendingCanvas = null;
+        previewBox.classList.add('hidden');
         showToast('该范围内没有消课记录');
         return;
       }
       const rows = buildSummaryRows(picked);
-      pendingCanvas = buildLessonSummaryCanvas(student, rows, buildSummaryMeta(student, rows, allLogs, { count, from, to }));
+      pendingCanvas = buildLessonSummaryCanvas(student, rows, buildSummaryMeta(student, rows, scoped, { count, from, to, course }));
+      pendingCourse = course;
       previewImg.src = pendingCanvas.toDataURL('image/png');
       previewBox.classList.remove('hidden');
       previewBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -912,7 +965,16 @@
 
     body.querySelector('#mSummarySave').addEventListener('click', () => {
       if (!pendingCanvas) { showToast('先点「生成图片」'); return; }
-      exportSummaryImage(pendingCanvas, student);
+      exportSummaryImage(pendingCanvas, student, pendingCourse);
+    });
+
+    // 改了课程/节数/日期就收起上一张图：否则预览里挂着的是旧条件的图，很容易直接发出去
+    [courseSel, countSel, fromInput, toInput].forEach((el) => {
+      if (!el) return;
+      el.addEventListener('change', () => {
+        pendingCanvas = null;
+        previewBox.classList.add('hidden');
+      });
     });
   }
 
