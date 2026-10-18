@@ -33,7 +33,7 @@
        Play CDN 当年是把 <style> append 到 head 末尾，工具类实际压过自有样式；
        把这份 CSS 放到 head 前部会翻转层叠顺序（实测 FontAwesome 的 line-height:1
        会反过来盖掉 text-* 的行高，图标盒子从 24px 变 16px）。 -->
-  <link rel="stylesheet" href="css/tailwind.css?v=8">
+  <link rel="stylesheet" href="css/tailwind.css?v=9">
 </head>
 <body class="text-slate-800 font-sans h-[100dvh] flex flex-col overflow-hidden select-none" style="background: var(--surface-page);">
 
@@ -436,6 +436,21 @@
     </div>
   </div>
 
+  <!-- 手机端 课时总结图 Modal（生成图片发家长） -->
+  <div id="modalMobileLessonSummary" role="dialog" aria-modal="true" aria-labelledby="mobileLessonSummaryTitle" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-end justify-center z-50 hidden transition-opacity">
+    <div class="bg-white lm-sheet w-full max-h-[88dvh] overflow-y-auto p-5 space-y-3.5 text-xs transform transition-all modal-box" style="padding-bottom: calc(1.5rem + env(safe-area-inset-bottom))">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <h3 id="mobileLessonSummaryTitle" class="font-bold text-base text-slate-800">课时总结</h3>
+        <button id="btnCloseMobileLessonSummary" aria-label="关闭" class="text-slate-400 hover:text-slate-700 transition">
+          <i class="fa-solid fa-xmark text-xl"></i>
+        </button>
+      </div>
+      <div id="mobileLessonSummaryBody" class="space-y-3.5 pb-4">
+        <!-- JS 渲染 -->
+      </div>
+    </div>
+  </div>
+
   <!-- 手机端 教师管理 Modal（底部抽屉式） -->
   <div id="modalMobileTeachers" role="dialog" aria-modal="true" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-end justify-center z-50 hidden transition-opacity">
     <div class="bg-white lm-sheet w-full max-h-[88dvh] overflow-y-auto p-5 space-y-3 text-xs transform transition-all modal-box" style="padding-bottom: calc(1.5rem + env(safe-area-inset-bottom))">
@@ -632,7 +647,7 @@
     </div>
   </div>
 
-  <script src="js/mobile.js?v=60"></script>
+  <script src="js/mobile.js?v=61"></script>
   <!-- 老师访问码登录遮罩（管理员数据加载后自动隐藏） -->
   <div id="teacherLoginGate" class="hidden fixed inset-0 z-[90] lm-gate flex flex-col items-center justify-center px-8">
     <div class="w-14 h-14 rounded-2xl bg-[#111111] flex items-center justify-center text-white shadow-lg mb-4">

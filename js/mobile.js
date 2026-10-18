@@ -317,7 +317,29 @@
   // ==========================================
   // 学员详情弹窗（课时/单价/欠课/消课记录）
   // ==========================================
+  // 学员详情：消课记录支持「查看全部」「点行直达课程菜单」、累计合计、补课打标
+  // detailLogExpanded 记住"是否已展开"（渲染是整块重建的，状态得放在函数外面）
+  let detailLogExpanded = false;
+  const DETAIL_LOG_PAGE = 30;
+
   function openMobileStudentDetail(studentId) {
+    detailLogExpanded = false;
+    renderMobileStudentDetail(studentId);
+    showModal('modalMobileStudentDetail');
+  }
+
+  // 流水时钟：checkInTime 存的是 UTC ISO，必须转本地再取 HH:mm（直接切字符串会差 8 小时）
+  function logClock(log) {
+    if (!log || !log.checkInTime) return '';
+    const d = new Date(log.checkInTime);
+    if (isNaN(d.getTime())) return '';
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+  function logDateText(log) {
+    return (log && (log.date || (log.checkInTime || '').slice(0, 10))) || '';
+  }
+
+  function renderMobileStudentDetail(studentId) {
     const student = students.find((s) => s.id === studentId);
     if (!student) return;
     normalizeStudent(student);
@@ -328,11 +350,14 @@
     if (!body) return;
 
     const studentDebts = getStudentDebts(student.id);
-    const logs = checkInLogs
+    // 全部消课流水（倒序），分页只影响"渲染多少"，合计永远按全量算
+    const allLogs = checkInLogs
       .filter((l) => l.studentId === student.id && !isRefundLog(l))
       .slice()
-      .sort((a, b) => (b.checkInTime || '').localeCompare(a.checkInTime || ''))
-      .slice(0, 30);
+      .sort((a, b) => (b.checkInTime || '').localeCompare(a.checkInTime || ''));
+    const totalLoggedLessons = allLogs.reduce((acc, l) => acc + (Number(l.deductedLessons) || 0), 0);
+    const totalLoggedAmount = allLogs.reduce((acc, l) => acc + (Number(l.paymentAmount) || 0), 0);
+    const logs = detailLogExpanded ? allLogs : allLogs.slice(0, DETAIL_LOG_PAGE);
     // 退款记录单列（退款不是「消课」，混进消课记录里会把节数读糊涂）
     const refundLogs = checkInLogs
       .filter((l) => l.studentId === student.id && isRefundLog(l))
@@ -365,9 +390,14 @@
         <i class="fa-solid fa-circle-plus"></i> 充值 / 新购课时包
       </button>
 
-      <button type="button" id="mDetailRefundBtn" class="w-full py-3 rounded-xl bg-white border border-rose-200 text-rose-600 font-bold text-xs flex items-center justify-center gap-1.5 active:bg-rose-50 transition"${canRefund ? '' : ' disabled style="opacity:.45"'}>
-        <i class="fa-solid fa-circle-minus"></i> 退款 / 退课时${canRefund ? '' : '（无可退课时）'}
-      </button>
+      <div class="grid grid-cols-2 gap-2">
+        <button type="button" id="mDetailSummaryBtn" class="py-3 rounded-xl bg-white border border-[#f0ebe2] text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 active:bg-slate-50 transition">
+          <i class="fa-solid fa-image"></i> 课时总结图
+        </button>
+        <button type="button" id="mDetailRefundBtn" class="py-3 rounded-xl bg-white border border-rose-200 text-rose-600 font-bold text-xs flex items-center justify-center gap-1.5 active:bg-rose-50 transition"${canRefund ? '' : ' disabled style="opacity:.45"'}>
+          <i class="fa-solid fa-circle-minus"></i> 退款 / 退课时${canRefund ? '' : '（无可退）'}
+        </button>
+      </div>
 
       <div>
         <div class="font-bold text-[11px] text-slate-500 uppercase tracking-wider mb-1.5">课程与课时</div>
@@ -403,22 +433,37 @@
       </div>` : ''}
 
       <div>
-        <div class="font-bold text-[11px] text-slate-500 uppercase tracking-wider mb-1.5">🕘 消课记录（最近 ${logs.length} 条）</div>
-        ${logs.length === 0 ? '<div class="text-[11px] text-slate-400 py-4 text-center bg-slate-50 rounded-2xl">暂无消课记录</div>' : `
-        <div class="space-y-1 max-h-52 overflow-y-auto">
-          ${logs.map((l) => `
-          <div class="flex items-center justify-between bg-slate-50 px-3 py-2.5 rounded-xl">
-            <div class="min-w-0">
-              <span class="font-bold text-slate-700">${l.courseName}</span>
-              ${l.teacherName ? `<span class="text-slate-400 ml-1.5">${l.teacherName}</span>` : ''}
-              ${l.remarks ? `<span class="text-[#fe4c02] ml-1">${l.remarks}</span>` : ''}
+        <div class="flex items-center justify-between mb-1.5">
+          <div class="font-bold text-[11px] text-slate-500 uppercase tracking-wider">🕘 消课记录</div>
+          ${allLogs.length ? `<div class="text-[10px] text-slate-400">累计 <span class="font-black text-slate-700">${totalLoggedLessons} 节</span> · <span class="font-black text-slate-700">${fmtMoney(totalLoggedAmount)}</span></div>` : ''}
+        </div>
+        ${allLogs.length === 0 ? '<div class="text-[11px] text-slate-400 py-4 text-center bg-slate-50 rounded-2xl">暂无消课记录</div>' : `
+        <div class="space-y-1 ${detailLogExpanded ? '' : 'max-h-56'} overflow-y-auto">
+          ${logs.map((l) => {
+            const sch = l.scheduleId ? schedules.find((s) => s.id === l.scheduleId) : null;
+            const isMakeup = isMakeupLesson(sch);
+            const clock = logClock(l);
+            return `
+          <button type="button" class="w-full text-left flex items-center justify-between bg-slate-50 px-3 py-2.5 rounded-xl active:bg-slate-100 transition" data-detail-log-sch="${l.scheduleId || ''}">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="font-bold text-slate-700">${l.courseName || '课程'}</span>
+                ${isMakeup ? '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#e8f2f4] text-[#2E5D68]">补课</span>' : ''}
+                ${l.teacherName ? `<span class="text-slate-400">${l.teacherName}</span>` : ''}
+              </div>
+              ${l.remarks ? `<div class="text-[10px] text-slate-400 truncate mt-0.5">${l.remarks}</div>` : ''}
             </div>
             <div class="text-right shrink-0 ml-2">
-              <div class="font-bold text-slate-600">${l.deductedLessons}节${l.paymentAmount > 0 ? ' ¥' + l.paymentAmount.toFixed(0) : ''}</div>
-              <div class="text-[9px] text-slate-400">${(l.date || (l.checkInTime || '').slice(0, 10))}</div>
+              <div class="font-bold text-slate-600">${l.deductedLessons}节${l.paymentAmount > 0 ? ' ¥' + Number(l.paymentAmount).toFixed(0) : ''}</div>
+              <div class="text-[9px] text-slate-400">${logDateText(l)}${clock ? ' ' + clock : ''}</div>
             </div>
-          </div>`).join('')}
-        </div>`}
+          </button>`;
+          }).join('')}
+        </div>
+        ${allLogs.length > DETAIL_LOG_PAGE ? `
+        <button type="button" id="mDetailLogToggle" class="w-full mt-1.5 py-2 rounded-xl text-[11px] font-bold text-slate-500 active:bg-slate-50 transition">
+          ${detailLogExpanded ? '收起' : `查看全部 ${allLogs.length} 条`}
+        </button>` : ''}`}
       </div>
 
       ${refundLogs.length ? `
@@ -427,14 +472,14 @@
         <div class="space-y-1">
           ${refundLogs.map((l) => `
           <div class="flex items-center justify-between bg-rose-50 border border-rose-100 px-3 py-2.5 rounded-xl">
-            <div class="min-w-0">
-              <span class="font-bold text-slate-700">${l.courseName}</span>
+            <div class="min-w-0 flex-1">
+              <span class="font-bold text-slate-700">${l.courseName || '课程'}</span>
               <span class="font-bold text-rose-600 ml-1.5">退 ${l.refundLessons || 0} 节</span>
-              ${l.remarks ? `<span class="text-slate-400 ml-1">${l.remarks}</span>` : ''}
+              ${l.remarks ? `<div class="text-[10px] text-slate-400 truncate mt-0.5">${l.remarks}</div>` : ''}
             </div>
             <div class="text-right shrink-0 ml-2">
               <div class="font-black text-rose-600">${fmtMoney(l.paymentAmount)}</div>
-              <div class="text-[9px] text-slate-400">${(l.date || (l.checkInTime || '').slice(0, 10))}</div>
+              <div class="text-[9px] text-slate-400">${logDateText(l)}</div>
             </div>
           </div>`).join('')}
         </div>
@@ -447,7 +492,10 @@
           ${leaves.map((s) => `
           <div class="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-xl text-[11px]">
             <span class="text-slate-600">${s.date} ${s.startTime || ''}</span>
-            <span class="text-slate-500">${s.subject || ''}</span>
+            <div class="flex items-center gap-1.5">
+              <span class="text-slate-500">${s.subject || ''}</span>
+              ${isPendingMakeup(s) ? '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#fff2f4] text-[#d5304f]">待补课</span>' : isMakeupDone(s) ? '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#e8f2f4] text-[#2E5D68]">已补课</span>' : ''}
+            </div>
           </div>`).join('')}
         </div>
       </div>` : ''}
@@ -470,7 +518,402 @@
       setTimeout(() => openMobileRefundModal(student), 280);
     });
 
-    showModal('modalMobileStudentDetail');
+    // 课时总结图（发给家长）
+    const summaryBtn = body.querySelector('#mDetailSummaryBtn');
+    if (summaryBtn) summaryBtn.addEventListener('click', () => {
+      hideModal('modalMobileStudentDetail');
+      setTimeout(() => openMobileLessonSummaryModal(student), 280);
+    });
+
+    // 消课记录「查看全部 / 收起」：整块重渲染，展开状态存在 detailLogExpanded
+    const toggleBtn = body.querySelector('#mDetailLogToggle');
+    if (toggleBtn) toggleBtn.addEventListener('click', () => {
+      detailLogExpanded = !detailLogExpanded;
+      renderMobileStudentDetail(student.id);
+    });
+
+    // 点某条消课记录 → 直达那节课的操作菜单（能撤销/退还）。
+    // 用 onxxx 赋值而不是 addEventListener：body 是常驻节点，重渲染时监听器会叠加。
+    body.onclick = (e) => {
+      const row = e.target.closest('[data-detail-log-sch]');
+      if (!row) return;
+      const sid = row.getAttribute('data-detail-log-sch');
+      if (!sid) { showToast('这条记录没有关联排课'); return; }
+      const sch = schedules.find((s) => s.id === sid);
+      if (!sch) { showToast('这节课的排课已被删除，只剩流水记录'); return; }
+      hideModal('modalMobileStudentDetail');
+      setTimeout(() => openMobileScheduleActionMenu(sch), 280);
+    };
+  }
+
+  // ==========================================
+  // 课时总结图（发给家长看的那张卡）
+  // 纯 Canvas 手绘：PWA 没有构建步骤，引第三方截图库 = 多一份离线失效的风险
+  // ==========================================
+  const SUMMARY_MAX_ROWS = 40;   // 超过这个数一张图会长到看不清，要求分批生成
+  const SUMMARY_FONT_STACK = '"PingFang SC","Microsoft YaHei","Noto Sans CJK SC","Hiragino Sans GB",sans-serif';
+  const SUMMARY_WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+  function summaryFont(size, weight) {
+    return `${weight || 400} ${size}px ${SUMMARY_FONT_STACK}`;
+  }
+
+  // Canvas 的 roundRect 是 Chrome 99+，老内核回退成手画（别指望 CSS 的 border-radius）
+  function summaryRoundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function') { ctx.roundRect(x, y, w, h, r); return; }
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+  }
+
+  // Canvas 没有 truncate，超宽只能自己量
+  function summaryFit(ctx, text, maxW) {
+    const t = String(text == null ? '' : text);
+    if (ctx.measureText(t).width <= maxW) return t;
+    let out = t;
+    while (out.length > 1 && ctx.measureText(out + '…').width > maxW) out = out.slice(0, -1);
+    return out + '…';
+  }
+
+  function buildSummaryRows(logs) {
+    return logs.map((l) => {
+      const sch = l.scheduleId ? schedules.find((s) => s.id === l.scheduleId) : null;
+      const fullDate = logDateText(l);
+      const d = new Date(fullDate + 'T00:00:00');
+      return {
+        fullDate,
+        dateText: fullDate.slice(5) || fullDate,          // 10-09（头部已给出年份范围）
+        weekText: isNaN(d.getTime()) ? '' : SUMMARY_WEEK[d.getDay()],
+        clockText: logClock(l),
+        courseName: l.courseName || '课程',
+        teacherName: l.teacherName || '',
+        lessons: Number(l.deductedLessons) || 0,
+        amount: Number(l.paymentAmount) || 0,
+        isMakeup: isMakeupLesson(sch),
+      };
+    });
+  }
+
+  function buildSummaryMeta(student, rows, allLogs, opts) {
+    const sumLessons = rows.reduce((a, r) => a + r.lessons, 0);
+    const sumAmount = rows.reduce((a, r) => a + r.amount, 0);
+    const remain = (student.courses || []).reduce((a, c) => a + (Number(c.remainingLessons) || 0), 0);
+    const byCourse = [];
+    rows.forEach((r) => {
+      const hit = byCourse.find((x) => x.name === r.courseName);
+      if (hit) hit.n += r.lessons; else byCourse.push({ name: r.courseName, n: r.lessons });
+    });
+    const dates = rows.map((r) => r.fullDate).filter(Boolean).sort();
+    const clipped = opts.count > 0 ? false : rows.length >= SUMMARY_MAX_ROWS && allLogs.length > rows.length;
+    const scope = opts.count > 0
+      ? `最近 ${rows.length} 节`
+      : (clipped ? `最近 ${rows.length} 节（共 ${allLogs.length} 节记录）` : `全部 ${rows.length} 节`);
+    return {
+      lessonCount: sumLessons,
+      amountText: sumAmount > 0 ? fmtMoney(sumAmount) : '—',
+      remain,
+      remainText: remain < 0 ? `欠 ${-remain} 节` : `${remain} 节`,
+      remainOwed: remain < 0,
+      subjectText: byCourse.map((x) => `${x.name} ${x.n} 节`).join(' · '),
+      rangeText: dates.length ? `${dates[0]} ~ ${dates[dates.length - 1]} · ${scope}` : scope,
+      generatedAt: `生成于 ${formatDate(new Date())}`,
+      footText: '如对课时有疑问，请随时联系老师核对',
+    };
+  }
+
+  function buildLessonSummaryCanvas(student, rows, meta) {
+    const W = 1080;
+    const PAD = 60;
+    const CW = W - PAD * 2;
+    const KPI_TOP = 300;
+    const KPI_H = 190;
+    const LIST_TITLE_TOP = 552;
+    const LIST_TOP = 640;
+    const ROW_H = 96;
+    const listH = rows.length ? rows.length * ROW_H : 150;
+    const FOOT_TOP = LIST_TOP + listH + 44;
+    const H = FOOT_TOP + 96;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+
+    // 底色 + 顶部橙带（和家长对话里一眼能认出是课程消息）
+    ctx.fillStyle = '#faf7f2';
+    ctx.fillRect(0, 0, W, H);
+    const grad = ctx.createLinearGradient(0, 0, W, 0);
+    grad.addColorStop(0, '#fe4c02');
+    grad.addColorStop(1, '#ff9a62');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, 12);
+
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = summaryFont(30, 700);
+    ctx.fillStyle = '#fe4c02';
+    ctx.fillText('课时总结', PAD, 108);
+    ctx.textAlign = 'right';
+    ctx.font = summaryFont(26, 400);
+    ctx.fillStyle = '#a8a29e';
+    ctx.fillText(meta.generatedAt, W - PAD, 108);
+    ctx.textAlign = 'left';
+
+    ctx.font = summaryFont(64, 700);
+    ctx.fillStyle = '#1c1917';
+    ctx.fillText(summaryFit(ctx, student.name, CW), PAD, 200);
+
+    ctx.font = summaryFont(28, 400);
+    ctx.fillStyle = '#78716c';
+    ctx.fillText(summaryFit(ctx, meta.rangeText, CW), PAD, 258);
+
+    // KPI 卡
+    summaryRoundRect(ctx, PAD, KPI_TOP, CW, KPI_H, 28);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.strokeStyle = '#f2ece4';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    const cells = [
+      { label: '本期上课', value: `${meta.lessonCount} 节`, color: '#fe4c02' },
+      { label: '本期课时费', value: meta.amountText, color: '#1c1917' },
+      { label: '当前剩余课时', value: meta.remainText, color: meta.remainOwed ? '#d5304f' : '#1c1917' },
+    ];
+    cells.forEach((c, i) => {
+      const cx = PAD + (CW / 3) * (i + 0.5);
+      if (i > 0) {
+        ctx.beginPath();
+        ctx.moveTo(PAD + (CW / 3) * i, KPI_TOP + 44);
+        ctx.lineTo(PAD + (CW / 3) * i, KPI_TOP + KPI_H - 44);
+        ctx.strokeStyle = '#f2ece4';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      ctx.textAlign = 'center';
+      ctx.font = summaryFont(26, 400);
+      ctx.fillStyle = '#a8a29e';
+      ctx.fillText(c.label, cx, KPI_TOP + 68);
+      ctx.font = summaryFont(54, 700);
+      ctx.fillStyle = c.color;
+      ctx.fillText(c.value, cx, KPI_TOP + 142);
+    });
+    ctx.textAlign = 'left';
+
+    // 明细标题 + 科目汇总
+    ctx.font = summaryFont(34, 700);
+    ctx.fillStyle = '#1c1917';
+    ctx.fillText('上课明细', PAD, LIST_TITLE_TOP);
+    ctx.textAlign = 'right';
+    ctx.font = summaryFont(26, 400);
+    ctx.fillStyle = '#a8a29e';
+    ctx.fillText(`共 ${rows.length} 条记录`, W - PAD, LIST_TITLE_TOP);
+    ctx.textAlign = 'left';
+    if (meta.subjectText) {
+      ctx.font = summaryFont(26, 400);
+      ctx.fillStyle = '#78716c';
+      ctx.fillText(summaryFit(ctx, meta.subjectText, CW), PAD, LIST_TITLE_TOP + 42);
+    }
+
+    // 明细卡
+    summaryRoundRect(ctx, PAD, LIST_TOP, CW, listH, 28);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.strokeStyle = '#f2ece4';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    if (!rows.length) {
+      ctx.textAlign = 'center';
+      ctx.font = summaryFont(28, 400);
+      ctx.fillStyle = '#a8a29e';
+      ctx.fillText('该范围内没有消课记录', W / 2, LIST_TOP + listH / 2 + 10);
+      ctx.textAlign = 'left';
+    }
+
+    const leftX = PAD + 36;
+    const rightX = W - PAD - 36;
+    rows.forEach((r, i) => {
+      const top = LIST_TOP + i * ROW_H;
+      if (i > 0) {
+        ctx.beginPath();
+        ctx.moveTo(leftX, top);
+        ctx.lineTo(rightX, top);
+        ctx.strokeStyle = '#f2ece4';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+      const midY = top + ROW_H / 2;
+
+      ctx.font = summaryFont(30, 700);
+      ctx.fillStyle = '#1c1917';
+      ctx.fillText(r.dateText, leftX, midY - 2);
+      const dateW = ctx.measureText(r.dateText).width;
+      if (r.weekText) {
+        ctx.font = summaryFont(24, 400);
+        ctx.fillStyle = '#a8a29e';
+        ctx.fillText(r.weekText, leftX + dateW + 10, midY - 2);
+      }
+      if (r.clockText) {
+        ctx.font = summaryFont(24, 400);
+        ctx.fillStyle = '#a8a29e';
+        ctx.fillText(r.clockText, leftX, midY + 30);
+      }
+
+      const midX = leftX + 220;
+      const midW = rightX - 170 - midX;
+      ctx.font = summaryFont(32, 700);
+      ctx.fillStyle = '#1c1917';
+      const courseTxt = summaryFit(ctx, r.courseName, midW);
+      ctx.fillText(courseTxt, midX, midY + 2);
+      if (r.isMakeup) {
+        const tw = ctx.measureText(courseTxt).width;
+        const bw = 76, bh = 34, bx = midX + tw + 12, by = midY - 26;
+        summaryRoundRect(ctx, bx, by, bw, bh, 8);
+        ctx.fillStyle = '#e8f2f4';
+        ctx.fill();
+        ctx.font = summaryFont(22, 700);
+        ctx.fillStyle = '#2E5D68';
+        ctx.textAlign = 'center';
+        ctx.fillText('补课', bx + bw / 2, by + 25);
+        ctx.textAlign = 'left';
+      }
+      if (r.teacherName) {
+        ctx.font = summaryFont(24, 400);
+        ctx.fillStyle = '#78716c';
+        ctx.fillText(summaryFit(ctx, r.teacherName, midW), midX, midY + 33);
+      }
+
+      ctx.textAlign = 'right';
+      ctx.font = summaryFont(32, 700);
+      ctx.fillStyle = '#1c1917';
+      ctx.fillText(`${r.lessons} 节`, rightX, midY + 2);
+      if (r.amount > 0) {
+        ctx.font = summaryFont(24, 400);
+        ctx.fillStyle = '#78716c';
+        ctx.fillText(fmtMoney(r.amount), rightX, midY + 33);
+      }
+      ctx.textAlign = 'left';
+    });
+
+    ctx.textAlign = 'center';
+    ctx.font = summaryFont(26, 400);
+    ctx.fillStyle = '#a8a29e';
+    ctx.fillText(meta.footText, W / 2, FOOT_TOP + 40);
+    ctx.textAlign = 'left';
+
+    return canvas;
+  }
+
+  // 保存 / 分享：手机优先走系统分享（能直接发微信），不支持再回退成下载
+  async function exportSummaryImage(canvas, student) {
+    const name = `课时总结_${student.name}_${formatDate(new Date())}.png`;
+    const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+    if (!blob) { showToast('图片生成失败，试试缩小范围'); return; }
+    const file = new File([blob], name, { type: 'image/png' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: '课时总结' });
+        return;
+      } catch (err) {
+        if (err && err.name === 'AbortError') return;   // 用户自己取消，不算失败
+      }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    showToast('图片已保存到相册/下载目录');
+  }
+
+  function openMobileLessonSummaryModal(student) {
+    if (!student) return;
+    normalizeStudent(student);
+    const allLogs = checkInLogs
+      .filter((l) => l.studentId === student.id && !isRefundLog(l))
+      .slice()
+      .sort((a, b) => (b.checkInTime || '').localeCompare(a.checkInTime || ''));
+
+    const titleEl = document.getElementById('mobileLessonSummaryTitle');
+    if (titleEl) titleEl.textContent = `${student.name} · 课时总结`;
+    const body = document.getElementById('mobileLessonSummaryBody');
+    if (!body) return;
+
+    body.innerHTML = `
+      <div class="text-[11px] text-slate-500 leading-relaxed">生成一张图片直接发微信给家长：本期上了哪些课、几节、多少钱、还剩多少节。</div>
+      ${allLogs.length === 0 ? '<div class="text-[11px] text-slate-400 py-6 text-center bg-slate-50 rounded-2xl">该学员还没有消课记录，先消课再来生成</div>' : `
+      <div>
+        <div class="font-bold text-[11px] text-slate-500 mb-1.5">取多少节</div>
+        <select id="mSummaryCount" class="w-full px-3 py-3 border border-slate-200 rounded-xl font-bold text-slate-800 outline-none bg-white">
+          <option value="10" selected>最近 10 节</option>
+          <option value="5">最近 5 节</option>
+          <option value="20">最近 20 节</option>
+          <option value="30">最近 30 节</option>
+          <option value="0">全部（最多 ${SUMMARY_MAX_ROWS} 节）</option>
+        </select>
+        <div class="text-[10px] text-slate-400 mt-1">一张图最多 ${SUMMARY_MAX_ROWS} 节，再长就看不清了；更长的区间用下面的日期分批生成。</div>
+      </div>
+      <div>
+        <div class="font-bold text-[11px] text-slate-500 mb-1.5">日期范围（可选）</div>
+        <div class="flex items-center gap-2">
+          <input id="mSummaryFrom" type="date" class="flex-1 min-w-0 px-3 py-3 border border-slate-200 rounded-xl text-slate-600 outline-none" />
+          <span class="text-slate-300">~</span>
+          <input id="mSummaryTo" type="date" class="flex-1 min-w-0 px-3 py-3 border border-slate-200 rounded-xl text-slate-600 outline-none" />
+        </div>
+      </div>
+      <button type="button" id="mSummaryGenerate" class="w-full py-3.5 rounded-2xl lm-btn-fin text-sm">生成图片</button>
+      <div id="mSummaryPreview" class="hidden">
+        <div class="max-h-[46vh] overflow-y-auto rounded-2xl border border-slate-200">
+          <img id="mSummaryImg" class="w-full" alt="课时总结预览" />
+        </div>
+        <button type="button" id="mSummarySave" class="w-full mt-2 py-3.5 rounded-2xl bg-white border border-slate-200 text-slate-700 font-bold text-sm flex items-center justify-center gap-1.5 active:bg-slate-50 transition">
+          <i class="fa-solid fa-download"></i> 保存 / 分享图片
+        </button>
+      </div>`}
+    `;
+    showModal('modalMobileLessonSummary');
+
+    if (!allLogs.length) return;
+
+    const countSel = body.querySelector('#mSummaryCount');
+    const fromInput = body.querySelector('#mSummaryFrom');
+    const toInput = body.querySelector('#mSummaryTo');
+    const previewBox = body.querySelector('#mSummaryPreview');
+    const previewImg = body.querySelector('#mSummaryImg');
+    let pendingCanvas = null;
+
+    body.querySelector('#mSummaryGenerate').addEventListener('click', () => {
+      const count = parseInt(countSel.value, 10) || 0;
+      const from = fromInput.value || '';
+      const to = toInput.value || '';
+      let picked = allLogs.slice();
+      if (from) picked = picked.filter((l) => logDateText(l) >= from);
+      if (to) picked = picked.filter((l) => logDateText(l) <= to);
+      picked = count > 0 ? picked.slice(0, count) : picked.slice(0, SUMMARY_MAX_ROWS);
+      if (!picked.length) {
+        showToast('该范围内没有消课记录');
+        return;
+      }
+      const rows = buildSummaryRows(picked);
+      pendingCanvas = buildLessonSummaryCanvas(student, rows, buildSummaryMeta(student, rows, allLogs, { count, from, to }));
+      previewImg.src = pendingCanvas.toDataURL('image/png');
+      previewBox.classList.remove('hidden');
+      previewBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+
+    body.querySelector('#mSummarySave').addEventListener('click', () => {
+      if (!pendingCanvas) { showToast('先点「生成图片」'); return; }
+      exportSummaryImage(pendingCanvas, student);
+    });
   }
 
   // 手机端充值课时弹窗（与桌面 purchaseCoursePack 同一数据逻辑，自动抵扣欠课）
@@ -2224,6 +2667,7 @@
 
     // 学员详情弹窗关闭
     safeBind('btnCloseMobileStudentDetail', 'click', () => hideModal('modalMobileStudentDetail'));
+    safeBind('btnCloseMobileLessonSummary', 'click', () => hideModal('modalMobileLessonSummary'));
 
     safeBind('selectMobileStudent', 'change', (e) => {
       const stId = e.target.value;

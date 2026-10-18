@@ -361,3 +361,64 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       **护栏自检**：把桌面端改回 `if (status === SCHEDULED) += getLessonCost()`，应见 A2/A6/A8/A10/A12/A16 共 6 条报红。
       ⚠️ 本地 `file://` 打开时 favicon 是绝对路径 `/icons/...`，控制台必有一条 `Failed to load resource`，
       那是打开方式的噪音，脚本里已过滤；别把它当成 JS 报错。
+
+39. **学员详情的消课记录：合计按全量、时间必须转本地、点行直达课程菜单**（2026-10-18）
+    - **入口结构变了**：`openStudentDetail()` 拆成「重置展开状态 + `renderStudentDetail()` + `showModal()`」。
+      因为整块是 `innerHTML` 重建的，而「查看全部」要触发重渲染 —— 展开状态必须放在函数外的
+      `detailLogExpanded`，且 `openStudentDetail()` 每次都重置成 `false`（重进详情先看最近 30 条）。
+      手机端同理：`openMobileStudentDetail()` + `renderMobileStudentDetail()`。
+    - **累计合计按全量算**（`allLogs`），不是渲染出来的那 30 条 —— 分页只影响"渲染多少"。
+      合计口径：节数 `Σ deductedLessons`、金额 `Σ paymentAmount`，**退款流水（`isRefundLog`）先排除**。
+    - **时间必须转本地**：`checkInTime` 是 `new Date().toISOString()`（UTC ISO），
+      `logClock()` 要 `new Date(l.checkInTime)` 再取 `getHours()/getMinutes()`。
+      **别切字符串**（`.slice(11,16)`）—— 会正好差 8 小时。本轮第一次跑测试就是被这个抓到的（显示 06:30）。
+      日期仍然优先用流水上的 `date`（老数据可能没有 `checkInTime`）。
+    - **补课 / 请假状态不要新造判断**：消课行用 `isMakeupLesson(sch)` 打「补课」标；
+      请假行用 `isPendingMakeup(s)` / `isMakeupDone(s)` 打「待补课 / 已补课」。
+      三者都只认排课上的 `makeupOfId` / `needMakeup` / `madeUpById`，与课表一致。
+    - **点记录行直达课程菜单**：`hideModal(详情)` → 280ms 后 `openScheduleActionMenu(sch)`（手机端
+      `openMobileScheduleActionMenu`）。这让「想撤销某条消课」不用再回课表翻。
+      **两种情况要守住**：① 排课已被删（`scheduleId` 找不到）→ `showToast('这节课的排课已被删除…')`
+      且**不能顺手关掉详情**（用户还在看）；② `scheduleId` 为空（老数据/退款）→ 提示没有关联排课。
+    - **监听用 `body.onclick = …` 赋值，不要 `addEventListener`**：body 是常驻节点，每次渲染都挂一个会叠加，
+      点一次触发 N 次。
+    - **备注 `truncate`（单行省略号）**，别让一条长备注把行撑高。展开后**去掉 `max-h-56` 限高**
+      （`${detailLogExpanded ? '' : 'max-h-56'}`）—— 展开 30+ 条还塞在 224px 小框里二次滚动很别扭，
+      让弹层自己滚。折叠时保留限高，半条露出反而暗示"可滚动"。
+    - **`.btn-quiet` 其实没有样式**：它只定义在 `css/desktop-theme.css`，而那个文件**没有任何 HTML 引用**
+      （同一类坑在 `.filter-student-btn` 上踩过）。桌面两个次要按钮改成显式
+      `bg-white border border-[#f0ebe2] hover:bg-[#f8f5f0]`，别再往 `.btn-quiet` 上加东西。
+    - `courseName` 渲染要兜底 `|| '课程'`（导入/老数据可能为空，否则页面上直接出现 `undefined`）。
+    - 核对脚本 `tmp/log-detail-check.mjs`（35 项）：A 合计与分页 / B 时间·补课标·请假状态·截断·无单价 /
+      C 展开与点击（含"排课已删"两个分支）/ M 手机端同语义 / N 空数据。
+      两个断言陷阱：① 找备注节点要取**最内层**（`children.length === 0`），外层 `flex-1` 容器
+      `textContent` 也含那段字，会误判成"没有 truncate"；② 断言 toast 文案读 `#toastMsg`，
+      别用 `#toast`（它可能还留着上一条"操作成功"）。
+      测「查看全部」之后要保持展开态才能点到底部那些行 —— 重开详情会重置展开状态。
+
+40. **课时总结图：纯 Canvas 手绘，用图片高度验条数**（2026-10-18，Jackson 提的需求）
+    - **需求原话**：「需要总结十节课或者任意节课，生成图片发给家长看」。
+      所以入口放在**学员详情**（`课时总结图` 按钮），范围可选 5/10/20/30/全部 + 可选起止日期。
+    - **不引 html2canvas / dom-to-image**：本项目 PWA 无构建步骤、要能离线，多一个第三方库就多一份失效风险，
+      而且截图库在长图/字体/滚动容器上有一堆不可控行为。Canvas 手绘 ~200 行，完全可控。
+    - **几何是写死的**：宽 1080，高 `= 780 + 96 × 条数`（`LIST_TOP 640 + n*96 + 44 + 96`）。
+      好处是**"取了几条"可以用 `img.naturalHeight` 直接断言**，比截图比对和 OCR 都稳、也更快。
+      改布局常量就要同步改 `tmp/lesson-summary-check.mjs` 里的 `IMG_H(n)`。
+    - **取数**：`count = 0` 表示"全部"，但**上限 `SUMMARY_MAX_ROWS = 40`**（再长一张图在微信里就糊了），
+      被截断时 `rangeText` 会写「最近 40 节（共 N 节记录）」。日期范围与节数**叠加生效**（先过滤再截前 N）。
+    - **KPI**：本期上报节数（`Σ deductedLessons`，不是条数）、本期课时费（`Σ paymentAmount`，为 0 显示 `—`
+      而不是 `¥0`）、当前剩余课时（**所有课程包合计**，负数显示「欠 N 节」+ 红）。
+      明细下方还有一行科目汇总（「钢琴 7 节 · 声乐 2 节」），家长最关心这个。
+    - **保存 / 分享**：先 `navigator.canShare({ files: [file] })` → `navigator.share()`（手机能直接发微信），
+      不支持（桌面）再退回 `<a download>`。`AbortError` 是用户自己取消，**必须静默返回**，不能当失败提示。
+    - **Canvas 的两个必要兜底**：① `ctx.roundRect` 是 Chrome 99+，老内核要用 `arcTo` 手画；
+      ② 文字没有 `truncate`，`summaryFit()` 自己量宽度加省略号。
+      字体用系统栈 `PingFang SC / Microsoft YaHei / Noto Sans CJK SC`，**不要引 web font**
+      （canvas 不会等字体加载完再画，会退化成默认衬线体）。
+    - **两端各一份实现**（与项目其他双端逻辑一致）：`buildSummaryRows` / `buildSummaryMeta` /
+      `buildLessonSummaryCanvas` / `exportSummaryImage` 同名同语义，弹层 id 前缀 `summary*` / `mSummary*`。
+    - **坑：`max-h-[52vh]` 这类任意值 class 必须重建 tailwind**，否则类不存在、静默没样式 ——
+      本轮改预览框限高时就是这样，截图看着"没变化"，其实是 CSS 里根本没这条。
+    - 核对脚本 `tmp/lesson-summary-check.mjs`（28 项）：S 入口与默认值 / T 取数范围→图片高度 /
+      U 像素采样（橙带、暖白底、深色文字数）/ V 下载文件名 / P 手机同尺寸 / Q 走分享不重复下载 / E 空数据。
+      出图 `tmp/lesson-summary-shots.mjs` → `summary-d1-detail / d2-modal / d3-preview / img-10 / m1-detail / m2-preview.png`。

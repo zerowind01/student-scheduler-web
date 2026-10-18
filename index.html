@@ -36,7 +36,7 @@
        改完 class 要重新生成：tools\build-tailwind.cmd
        ⚠ 必须留在 </head> 之前（即所有自有样式之后），复刻 Play CDN 把 <style>
        append 到 head 末尾的层叠顺序；挪到前面会翻转优先级。 -->
-  <link rel="stylesheet" href="css/tailwind.css?v=8">
+  <link rel="stylesheet" href="css/tailwind.css?v=9">
 </head>
 <body class="text-[#111111] font-sans h-screen flex flex-col overflow-hidden select-none" style="background: var(--surface-page);">
 
@@ -661,6 +661,24 @@
     </div>
   </div>
 
+  <!-- 课时总结图 Modal 弹窗（生成图片发家长） -->
+  <div id="modalLessonSummary" role="dialog" aria-modal="true" aria-labelledby="lessonSummaryTitle" class="fixed inset-0 bg-[#1c1917]/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
+    <div class="bg-white rounded-2xl shadow-2xl border border-[#f2ece4] w-full sm:w-[460px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
+      <div class="bg-[#111111] px-5 py-3.5 text-white flex items-center justify-between sticky top-0 z-10">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-image text-base"></i>
+          <h3 id="lessonSummaryTitle" class="font-bold text-sm sm:text-base">课时总结图</h3>
+        </div>
+        <button id="btnCloseLessonSummary" aria-label="关闭" class="text-white/80 hover:text-white transition">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+      <div id="lessonSummaryBody" class="p-5 space-y-3.5 text-xs">
+        <!-- JS 渲染 -->
+      </div>
+    </div>
+  </div>
+
   <!-- 新建/编辑学生 Modal 弹窗 -->
   <div id="modalStudent" role="dialog" aria-modal="true" aria-labelledby="modalStudentTitle" class="fixed inset-0 bg-[#1c1917]/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
     <div class="bg-white rounded-2xl shadow-2xl border border-[#f2ece4] w-full sm:w-[420px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
@@ -1012,7 +1030,7 @@
   </div>
 
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=46"></script>
+  <script src="js/app.js?v=47"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
