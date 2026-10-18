@@ -38,7 +38,49 @@ async function proxyToUpstash(request, env) {
 async function upstashDirect(request, up) {
   const incoming = new URL(request.url);
   const key = incoming.searchParams.get('key') || 'school_demo_2026';
+  const wantMeta = incoming.searchParams.get('meta') === '1';
+  const verKey = key + ':ver';
   const H = { Authorization: `Bearer ${up.token}` };
+
+  // 版本号探测：只回 updatedAt（几十字节），前端没变化就不拉全量
+  if (wantMeta && request.method !== 'POST') {
+    try {
+      let ver = '';
+      const res = await fetch(`${up.url}/get/${encodeURIComponent(verKey)}`, { headers: H });
+      if (res.ok) {
+        const j = await res.json();
+        ver = (j && j.result) || '';
+      }
+      // 老数据没有 ver → 读一次全量补上（仅一次）
+      if (!ver) {
+        const full = await fetch(`${up.url}/get/${encodeURIComponent(key)}`, { headers: H });
+        if (full.ok) {
+          const fj = await full.json();
+          let payload = fj && fj.result;
+          try {
+            payload = typeof payload === 'string' ? JSON.parse(payload) : payload;
+          } catch (e) {}
+          if (payload && payload.updatedAt) {
+            ver = String(payload.updatedAt);
+            await fetch(`${up.url}/set/${encodeURIComponent(verKey)}`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${up.token}`, 'Content-Type': 'text/plain' },
+              body: ver,
+            });
+          }
+        }
+      }
+      return new Response(JSON.stringify({ v: String(ver || '') }), {
+        status: 200,
+        headers: { ...corsHeaders(), 'Content-Type': 'application/json' },
+      });
+    } catch (e) {
+      return new Response(JSON.stringify({ v: '' }), {
+        status: 200,
+        headers: { ...corsHeaders(), 'Content-Type': 'application/json' },
+      });
+    }
+  }
 
   if (request.method === 'POST') {
     const data = await request.json();
@@ -49,10 +91,16 @@ async function upstashDirect(request, up) {
       body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error(`upstash set failed: ${res.status}`);
-    return new Response(
-      JSON.stringify({ success: true, updatedAt: data ? data.updatedAt : Date.now() }),
-      { status: 200, headers: { ...corsHeaders(), 'Content-Type': 'application/json' } }
-    );
+    const ver = String((data && data.updatedAt) || Date.now());
+    await fetch(`${up.url}/set/${encodeURIComponent(verKey)}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${up.token}`, 'Content-Type': 'text/plain' },
+      body: ver,
+    });
+    return new Response(JSON.stringify({ success: true, updatedAt: ver }), {
+      status: 200,
+      headers: { ...corsHeaders(), 'Content-Type': 'application/json' },
+    });
   }
 
   const res = await fetch(`${up.url}/get/${encodeURIComponent(key)}`, { headers: H });

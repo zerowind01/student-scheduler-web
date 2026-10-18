@@ -22,10 +22,57 @@ exports.handler = async function (event) {
     return { statusCode: 200, headers, body: '' };
   }
 
-  const key =
-    (event.queryStringParameters && event.queryStringParameters.key) ||
-    'school_demo_2026';
+  const qs = event.queryStringParameters || {};
+  const key = qs.key || 'school_demo_2026';
+  const wantMeta = qs.meta === '1';
+  const verKey = key + ':ver';
   const up = upstashConf();
+
+  // ---- 版本号探测（GET ?meta=1）----
+  // 前端每 15 秒只问这一句（几十字节），远端没变就不拉全量。
+  // 旧版前端每 2 秒 GET 整份快照（含历史流水近 300 KB）→ 单标签页 ≈ 490 MB/小时，
+  // 2026-10 就是这样把 Upstash 免费额度 10 GB/月 打满并停库的。
+  if (wantMeta && event.httpMethod !== 'POST') {
+    try {
+      let ver = '';
+      if (up) {
+        const res = await fetch(`${up.url}/get/${encodeURIComponent(verKey)}`, {
+          headers: { Authorization: `Bearer ${up.token}` },
+        });
+        if (res.ok) {
+          const j = await res.json();
+          ver = (j && j.result) || '';
+        }
+        // 自愈：老数据只有快照、没有 ver → 读一次全量取出 updatedAt 再把 ver 补上（仅发生一次）
+        if (!ver) {
+          const full = await fetch(`${up.url}/get/${encodeURIComponent(key)}`, {
+            headers: { Authorization: `Bearer ${up.token}` },
+          });
+          if (full.ok) {
+            const fj = await full.json();
+            let payload = fj && fj.result;
+            try {
+              payload = typeof payload === 'string' ? JSON.parse(payload) : payload;
+            } catch (e) {}
+            if (payload && payload.updatedAt) {
+              ver = String(payload.updatedAt);
+              await fetch(`${up.url}/set/${encodeURIComponent(verKey)}`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${up.token}`, 'Content-Type': 'text/plain' },
+                body: ver,
+              });
+            }
+          }
+        }
+      } else {
+        ver = memoryStore[verKey] || '';
+      }
+      return { statusCode: 200, headers, body: JSON.stringify({ v: String(ver || '') }) };
+    } catch (e) {
+      // 探测失败按「没变化」处理，别把错误抛给轮询
+      return { statusCode: 200, headers, body: JSON.stringify({ v: '' }) };
+    }
+  }
 
   try {
     // ---- 写入 ----
@@ -41,8 +88,16 @@ exports.handler = async function (event) {
           body: JSON.stringify(data),
         });
         if (!res.ok) throw new Error(`upstash set failed: ${res.status}`);
+        // 每次写入同步刷新版本号（几十字节），供 ?meta=1 探测
+        const ver = String((data && data.updatedAt) || Date.now());
+        await fetch(`${up.url}/set/${encodeURIComponent(verKey)}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${up.token}`, 'Content-Type': 'text/plain' },
+          body: ver,
+        });
       } else {
         memoryStore[key] = data;
+        memoryStore[verKey] = String((data && data.updatedAt) || Date.now());
       }
       return {
         statusCode: 200,

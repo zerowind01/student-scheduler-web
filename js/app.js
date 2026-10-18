@@ -1356,7 +1356,57 @@
     } catch (e) {}
   }
 
-  setInterval(pullFromCloudSync, 2000);
+  // ---- 轻量轮询：先探版本号，变了才拉全量 ----
+  // 旧写法 setInterval(pullFromCloudSync, 2000) 每 2 秒 GET 整份快照（含历史流水近 300 KB）：
+  // 单标签页 ≈ 490 MB/小时 → 2026-10 把 Upstash 免费额度 10 GB/月 打满并停库（存储只占 516 KB）。
+  // 现在：15 秒问一句 key:ver（几十字节），远端真的变了才 pullFromCloudSync()；后台标签页完全不动。
+  const SYNC_POLL_MS = 15000;
+  const SYNC_POLL_MAX_MS = 300000; // 连续失败最多退避 5 分钟
+  let syncPollTimer = null;
+  let syncPollDelay = SYNC_POLL_MS;
+
+  async function probeCloudVersion() {
+    if (!schoolSyncKey) return true;
+    try {
+      const res = await fetch(`${CLOUD_SYNC_ENDPOINT}?key=${encodeURIComponent(schoolSyncKey)}&meta=1`, {
+        headers: { 'Accept': 'application/json' }
+      });
+      if (!res.ok) return false;
+      const meta = await res.json();
+      // 老服务端不认识 meta，会把整份快照吐回来 → 直接当成一次全量结果处理
+      if (meta && (meta.students || meta.schedules || meta.checkInLogs)) {
+        await pullFromCloudSync();
+        return true;
+      }
+      const remoteVer = Number(meta && meta.v) || 0;
+      if (!remoteVer) return true; // 云端还没有版本号：等下次写入补上，这期间不拉全量
+      const localTime = parseInt(localStorage.getItem('edu_scheduler_last_sync_time') || '0', 10);
+      if (remoteVer > localTime) await pullFromCloudSync();
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function scheduleSyncPoll(delay) {
+    clearTimeout(syncPollTimer);
+    syncPollTimer = setTimeout(async () => {
+      if (document.hidden) { scheduleSyncPoll(syncPollDelay); return; }
+      const ok = await probeCloudVersion();
+      syncPollDelay = ok ? SYNC_POLL_MS : Math.min(syncPollDelay * 2, SYNC_POLL_MAX_MS);
+      scheduleSyncPoll(syncPollDelay);
+    }, delay == null ? syncPollDelay : delay);
+  }
+
+  // 回前台立刻对一次（手机上切走再切回来不用等下一个周期）
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    syncPollDelay = SYNC_POLL_MS;
+    probeCloudVersion();
+    scheduleSyncPoll(SYNC_POLL_MS);
+  });
+
+  scheduleSyncPoll(SYNC_POLL_MS);
 
   function saveData() {
     pushToCloudSync();

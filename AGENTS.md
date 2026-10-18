@@ -543,3 +543,21 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
     - 回归 `tmp/finance-teacher-check.mjs` J1~J8（60 → 68）：3 节钢琴归欧阳、2 节乐理归陈、退款谁都不要；
       **护栏自检**：把名字兜底删掉 → J3/J4/J6/J7/J8 立刻报红（两位老师都显示 5.0 节）。
     - 校验真账单的脚本另行留在 `tmp/chunyi-validate.mjs`（桌面 15 断言）/ `chunyi-mobile.mjs` / `chunyi-teacher-scope.mjs`。
+
+46. **云同步轮询必须走「版本号探测」，禁止再 setInterval 拉全量**（2026-10-18，Upstash 免费额度被打满停库）。
+    - 事故：两端 `setInterval(pullFromCloudSync, 2000)` 每 2 秒 GET 整份快照；真数据（50 学员 + 876 条历史流水）
+      快照 **278 KB** → 单标签页 **490 MB/小时**。Upstash 页面实测：**Bandwidth 10 GB / 10 GB 打满、库被暂停**，
+      而 Commands 只有 7.8 万 / 50 万、Storage 516 KB / 250 MB —— 超的**只有带宽**，跟数据量无关。
+    - 口径：写入时顺带 `SET {key}:ver = updatedAt`；前端每 **15 秒** GET `?meta=1` 只拿这十几字节，
+      `ver > localStorage.edu_scheduler_last_sync_time` 才 `pullFromCloudSync()` 拉全量。
+      `document.hidden` 时**一次请求都不发**，回前台立刻探一次；请求失败按 15→30→60…→300 秒指数退避。
+    - 兼容两条：① 老服务端不认识 `meta` 会把整份快照吐回来 → 客户端当一次全量处理（不能空转）；
+      ② 老库只有快照没有 ver → 服务端在 meta 分支里**自愈**（读一次全量取 `updatedAt` 再补 ver，只发生一次）。
+      所以前后端可以不同时上线，但**两个都上线才算真省**。
+    - **真实后端是 `functions/api/sync.js` 的 `upstashDirect`（CF Pages 已配 `UPSTASH_REST_URL/TOKEN`），
+      Netlify 那个函数只是死代码**。判别方法（别猜）：`curl .../api/sync?key=空key&meta=1`
+      → 新代码回 `{"v":""}`（8 字节）；再直连 `lesson-mate.netlify.app/.netlify/functions/sync` → 老代码回 `{}`。
+      两条都对上就说明 CF 走的是直连。**所以服务端改动只需要 `wrangler pages deploy`，不用碰 Netlify。**
+      注意 `upstashDirect` 与 `proxyToUpstash` 两个分支都要实现 meta，改一处必须改两处。
+    - 回归：`tmp/sync-ver-check.mjs`（15 项，服务端单测 + 内存假 Upstash，不联网）、
+      `tmp/sync-poll-check.mjs`（11 项，浏览器实测：34 秒内探测 2 次 / 全量 0 次 / 后台 0 请求 / 退避生效）。
