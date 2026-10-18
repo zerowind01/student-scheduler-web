@@ -357,6 +357,15 @@
       .sort((a, b) => (b.checkInTime || '').localeCompare(a.checkInTime || ''));
     const totalLoggedLessons = allLogs.reduce((acc, l) => acc + (Number(l.deductedLessons) || 0), 0);
     const totalLoggedAmount = allLogs.reduce((acc, l) => acc + (Number(l.paymentAmount) || 0), 0);
+    // 「一共上过几节课」= 现有消课 + 导入的历史消课（历史导入也落在 checkInLogs 里，一条求和就够）
+    const historyLoggedLessons = allLogs
+      .filter((l) => l.source === 'history')
+      .reduce((acc, l) => acc + (Number(l.deductedLessons) || 0), 0);
+    const lifeText = [
+      student.joinDate ? `${student.joinDate} 加入` : '',
+      totalLoggedLessons > 0 ? `累计已上 ${totalLoggedLessons} 节` : '',
+    ].filter(Boolean).join(' · ')
+      + (historyLoggedLessons > 0 && historyLoggedLessons < totalLoggedLessons ? `（含历史 ${historyLoggedLessons} 节）` : '');
     const logs = detailLogExpanded ? allLogs : allLogs.slice(0, DETAIL_LOG_PAGE);
     // 退款记录单列（退款不是「消课」，混进消课记录里会把节数读糊涂）
     const refundLogs = checkInLogs
@@ -379,6 +388,7 @@
         <div class="flex-1">
           <div class="font-bold text-sm text-slate-800">${student.name}</div>
           <div class="text-[11px] text-slate-500">${student.phone ? '📞 ' + student.phone : '未填电话'}</div>
+          ${lifeText ? `<div class="text-[10px] text-slate-400 mt-0.5" data-detail-life>${student.joinDate ? '<i class="fa-solid fa-calendar-plus text-[9px]"></i> ' : ''}${lifeText}</div>` : ''}
         </div>
         <div class="text-right">
           <div class="text-xl font-black ${totalOwed > 0 ? 'text-[#d5304f]' : 'text-[#fe4c02]'}">${totalLessons}</div>
@@ -992,6 +1002,8 @@
     amount: ['金额', '课时费', '收费', '费用', '收入', 'amount', 'fee'],
     teacher: ['老师', '教师', '授课老师', '任课老师', 'teacher'],
     remarks: ['备注', '说明', 'note', 'remark', 'memo'],
+    // 加入时间（学员属性，不是上课日期）：同一个学员每行写一样就行，导入时取最早的那天
+    joinDate: ['加入时间', '加入日期', '入学时间', '入学日期', '报名时间', '报名日期', '开课日期', 'joindate', 'enroll'],
   };
 
   function historySplitLines(text) {
@@ -1081,11 +1093,12 @@
     if (!lines.length) return { rows: [], hasHeader: false, error: '文件是空的' };
     const delim = historyDetectDelimiter(lines[0]);
     const headMap = historyMapHeader(historySplitCells(lines[0], delim));
-    const idx = headMap || { date: 0, student: 1, course: 2, lessons: 3, amount: 4, teacher: 5, remarks: 6 };
+    const idx = headMap || { date: 0, student: 1, course: 2, lessons: 3, amount: 4, teacher: 5, remarks: 6, joinDate: 7 };
     const rows = [];
     for (let i = headMap ? 1 : 0; i < lines.length; i++) {
       const cells = historySplitCells(lines[i], delim);
       const at = (k) => (idx[k] === undefined ? '' : String(cells[idx[k]] == null ? '' : cells[idx[k]]).trim());
+      const joinRaw = at('joinDate');
       const row = {
         line: i + 1,
         date: historyParseDate(at('date')),
@@ -1095,6 +1108,9 @@
         amount: historyParseAmount(at('amount')),
         teacher: at('teacher'),
         remarks: at('remarks'),
+        joinDate: historyParseDate(joinRaw),
+        // 加入时间看不懂只提醒、不废掉这一行（它只是附加信息，不该连带丢掉一节课和钱）
+        joinDateBad: !!joinRaw && !historyParseDate(joinRaw),
         err: '',
       };
       if (!row.date) row.err = '日期看不懂';
@@ -1120,6 +1136,7 @@
         amount: i === n - 1 ? Math.round((row.amount - per * (n - 1)) * 100) / 100 : per,
         teacher: row.teacher,
         remarks: row.remarks,
+        joinDate: row.joinDate || '',
         line: row.line,
       });
     }
@@ -1131,10 +1148,14 @@
   }
 
   function buildHistoryPlan(rows) {
-    const plan = { errors: [], accepted: [], skippedDuplicate: 0, newStudents: [], newCourses: [], totalRows: rows.length };
+    const plan = {
+      errors: [], accepted: [], skippedDuplicate: 0, newStudents: [], newCourses: [], totalRows: rows.length,
+      joinDates: new Map(), joinDateCount: 0, joinDateUpdate: 0, joinDateWarn: 0,
+    };
     const drafts = [];
     rows.forEach((r) => {
       if (r.err) { plan.errors.push({ line: r.line, msg: r.err }); return; }
+      if (r.joinDateBad) plan.joinDateWarn++;
       expandHistoryRow(r).forEach((d) => drafts.push(Object.assign({}, d, { studentId: '', isNewStudent: false })));
     });
 
@@ -1181,6 +1202,19 @@
     plan.amount = Math.round(plan.accepted.reduce((a, d) => a + d.amount, 0) * 100) / 100;
     plan.studentsInFile = new Set(plan.accepted.map((d) => d.studentId)).size;
     plan.coursesInFile = new Set(plan.accepted.map((d) => d.course)).size;
+
+    // 加入时间：同一个人多行写不同值 → 取最早那天。用 drafts 不用 accepted：
+    // 加入时间是学员属性，该行课因重复被跳过时带来的日期仍然有效
+    drafts.forEach((d) => {
+      if (!d.joinDate) return;
+      const cur = plan.joinDates.get(d.studentId);
+      if (!cur || d.joinDate < cur) plan.joinDates.set(d.studentId, d.joinDate);
+    });
+    plan.joinDates.forEach((date, sid) => {
+      plan.joinDateCount++;
+      const st = students.find((s) => s.id === sid);
+      if (st && st.joinDate && st.joinDate !== date) plan.joinDateUpdate++;
+    });
     return plan;
   }
 
@@ -1206,6 +1240,12 @@
       const st = students.find((s) => s.id === nc.studentId);
       if (!st) return;
       st.courses.push({ id: 'course_hist_' + Date.now() + '_' + i, name: nc.course, remainingLessons: 0, unitPrice: 0 });
+    });
+
+    // 加入时间**以文件为准**（覆盖）：表格是这个字段的唯一来源，也只有这样才能改掉导错的日期
+    plan.joinDates.forEach((date, sid) => {
+      const st = students.find((s) => s.id === sid);
+      if (st && date) st.joinDate = date;
     });
 
     plan.accepted.forEach((d, i) => {
@@ -1253,9 +1293,9 @@
   }
 
   function downloadHistoryTemplate() {
-    const csv = '\uFEFF日期,学员,课程,节数,金额,老师,备注\r\n'
-      + '2026-03-05,陈小雨,声乐,1,180,张老师,示例行，导入前请删掉\r\n'
-      + '2026-03-12,陈小雨,声乐,2,360,张老师,一次连上两节就写节数 2\r\n';
+    const csv = '\uFEFF日期,学员,课程,节数,金额,老师,备注,加入时间\r\n'
+      + '2026-03-05,陈小雨,声乐,1,180,张老师,示例行，导入前请删掉,2025-09-01\r\n'
+      + '2026-03-12,陈小雨,声乐,2,360,张老师,一次连上两节就写节数 2,2025-09-01\r\n';
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1280,6 +1320,7 @@
     const warn = [];
     if (plan.errors.length) warn.push(`${plan.errors.length} 行有误`);
     if (plan.skippedDuplicate) warn.push(`${plan.skippedDuplicate} 条已存在`);
+    if (plan.joinDateWarn) warn.push(`${plan.joinDateWarn} 行加入时间看不懂`);
 
     const rowsHtml = plan.accepted.slice(0, 6).map((d) => `
       <div class="flex items-center justify-between py-1.5 border-t border-slate-100 first:border-0">
@@ -1302,6 +1343,7 @@
         <div class="px-3 py-2 space-y-0.5 text-[11px] text-slate-600">
           <div>可导入 <b class="text-[#ff5600]">${plan.accepted.length}</b> 条 · 学员 <b class="text-slate-800">${plan.studentsInFile}</b> 人${plan.newStudents.length ? `（新建 ${plan.newStudents.length}）` : ''}</div>
           <div>课程 <b class="text-slate-800">${plan.coursesInFile}</b> 门${plan.newCourses.length ? `（新建 ${plan.newCourses.length} 个课程包）` : ''} · 合计 <b class="text-slate-800">${plan.amount > 0 ? fmtMoney(plan.amount) : '—'}</b></div>
+          ${plan.joinDateCount ? `<div>加入时间 <b class="text-slate-800">${plan.joinDateCount}</b> 人${plan.joinDateUpdate ? `（${plan.joinDateUpdate} 人将更新）` : ''}</div>` : ''}
         </div>
         ${plan.accepted.length ? `<div class="px-3 pb-2">${rowsHtml}${plan.accepted.length > 6 ? `<div class="text-[10px] text-slate-400 py-1">…下面是另 ${plan.accepted.length - 6} 条</div>` : ''}</div>` : '<div class="px-3 pb-2 text-[11px] text-rose-500">没有可导入的行</div>'}
         ${errHtml ? `<div class="px-3 py-2 border-t border-slate-100 space-y-0.5">${errHtml}</div>` : ''}
@@ -1351,7 +1393,7 @@
       historyPlanCache = buildHistoryPlan(parsed.rows);
       renderMobileHistoryPreview();
       if (btn) btn.disabled = historyPlanCache.accepted.length === 0;
-      if (!parsed.hasHeader) showToast('没认到表头，按「日期,学员,课程,节数,金额,老师,备注」顺序读的');
+      if (!parsed.hasHeader) showToast('没认到表头，按「日期,学员,课程,节数,金额,老师,备注,加入时间」顺序读的');
     };
     reader.onerror = () => showToast('文件读取失败，请重试');
     reader.readAsText(file, 'UTF-8');

@@ -861,7 +861,8 @@
       <div class="p-5 space-y-3.5 text-xs">
         <div class="bg-[#faf8f3]/80 border border-[#efe9e0]/80 p-3 rounded-xl leading-relaxed lm-t2">
           把换到 LessonMate 之前上过的课补进来（Excel 表先另存为 CSV）。
-          每行一节课，列名认这些：<b>日期 / 学员 / 课程 / 节数 / 金额 / 老师 / 备注</b>（顺序随意，缺的列留空）。
+          每行一节课，列名认这些：<b>日期 / 学员 / 课程 / 节数 / 金额 / 老师 / 备注 / 加入时间</b>（顺序随意，缺的列留空）。
+          <b>加入时间</b>是学员属性，同一个学员每行写一样就行，会记到学员详情里，显示「加入时间 · 累计已上几节」。
           只追加消课记录，<b>不会改已有排课和课时余额</b>。
         </div>
 
@@ -1093,7 +1094,7 @@
   </div>
 
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=49"></script>
+  <script src="js/app.js?v=50"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

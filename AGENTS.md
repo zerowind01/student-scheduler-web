@@ -472,3 +472,26 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
     - 核对 `tmp/history-import-check.mjs`（48 项）：H 入口 / I 解析预览 / J 落库明细 / K 重导幂等 /
       L 计入财务 / M 清空 / N 手机端 / P 无表头与空文件。出图 `tmp/history-import-shots.mjs` →
       `hist-d1-settings / d2-modal / d3-preview / d4-students / d5-detail / m1-preview.png`。
+
+43. **加入时间 + 累计已上几节**（2026-10-18 第 4 轮，Jackson：「历史数据要导入一条加入时间，然后根据现有数据和历史数据，
+    统计一共上过几节课」）
+    - 用户选的口径：加入时间**从 CSV 加一列**进来；累计节数**显示在学员详情头部**（不做列表卡片、不做导入预览逐人）。
+    - **加入时间是学员属性，不是课次属性**：CSV 里同一学员每行写一样，导入时按 `studentId` 取**最早那天**
+      （`plan.joinDates`，Map）。落在 `student.joinDate`（`YYYY-MM-DD` 字符串），随 `saveData` 整份持久化。
+    - **以文件为准（覆盖），不是只补空**：表格是这个字段的唯一来源，界面上没有别的编辑入口，
+      只补空的话导错的日期就再也改不掉了。预览里写明「加入时间 N 人（M 人将更新）」，`M` 只统计
+      已有值且与新值不同的人。
+    - **加入时间解析失败只提醒、不废行**：`row.joinDateBad` 计数 → 预览 warn 里点出「N 行加入时间看不懂」。
+      它只是附加信息，不该因为一个日期把整条已经上过的课（和钱）丢掉 —— 这点和「日期/金额看不懂要报错」故意不同。
+    - **`joinDates` 用 `drafts` 而不是 `accepted` 生成**：该行课因去重被跳过时，带来的加入时间仍然有效，
+      否则「清空历史后重导」会补不上日期。
+    - 列位置：表头认别名（`加入时间/加入日期/入学时间/入学日期/报名时间/报名日期/开课日期`），顺序随意；
+      无表头时按第 8 列读（模板里也放在最后，老文件 7 列不受影响）。
+    - **「一共上过几节课」= 现有消课 + 历史导入**，不用另算：历史导入本来就落在 `checkInLogs` 里，
+      `totalLoggedLessons` 一条求和就是全部。历史那部分只在「占一部分」时才标出来
+      （`historyLoggedLessons > 0 && < total` → 「含历史 N 节」），全是历史时不重复念。
+    - 展示位：渲染成 `[data-detail-life]` 一行（`2025-09-01 加入 · 累计已上 4 节（含历史 3 节）`），
+      两端同构；没有加入时间又没消课时整行不渲染。退款不计入（`isRefundLog` 已在 `allLogs` 过滤）。
+    - 核对 `history-import-check`（65 项）：Q 段解析与落库（含「看不懂不废行」「覆盖」「新建学员」）、
+      R 段两个学员各自算各自的、S 段手机端同口径。护栏自检 = 把覆盖改回 `st.joinDate || date`
+      应见 Q5/R4/S3 报红。

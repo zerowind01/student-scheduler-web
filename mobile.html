@@ -467,7 +467,8 @@
 
       <div class="text-[11px] text-slate-500 leading-relaxed bg-slate-50 rounded-2xl p-3">
         把换到 LessonMate 之前上过的课补进来（Excel 表先另存为 CSV）。
-        列名认：<b class="text-slate-700">日期 / 学员 / 课程 / 节数 / 金额 / 老师 / 备注</b>。
+        列名认：<b class="text-slate-700">日期 / 学员 / 课程 / 节数 / 金额 / 老师 / 备注 / 加入时间</b>。
+        <b class="text-slate-700">加入时间</b>是学员属性，同一学员每行写一样，会显示在学员详情「加入时间 · 累计已上几节」。
         只追加消课记录，<b class="text-slate-700">不会改已有排课和课时余额</b>。
       </div>
 
@@ -692,7 +693,7 @@
     </div>
   </div>
 
-  <script src="js/mobile.js?v=63"></script>
+  <script src="js/mobile.js?v=64"></script>
   <!-- 老师访问码登录遮罩（管理员数据加载后自动隐藏） -->
   <div id="teacherLoginGate" class="hidden fixed inset-0 z-[90] lm-gate flex flex-col items-center justify-center px-8">
     <div class="w-14 h-14 rounded-2xl bg-[#111111] flex items-center justify-center text-white shadow-lg mb-4">
