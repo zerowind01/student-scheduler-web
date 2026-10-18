@@ -978,6 +978,407 @@
     });
   }
 
+  // ==========================================
+  // 导入历史消课（使用 LessonMate 之前上过的课）
+  // ==========================================
+  // 与桌面 `js/app.js` 第 14b 节**同名同语义**（双端各一份实现是本项目惯例），改一处必须两边一起改。
+  // 三条硬约束见 AGENTS 第 42 条：一行 N 节要拆成 N 条 1 节、checkInTime 取本地中午 12:00、
+  // 重导同一份文件必须幂等（去重键 studentId+date+course+金额）。
+  const HISTORY_HEADER_ALIASES = {
+    date: ['日期', '上课日期', '上课时间', '课次日期', 'date'],
+    student: ['学员', '学生', '姓名', '学员姓名', '学生姓名', 'student', 'name'],
+    course: ['课程', '科目', '课程名称', '课程名', 'course', 'subject'],
+    lessons: ['节数', '课时', '课次', '扣课', '扣课时', 'lessons'],
+    amount: ['金额', '课时费', '收费', '费用', '收入', 'amount', 'fee'],
+    teacher: ['老师', '教师', '授课老师', '任课老师', 'teacher'],
+    remarks: ['备注', '说明', 'note', 'remark', 'memo'],
+  };
+
+  function historySplitLines(text) {
+    return String(text || '')
+      .replace(/^\uFEFF/, '')
+      .split(/\r\n|\r|\n/)
+      .filter((l) => l.trim() !== '');
+  }
+
+  function historyDetectDelimiter(line) {
+    if (line.indexOf('\t') >= 0) return '\t';
+    if (line.indexOf(',') >= 0) return ',';
+    if (line.indexOf('，') >= 0) return '，';
+    if (line.indexOf(';') >= 0) return ';';
+    return ',';
+  }
+
+  function historySplitCells(line, delim) {
+    const cells = [];
+    let cur = '';
+    let quoted = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (quoted) {
+        if (ch === '"') {
+          if (line[i + 1] === '"') { cur += '"'; i++; } else { quoted = false; }
+        } else { cur += ch; }
+      } else if (ch === '"') {
+        quoted = true;
+      } else if (ch === delim) {
+        cells.push(cur);
+        cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    cells.push(cur);
+    return cells;
+  }
+
+  function historyMapHeader(cells) {
+    const norm = cells.map((c) => String(c || '').trim().replace(/\s+/g, '').toLowerCase());
+    const map = {};
+    Object.keys(HISTORY_HEADER_ALIASES).forEach((key) => {
+      const aliases = HISTORY_HEADER_ALIASES[key].map((a) => a.toLowerCase());
+      for (let i = 0; i < norm.length; i++) {
+        if (!norm[i]) continue;
+        if (aliases.some((a) => norm[i] === a || norm[i].indexOf(a) === 0)) { map[key] = i; break; }
+      }
+    });
+    const hit = ['date', 'student', 'course'].filter((k) => map[k] !== undefined).length;
+    return hit >= 2 ? map : null;
+  }
+
+  function historyParseDate(raw) {
+    let s = String(raw == null ? '' : raw).trim().replace(/\u3000/g, ' ');
+    if (!s) return '';
+    s = s.replace(/[年月]/g, '-').replace(/日/g, '').replace(/[./]/g, '-').replace(/\s+/g, ' ').split(' ')[0];
+    let m;
+    let y; let mo; let d;
+    if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+    else if ((m = s.match(/^(\d{4})(\d{2})(\d{2})$/))) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+    else return '';
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) return '';
+    const dt = new Date(y, mo - 1, d);
+    if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return '';
+    return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+
+  function historyParseAmount(raw) {
+    const s = String(raw == null ? '' : raw).replace(/[¥￥$元,，\s]/g, '');
+    if (!s) return 0;
+    const n = Number(s);
+    return Number.isFinite(n) ? Math.round(n * 100) / 100 : NaN;
+  }
+
+  function historyParseLessons(raw) {
+    const s = String(raw == null ? '' : raw).replace(/[节课时次\s]/g, '');
+    if (!s) return 1;
+    const n = parseInt(s, 10);
+    if (!Number.isFinite(n) || n < 1) return NaN;
+    return Math.min(n, 20);
+  }
+
+  function parseHistoryCsv(text) {
+    const lines = historySplitLines(text);
+    if (!lines.length) return { rows: [], hasHeader: false, error: '文件是空的' };
+    const delim = historyDetectDelimiter(lines[0]);
+    const headMap = historyMapHeader(historySplitCells(lines[0], delim));
+    const idx = headMap || { date: 0, student: 1, course: 2, lessons: 3, amount: 4, teacher: 5, remarks: 6 };
+    const rows = [];
+    for (let i = headMap ? 1 : 0; i < lines.length; i++) {
+      const cells = historySplitCells(lines[i], delim);
+      const at = (k) => (idx[k] === undefined ? '' : String(cells[idx[k]] == null ? '' : cells[idx[k]]).trim());
+      const row = {
+        line: i + 1,
+        date: historyParseDate(at('date')),
+        student: at('student').replace(/\s+/g, ''),
+        course: at('course'),
+        lessons: historyParseLessons(at('lessons')),
+        amount: historyParseAmount(at('amount')),
+        teacher: at('teacher'),
+        remarks: at('remarks'),
+        err: '',
+      };
+      if (!row.date) row.err = '日期看不懂';
+      else if (!row.student) row.err = '缺学员姓名';
+      else if (!row.course) row.err = '缺课程名';
+      else if (!Number.isFinite(row.lessons)) row.err = '节数看不懂';
+      else if (!Number.isFinite(row.amount)) row.err = '金额看不懂';
+      rows.push(row);
+    }
+    if (!rows.length) return { rows: [], hasHeader: !!headMap, error: headMap ? '只有表头，没有数据行' : '没有数据行' };
+    return { rows, hasHeader: !!headMap, error: '' };
+  }
+
+  function expandHistoryRow(row) {
+    const n = Math.max(1, Math.round(row.lessons));
+    const per = Math.round((row.amount / n) * 100) / 100;
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      out.push({
+        date: row.date,
+        student: row.student,
+        course: row.course,
+        amount: i === n - 1 ? Math.round((row.amount - per * (n - 1)) * 100) / 100 : per,
+        teacher: row.teacher,
+        remarks: row.remarks,
+        line: row.line,
+      });
+    }
+    return out;
+  }
+
+  function historyDedupKey(studentId, date, course, amount) {
+    return [studentId, date, course, Math.round((Number(amount) || 0) * 100)].join('|');
+  }
+
+  function buildHistoryPlan(rows) {
+    const plan = { errors: [], accepted: [], skippedDuplicate: 0, newStudents: [], newCourses: [], totalRows: rows.length };
+    const drafts = [];
+    rows.forEach((r) => {
+      if (r.err) { plan.errors.push({ line: r.line, msg: r.err }); return; }
+      expandHistoryRow(r).forEach((d) => drafts.push(Object.assign({}, d, { studentId: '', isNewStudent: false })));
+    });
+
+    const byName = new Map();
+    students.forEach((st) => { if (st && st.name) byName.set(String(st.name).replace(/\s+/g, ''), st.id); });
+    drafts.forEach((d) => {
+      const name = String(d.student).replace(/\s+/g, '');
+      if (!byName.has(name)) {
+        const id = 'stu_hist_' + (plan.newStudents.length + 1) + '_' + Math.random().toString(36).slice(2, 7);
+        byName.set(name, id);
+        plan.newStudents.push({ id, name });
+      }
+      d.studentId = byName.get(name);
+      d.studentName = name;
+      d.isNewStudent = plan.newStudents.some((x) => x.id === d.studentId);
+    });
+
+    const newCourseKey = new Set();
+    drafts.forEach((d) => {
+      const st = students.find((s) => s.id === d.studentId);
+      const has = st && (st.courses || []).some((c) => c.name === d.course);
+      if (has || newCourseKey.has(d.studentId + '|' + d.course)) return;
+      newCourseKey.add(d.studentId + '|' + d.course);
+      plan.newCourses.push({ studentId: d.studentId, course: d.course });
+    });
+
+    const existing = new Map();
+    checkInLogs.forEach((l) => {
+      if (isRefundLog(l)) return;
+      const k = historyDedupKey(l.studentId, logDateText(l), l.courseName || '课程', l.paymentAmount);
+      existing.set(k, (existing.get(k) || 0) + 1);
+    });
+    const used = new Map();
+    drafts.forEach((d) => {
+      const k = historyDedupKey(d.studentId, d.date, d.course, d.amount);
+      const have = existing.get(k) || 0;
+      const taken = used.get(k) || 0;
+      used.set(k, taken + 1);
+      if (taken < have) { plan.skippedDuplicate++; return; }
+      plan.accepted.push(d);
+    });
+
+    plan.lessons = plan.accepted.length;
+    plan.amount = Math.round(plan.accepted.reduce((a, d) => a + d.amount, 0) * 100) / 100;
+    plan.studentsInFile = new Set(plan.accepted.map((d) => d.studentId)).size;
+    plan.coursesInFile = new Set(plan.accepted.map((d) => d.course)).size;
+    return plan;
+  }
+
+  function applyHistoryPlan(plan, opts) {
+    const seedRemaining = !!(opts && opts.seedRemaining);
+    const batchId = 'hist_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+    const totals = new Map();
+
+    // 新学员：课程包必须在 normalizeStudent **之前**就带好 ——
+    // 空数组会被补一个「基础课程 10 节」的默认包，等于凭空给历史学员 10 节存量（财务会虚高）
+    plan.newStudents.forEach((ns, si) => {
+      const courses = plan.newCourses
+        .filter((c) => c.studentId === ns.id)
+        .map((c, ci) => ({ id: 'course_hist_' + Date.now() + '_' + si + '_' + ci, name: c.course, remainingLessons: 0, unitPrice: 0 }));
+      const st = { id: ns.id, name: ns.name, colorTheme: 'amber', phone: '', courses, importedAt: new Date().toISOString() };
+      normalizeStudent(st);
+      students.push(st);
+    });
+
+    // 已有学员：只补他还没有的课程包（余额同样给 0）
+    plan.newCourses.forEach((nc, i) => {
+      if (plan.newStudents.some((ns) => ns.id === nc.studentId)) return;
+      const st = students.find((s) => s.id === nc.studentId);
+      if (!st) return;
+      st.courses.push({ id: 'course_hist_' + Date.now() + '_' + i, name: nc.course, remainingLessons: 0, unitPrice: 0 });
+    });
+
+    plan.accepted.forEach((d, i) => {
+      const parts = d.date.split('-');
+      const local = new Date(+parts[0], +parts[1] - 1, +parts[2], 12, 0, 0);
+      const key = d.studentId + '|' + d.course;
+      totals.set(key, (totals.get(key) || 0) + 1);
+      checkInLogs.push({
+        id: 'cil_hist_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2, 5),
+        scheduleId: '',
+        studentId: d.studentId,
+        studentName: d.studentName,
+        courseName: d.course,
+        deductedLessons: 1,
+        paymentAmount: d.amount,
+        checkInTime: local.toISOString(),
+        date: d.date,
+        remarks: '历史导入' + (d.remarks ? ' · ' + d.remarks : ''),
+        teacherName: d.teacher || '',
+        source: 'history',
+        batchId,
+      });
+    });
+
+    if (seedRemaining) {
+      totals.forEach((n, key) => {
+        const [sid, course] = key.split('|');
+        const st = students.find((s) => s.id === sid);
+        const pack = st && (st.courses || []).find((c) => c.name === course);
+        if (pack) pack.remainingLessons = (Number(pack.remainingLessons) || 0) + n;
+      });
+    }
+
+    return { batchId, count: plan.accepted.length, students: plan.newStudents.length, courses: plan.newCourses.length };
+  }
+
+  function historyImportLogs() {
+    return checkInLogs.filter((l) => l && l.source === 'history');
+  }
+
+  function removeHistoryLogs(batchId) {
+    const before = checkInLogs.length;
+    checkInLogs = checkInLogs.filter((l) => !(l && l.source === 'history' && (!batchId || l.batchId === batchId)));
+    return before - checkInLogs.length;
+  }
+
+  function downloadHistoryTemplate() {
+    const csv = '\uFEFF日期,学员,课程,节数,金额,老师,备注\r\n'
+      + '2026-03-05,陈小雨,声乐,1,180,张老师,示例行，导入前请删掉\r\n'
+      + '2026-03-12,陈小雨,声乐,2,360,张老师,一次连上两节就写节数 2\r\n';
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'LessonMate_历史消课模板.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    showToast('模板已下载，用 Excel 填好后另存为 CSV 再来导入');
+  }
+
+  let historyPlanCache = null;
+
+  function renderMobileHistoryPreview() {
+    const box = document.getElementById('mHistoryPreview');
+    if (!box) return;
+    const plan = historyPlanCache;
+    if (!plan) { box.classList.add('hidden'); return; }
+    box.classList.remove('hidden');
+
+    const warn = [];
+    if (plan.errors.length) warn.push(`${plan.errors.length} 行有误`);
+    if (plan.skippedDuplicate) warn.push(`${plan.skippedDuplicate} 条已存在`);
+
+    const rowsHtml = plan.accepted.slice(0, 6).map((d) => `
+      <div class="flex items-center justify-between py-1.5 border-t border-slate-100 first:border-0">
+        <div class="min-w-0">
+          <div class="font-semibold text-slate-800 truncate">${summaryEsc(d.studentName)} · ${summaryEsc(d.course)}</div>
+          <div class="text-[10px] text-slate-400">${d.date}${d.teacher ? ' · ' + summaryEsc(d.teacher) : ''}</div>
+        </div>
+        <div class="shrink-0 text-slate-600 font-semibold">${d.amount > 0 ? fmtMoney(d.amount) : '—'}</div>
+      </div>`).join('');
+
+    const errHtml = plan.errors.slice(0, 4).map((e) => `<div class="text-[10px] text-rose-500">第 ${e.line} 行：${e.msg}</div>`).join('')
+      + (plan.errors.length > 4 ? `<div class="text-[10px] text-rose-400">…还有 ${plan.errors.length - 4} 行</div>` : '');
+
+    box.innerHTML = `
+      <div class="rounded-2xl border border-slate-200 overflow-hidden">
+        <div class="bg-slate-50 px-3 py-2 flex items-center justify-between">
+          <span class="font-bold text-slate-700">解析结果</span>
+          <span class="text-[10px] text-slate-400">${plan.totalRows} 行${warn.length ? ' · ' + warn.join(' · ') : ''}</span>
+        </div>
+        <div class="px-3 py-2 space-y-0.5 text-[11px] text-slate-600">
+          <div>可导入 <b class="text-[#ff5600]">${plan.accepted.length}</b> 条 · 学员 <b class="text-slate-800">${plan.studentsInFile}</b> 人${plan.newStudents.length ? `（新建 ${plan.newStudents.length}）` : ''}</div>
+          <div>课程 <b class="text-slate-800">${plan.coursesInFile}</b> 门${plan.newCourses.length ? `（新建 ${plan.newCourses.length} 个课程包）` : ''} · 合计 <b class="text-slate-800">${plan.amount > 0 ? fmtMoney(plan.amount) : '—'}</b></div>
+        </div>
+        ${plan.accepted.length ? `<div class="px-3 pb-2">${rowsHtml}${plan.accepted.length > 6 ? `<div class="text-[10px] text-slate-400 py-1">…下面是另 ${plan.accepted.length - 6} 条</div>` : ''}</div>` : '<div class="px-3 pb-2 text-[11px] text-rose-500">没有可导入的行</div>'}
+        ${errHtml ? `<div class="px-3 py-2 border-t border-slate-100 space-y-0.5">${errHtml}</div>` : ''}
+      </div>`;
+  }
+
+  function refreshMobileHistoryClearBtn() {
+    const btn = document.getElementById('mClearHistoryLogs');
+    if (!btn) return;
+    const n = historyImportLogs().length;
+    btn.classList.toggle('hidden', n === 0);
+    btn.textContent = `清空历史导入（${n} 条）`;
+  }
+
+  function openMobileHistoryImport() {
+    historyPlanCache = null;
+    const fileInput = document.getElementById('mHistoryFileInput');
+    if (fileInput) fileInput.value = '';
+    const nameEl = document.getElementById('mHistoryFileName');
+    if (nameEl) nameEl.textContent = '未选择文件';
+    const seedEl = document.getElementById('mHistorySeedRemaining');
+    if (seedEl) seedEl.checked = false;
+    const preview = document.getElementById('mHistoryPreview');
+    if (preview) { preview.innerHTML = ''; preview.classList.add('hidden'); }
+    const btn = document.getElementById('mConfirmHistoryImport');
+    if (btn) btn.disabled = true;
+    refreshMobileHistoryClearBtn();
+    showModal('modalMobileHistoryImport');
+  }
+
+  function handleMobileHistoryFileChange(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const nameEl = document.getElementById('mHistoryFileName');
+    if (nameEl) nameEl.textContent = file.name;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const parsed = parseHistoryCsv(evt.target.result);
+      const btn = document.getElementById('mConfirmHistoryImport');
+      if (parsed.error) {
+        historyPlanCache = null;
+        renderMobileHistoryPreview();
+        if (btn) btn.disabled = true;
+        showToast(parsed.error);
+        return;
+      }
+      historyPlanCache = buildHistoryPlan(parsed.rows);
+      renderMobileHistoryPreview();
+      if (btn) btn.disabled = historyPlanCache.accepted.length === 0;
+      if (!parsed.hasHeader) showToast('没认到表头，按「日期,学员,课程,节数,金额,老师,备注」顺序读的');
+    };
+    reader.onerror = () => showToast('文件读取失败，请重试');
+    reader.readAsText(file, 'UTF-8');
+  }
+
+  function handleConfirmMobileHistoryImport() {
+    if (!historyPlanCache || !historyPlanCache.accepted.length) { showToast('先选一个 CSV 文件'); return; }
+    const seedEl = document.getElementById('mHistorySeedRemaining');
+    const res = applyHistoryPlan(historyPlanCache, { seedRemaining: !!(seedEl && seedEl.checked) });
+    saveData();
+    refreshMobileAll();
+    historyPlanCache = null;
+    hideModal('modalMobileHistoryImport');
+    showToast(`已导入 ${res.count} 条历史消课记录${res.students ? `，新建 ${res.students} 位学员` : ''}`);
+  }
+
+  function handleClearMobileHistoryLogs() {
+    const n = historyImportLogs().length;
+    if (!n) return;
+    if (!confirm(`确定清空全部 ${n} 条历史导入的消课记录吗？\n（真实消课、退款记录不受影响；导入时新建的学员和课程包会保留）`)) return;
+    const removed = removeHistoryLogs('');
+    saveData();
+    refreshMobileAll();
+    refreshMobileHistoryClearBtn();
+    showToast(`已清空 ${removed} 条历史导入记录`);
+  }
+
   // 手机端充值课时弹窗（与桌面 purchaseCoursePack 同一数据逻辑，自动抵扣欠课）
   // 新购/充值课时包（自动抵扣同课程名欠课）——与桌面端逻辑一致的双端实现
   function purchaseCoursePack(studentId, courseName, lessons, unitPrice) {
@@ -2699,6 +3100,14 @@
         showToast('当前浏览器不支持复制，请用电脑版导出');
       }
     });
+
+    safeBind('msetHistoryImport', 'click', openMobileHistoryImport);
+    safeBind('btnCloseMobileHistoryImport', 'click', () => hideModal('modalMobileHistoryImport'));
+    safeBind('mSelectHistoryFile', 'click', () => document.getElementById('mHistoryFileInput')?.click());
+    safeBind('mHistoryFileInput', 'change', handleMobileHistoryFileChange);
+    safeBind('mHistoryTemplate', 'click', downloadHistoryTemplate);
+    safeBind('mConfirmHistoryImport', 'click', handleConfirmMobileHistoryImport);
+    safeBind('mClearHistoryLogs', 'click', handleClearMobileHistoryLogs);
 
     // 课表日期栏的新增排课按钮（导航加号已移除，此为唯一快捷新增入口）
     safeBind('btnMobileAddSchedule', 'click', () => {

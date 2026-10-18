@@ -440,3 +440,35 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
     - 单课程学员路径完全不变，所以 G/M 段用**多课程种子**（钢琴 3 + 声乐 7 + 古筝 1 + 一分没上过的乐理）：
       高度断言天然能证明过滤生效（7 条 vs 3 条 vs 11 条不可能同时成立）。
       手机端找学员卡片是 `.lm-card`（**不是** `div[class*="bg-white"]`，按名字找认准这个类）。
+
+42. **导入历史消课：只追加流水，一行 N 节必须拆成 N 条**（2026-10-18 第 3 轮，Jackson：「加入一个导入数据功能，
+    记录使用 LessonMate 之前的学生历史数据」）
+    - **定位**：老师换到本系统前用 Excel / 纸质账本，要把**过去上过的课**补进来，否则财务历史、家长对账、
+      学员详情全空。与第 13 条的「导入课表数据」完全不同 —— 那个是全量 JSON 覆盖/合并（会改学员和排课），
+      这个**只往 `checkInLogs` 追加**，不动已有排课、不动余额。
+    - **入口**：设置页 `#btnPageHistoryImport`（电脑）/ `#msetHistoryImport`（手机）。
+      用户选的口径：**CSV 文件上传**（不是粘贴）、**只导历史明细**、**计入财务统计**。
+    - **CSV 列**：`日期 / 学员 / 课程 / 节数 / 金额 / 老师 / 备注`，表头靠 `HISTORY_HEADER_ALIASES` 认别名、
+      顺序随意；**认不到表头就按固定列序读**（并 toast 提醒）。
+    - **解析容错**（`historyParseDate` / `historyParseAmount`）：`2026-04-02` `2026/4/2` `2026.4.2`
+      `2026年4月16日` `20260423`；`¥1,200` `1200元`；带时间的只取日期部分。
+      金额看不懂**报错该行**而不是当 0（当 0 等于悄悄少记一笔钱）。
+    - **⚠️ 一行 N 节必须展开成 N 条 `deductedLessons: 1`**，金额均摊、余数补最后一条。
+      `deductedLessons > 1` 会被第 37 条的 `migrateLessonUnits` 当成旧折算产物改回 1，金额同步错位。
+    - **⚠️ 日期双写**：`date` = `YYYY-MM-DD`，`checkInTime` = **本地中午 12:00** 转 ISO。
+      财务按月聚合用的是 `checkInTime` 前 7 位（`updateFinancePanel` / `prevMonthLogs`），
+      取本地 00:00 会变成前一天 UTC，月初的记录直接滑到上个月。
+    - **⚠️ 新建学员的课程包必须在 `normalizeStudent` 之前带好**：`courses: []` 会被补一个
+      「基础课程 10 节」的默认包，等于凭空给历史学员 10 节存量（财务"待消存量"虚高）。这是本轮真踩到的 bug。
+    - **新课程包余额一律 0**：历史课已经上完，给节数就是造假。弹层里给了勾选项
+      `historySeedRemaining`「把历史合计当初始余额」，默认**关**，要一次定好余额才勾。
+    - **幂等**：去重键 `studentId|date|course|金额(分)`，按「系统里已有几条」逐条消耗。
+      重导同一份文件 → 全部跳过（`已存在（跳过）`），再导另一份是**叠加**不是覆盖。
+    - **撤销**：流水带 `source: 'history'` + `batchId`；弹层里的「清空历史导入（N 条）」
+      只删 `source === 'history'`，真实消课/退款一条不碰（新建的学员和课程包会保留，去学员页删）。
+    - 两端同名同语义：`parseHistoryCsv` / `buildHistoryPlan` / `applyHistoryPlan` / `removeHistoryLogs` /
+      `downloadHistoryTemplate`。预览和真正导入**共用同一个 `buildHistoryPlan` 结果**，
+      不会出现"预览 42 条、实际导 45 条"。手机端刷新用 `refreshMobileAll()`（mobile.js **没有** `refreshView`）。
+    - 核对 `tmp/history-import-check.mjs`（48 项）：H 入口 / I 解析预览 / J 落库明细 / K 重导幂等 /
+      L 计入财务 / M 清空 / N 手机端 / P 无表头与空文件。出图 `tmp/history-import-shots.mjs` →
+      `hist-d1-settings / d2-modal / d3-preview / d4-students / d5-detail / m1-preview.png`。

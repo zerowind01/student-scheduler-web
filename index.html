@@ -36,7 +36,7 @@
        改完 class 要重新生成：tools\build-tailwind.cmd
        ⚠ 必须留在 </head> 之前（即所有自有样式之后），复刻 Play CDN 把 <style>
        append 到 head 末尾的层叠顺序；挪到前面会翻转优先级。 -->
-  <link rel="stylesheet" href="css/tailwind.css?v=9">
+  <link rel="stylesheet" href="css/tailwind.css?v=10">
 </head>
 <body class="text-[#111111] font-sans h-screen flex flex-col overflow-hidden select-none" style="background: var(--surface-page);">
 
@@ -412,6 +412,10 @@
             <div class="font-bold text-sm text-[#111111] flex items-center gap-2"><i class="fa-solid fa-file-import text-[#78716c]"></i> 导入数据</div>
             <div class="text-[11px] text-[#a8a29e] mt-1">导入 JS/JSON 课表数据文件或文本</div>
           </button>
+          <button id="btnPageHistoryImport" class="p-4 bg-white border border-[#efe9e0] rounded-2xl text-left hover:border-[#e3dbd0] hover:shadow-sm transition">
+            <div class="font-bold text-sm text-[#111111] flex items-center gap-2"><i class="fa-solid fa-clock-rotate-left text-[#78716c]"></i> 导入历史消课</div>
+            <div class="text-[11px] text-[#a8a29e] mt-1">把换系统之前上过的课从 CSV 表格补进来</div>
+          </button>
           <button id="btnPageExport" class="p-4 bg-white border border-[#efe9e0] rounded-2xl text-left hover:border-[#e3dbd0] hover:shadow-sm transition">
             <div class="font-bold text-sm text-[#111111] flex items-center gap-2"><i class="fa-solid fa-download text-[#78716c]"></i> 导出数据</div>
             <div class="text-[11px] text-[#a8a29e] mt-1">备份全部学员、课表与财务数据</div>
@@ -469,6 +473,10 @@
         <button id="btnMobileImport" class="p-3 bg-[#faf8f3] border border-[#efe9e0]/80 text-[#111111] rounded-2xl flex items-center gap-2">
           <i class="fa-solid fa-file-import text-[#78716c] text-base"></i>
           <span>导入课表</span>
+        </button>
+        <button id="btnMobileHistoryImport" class="p-3 bg-[#faf8f3] border border-[#efe9e0]/80 text-[#111111] rounded-2xl flex items-center gap-2">
+          <i class="fa-solid fa-clock-rotate-left text-[#78716c] text-base"></i>
+          <span>导入历史消课</span>
         </button>
         <button id="btnMobileExport" class="p-3 bg-[#faf8f3] border border-[#efe9e0]/80 text-[#111111] rounded-2xl flex items-center gap-2">
           <i class="fa-solid fa-download text-[#57534e] text-base"></i>
@@ -837,6 +845,61 @@
     </div>
   </div>
 
+  <!-- 导入历史消课记录 Modal（CSV，用 LessonMate 之前的账） -->
+  <div id="modalHistoryImport" role="dialog" aria-modal="true" aria-labelledby="historyImportTitle" class="fixed inset-0 bg-[#1c1917]/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
+    <div class="bg-white rounded-2xl shadow-2xl border border-[#f2ece4] w-full sm:w-[560px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
+      <div class="bg-[#111111] px-5 py-3.5 text-white flex items-center justify-between sticky top-0 z-10">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-clock-rotate-left text-[#a8a29e] text-base"></i>
+          <h3 id="historyImportTitle" class="font-bold text-sm sm:text-base">导入历史消课记录</h3>
+        </div>
+        <button id="btnCloseHistoryImport" aria-label="关闭" class="text-[#a8a29e] hover:text-white transition">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="p-5 space-y-3.5 text-xs">
+        <div class="bg-[#faf8f3]/80 border border-[#efe9e0]/80 p-3 rounded-xl leading-relaxed lm-t2">
+          把换到 LessonMate 之前上过的课补进来（Excel 表先另存为 CSV）。
+          每行一节课，列名认这些：<b>日期 / 学员 / 课程 / 节数 / 金额 / 老师 / 备注</b>（顺序随意，缺的列留空）。
+          只追加消课记录，<b>不会改已有排课和课时余额</b>。
+        </div>
+
+        <div class="flex items-center gap-2 flex-wrap">
+          <button type="button" id="btnSelectHistoryFile" class="px-3 py-1.5 bg-[#111111] hover:bg-[#2b2b2b] text-white font-semibold rounded-xl transition flex items-center gap-1.5">
+            <i class="fa-solid fa-folder-open"></i> 选择 CSV 文件
+          </button>
+          <input type="file" id="historyFileInput" accept=".csv,.txt" class="hidden">
+          <button type="button" id="btnHistoryTemplate" class="px-3 py-1.5 bg-[#f5f2ec] hover:bg-[#e7e5e4] text-[#44403c] font-semibold rounded-xl border border-[#efe9e0] transition flex items-center gap-1.5">
+            <i class="fa-solid fa-file-arrow-down text-[#78716c]"></i> 下载模板
+          </button>
+          <span id="historyFileName" class="text-[#a8a29e] truncate flex-1 text-[11px] min-w-0">未选择文件</span>
+        </div>
+
+        <div id="historyPreview" class="hidden"></div>
+
+        <label class="flex items-start gap-2 cursor-pointer bg-[#faf8f3]/60 px-3 py-2 rounded-xl">
+          <input type="checkbox" id="historySeedRemaining" class="mt-0.5 accent-[#44403c]">
+          <span class="lm-t2 leading-relaxed">新建课程包时把历史合计节数当作当前余额
+            <span class="lm-t3 block text-[10px]">默认不开：历史课都已经上完，余额应为 0。想一次把剩余课时也定好再勾。</span>
+          </span>
+        </label>
+
+        <div class="flex items-center justify-between gap-2 pt-2 border-t border-[#f2ece4]">
+          <button type="button" id="btnClearHistoryLogs" class="hidden px-3 py-1.5 text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl font-medium transition">
+            清空历史导入
+          </button>
+          <div class="flex items-center gap-2 ml-auto">
+            <button type="button" id="btnCancelHistoryImport" class="px-3.5 py-1.5 text-[#57534e] bg-[#f5f2ec] hover:bg-[#e7e5e4] rounded-xl font-medium transition">取消</button>
+            <button type="button" id="btnConfirmHistoryImport" disabled class="px-4 py-1.5 bg-[#111111] hover:bg-[#2b2b2b] text-white font-semibold rounded-xl transition shadow-xs disabled:opacity-40 disabled:cursor-not-allowed">
+              <i class="fa-solid fa-file-import mr-1 text-[#a8a29e]"></i> 开始导入
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 云端实时同步设置 Modal 弹窗 -->
   <div id="modalSyncKey" role="dialog" aria-modal="true" class="fixed inset-0 bg-[#1c1917]/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
     <div class="bg-white rounded-2xl shadow-2xl border border-[#f2ece4] w-full sm:w-[420px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
@@ -1030,7 +1093,7 @@
   </div>
 
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=48"></script>
+  <script src="js/app.js?v=49"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

@@ -2732,6 +2732,18 @@
       if (el) el.click();
     });
     safeBind('btnPageExport', 'click', exportScheduleData);
+    safeBind('btnPageHistoryImport', 'click', openHistoryImport);
+    safeBind('btnMobileHistoryImport', 'click', () => {
+      hideModal('modalMobileMenu');
+      setTimeout(openHistoryImport, 220);
+    });
+    safeBind('btnCloseHistoryImport', 'click', () => hideModal('modalHistoryImport'));
+    safeBind('btnCancelHistoryImport', 'click', () => hideModal('modalHistoryImport'));
+    safeBind('btnSelectHistoryFile', 'click', () => document.getElementById('historyFileInput')?.click());
+    safeBind('historyFileInput', 'change', handleHistoryFileChange);
+    safeBind('btnHistoryTemplate', 'click', downloadHistoryTemplate);
+    safeBind('btnConfirmHistoryImport', 'click', handleConfirmHistoryImport);
+    safeBind('btnClearHistoryLogs', 'click', handleClearHistoryLogs);
     safeBind('btnPageClearAll', 'click', () => {
       const el = document.getElementById('btnClearAllData');
       if (el) el.click();
@@ -5132,6 +5144,457 @@
     } catch (err) {
       alert(err.message);
     }
+  }
+
+  // ==========================================
+  // 14b. 导入历史消课（使用 LessonMate 之前上过的课）
+  // ==========================================
+  // 场景：老师以前用 Excel / 纸质账本记账，换到本系统后要把「过去上过的课」补进来，
+  // 否则财务历史、家长对账、学员详情的消课记录全是空的。
+  //
+  // 与「导入课表数据」（上一节）的区别：那个是全量 JSON 覆盖/合并（改学员、改排课）；
+  // 这个**只追加消课流水**，永不改已有排课、不清余额，误操作可以按批次整批撤销。
+  //
+  // ⚠️ 三条硬约束（改之前先看 AGENTS 第 42 条）：
+  //   1. 一行 N 节必须展开成 N 条 1 节流水 —— deductedLessons > 1 会被 migrateLessonUnits
+  //      当成旧折算产物改回 1（金额也跟着错），所以历史数据也得守「一节课永远 1 节」。
+  //   2. 日期同时写 `date` 和 `checkInTime`，且 checkInTime 取**本地中午 12:00** 转 ISO：
+  //      财务按月聚合用的是 checkInTime 的字符串前缀，取 00:00 会在月初滑到上个月。
+  //   3. 重导同一份文件必须幂等 —— 去重键 studentId+date+course+金额，按「系统里已有几条」消耗。
+  const HISTORY_HEADER_ALIASES = {
+    date: ['日期', '上课日期', '上课时间', '课次日期', 'date'],
+    student: ['学员', '学生', '姓名', '学员姓名', '学生姓名', 'student', 'name'],
+    course: ['课程', '科目', '课程名称', '课程名', 'course', 'subject'],
+    lessons: ['节数', '课时', '课次', '扣课', '扣课时', 'lessons'],
+    amount: ['金额', '课时费', '收费', '费用', '收入', 'amount', 'fee'],
+    teacher: ['老师', '教师', '授课老师', '任课老师', 'teacher'],
+    remarks: ['备注', '说明', 'note', 'remark', 'memo'],
+  };
+
+  function historySplitLines(text) {
+    return String(text || '')
+      .replace(/^\uFEFF/, '')                 // Excel 存 CSV 默认带 BOM
+      .split(/\r\n|\r|\n/)
+      .filter((l) => l.trim() !== '');
+  }
+
+  // 分隔符：Excel/微信复制是制表符，CSV 是逗号，中文 Excel 可能存全角逗号，老 Mac 是分号
+  function historyDetectDelimiter(line) {
+    if (line.indexOf('\t') >= 0) return '\t';
+    if (line.indexOf(',') >= 0) return ',';
+    if (line.indexOf('，') >= 0) return '，';
+    if (line.indexOf(';') >= 0) return ';';
+    return ',';
+  }
+
+  // 手写状态机：支持 "含逗号,的备注" 和 "" 转义（CSV 规范）
+  function historySplitCells(line, delim) {
+    const cells = [];
+    let cur = '';
+    let quoted = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (quoted) {
+        if (ch === '"') {
+          if (line[i + 1] === '"') { cur += '"'; i++; } else { quoted = false; }
+        } else { cur += ch; }
+      } else if (ch === '"') {
+        quoted = true;
+      } else if (ch === delim) {
+        cells.push(cur);
+        cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    cells.push(cur);
+    return cells;
+  }
+
+  // 表头识别：认得 2 列以上关键列就当表头，否则按固定顺序 [日期,学员,课程,节数,金额,老师,备注]
+  function historyMapHeader(cells) {
+    const norm = cells.map((c) => String(c || '').trim().replace(/\s+/g, '').toLowerCase());
+    const map = {};
+    Object.keys(HISTORY_HEADER_ALIASES).forEach((key) => {
+      const aliases = HISTORY_HEADER_ALIASES[key].map((a) => a.toLowerCase());
+      for (let i = 0; i < norm.length; i++) {
+        if (!norm[i]) continue;
+        if (aliases.some((a) => norm[i] === a || norm[i].indexOf(a) === 0)) { map[key] = i; break; }
+      }
+    });
+    const hit = ['date', 'student', 'course'].filter((k) => map[k] !== undefined).length;
+    return hit >= 2 ? map : null;
+  }
+
+  // 日期：2026-09-01 / 2026/9/1 / 2026.9.1 / 2026年9月1日 / 20260901（带时间只取日期部分）
+  function historyParseDate(raw) {
+    let s = String(raw == null ? '' : raw).trim().replace(/\u3000/g, ' ');
+    if (!s) return '';
+    s = s.replace(/[年月]/g, '-').replace(/日/g, '').replace(/[./]/g, '-').replace(/\s+/g, ' ').split(' ')[0];
+    let m;
+    let y; let mo; let d;
+    if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+    else if ((m = s.match(/^(\d{4})(\d{2})(\d{2})$/))) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+    else return '';
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) return '';
+    const dt = new Date(y, mo - 1, d);
+    if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return '';
+    return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+
+  // 金额：¥1,200 / 1200元 / 1 200 都能认；看不懂返回 NaN（比悄悄当 0 更该提醒）
+  function historyParseAmount(raw) {
+    const s = String(raw == null ? '' : raw).replace(/[¥￥$元,，\s]/g, '');
+    if (!s) return 0;
+    const n = Number(s);
+    return Number.isFinite(n) ? Math.round(n * 100) / 100 : NaN;
+  }
+
+  function historyParseLessons(raw) {
+    const s = String(raw == null ? '' : raw).replace(/[节课时次\s]/g, '');
+    if (!s) return 1;                        // 不写节数 = 1 节，这是大多数记法的默认
+    const n = parseInt(s, 10);
+    if (!Number.isFinite(n) || n < 1) return NaN;
+    return Math.min(n, 20);                  // 一行 20 节以上基本是脏数据
+  }
+
+  function parseHistoryCsv(text) {
+    const lines = historySplitLines(text);
+    if (!lines.length) return { rows: [], hasHeader: false, error: '文件是空的' };
+    const delim = historyDetectDelimiter(lines[0]);
+    const headMap = historyMapHeader(historySplitCells(lines[0], delim));
+    const idx = headMap || { date: 0, student: 1, course: 2, lessons: 3, amount: 4, teacher: 5, remarks: 6 };
+    const rows = [];
+    for (let i = headMap ? 1 : 0; i < lines.length; i++) {
+      const cells = historySplitCells(lines[i], delim);
+      const at = (k) => (idx[k] === undefined ? '' : String(cells[idx[k]] == null ? '' : cells[idx[k]]).trim());
+      const row = {
+        line: i + 1,
+        date: historyParseDate(at('date')),
+        student: at('student').replace(/\s+/g, ''),
+        course: at('course'),
+        lessons: historyParseLessons(at('lessons')),
+        amount: historyParseAmount(at('amount')),
+        teacher: at('teacher'),
+        remarks: at('remarks'),
+        err: '',
+      };
+      if (!row.date) row.err = '日期看不懂';
+      else if (!row.student) row.err = '缺学员姓名';
+      else if (!row.course) row.err = '缺课程名';
+      else if (!Number.isFinite(row.lessons)) row.err = '节数看不懂';
+      else if (!Number.isFinite(row.amount)) row.err = '金额看不懂';
+      rows.push(row);
+    }
+    if (!rows.length) return { rows: [], hasHeader: !!headMap, error: headMap ? '只有表头，没有数据行' : '没有数据行' };
+    return { rows, hasHeader: !!headMap, error: '' };
+  }
+
+  // 一行 N 节 → N 条 1 节流水，金额均摊（余数补到最后一条，保证合计一分不差）
+  function expandHistoryRow(row) {
+    const n = Math.max(1, Math.round(row.lessons));
+    const per = Math.round((row.amount / n) * 100) / 100;
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      out.push({
+        date: row.date,
+        student: row.student,
+        course: row.course,
+        amount: i === n - 1 ? Math.round((row.amount - per * (n - 1)) * 100) / 100 : per,
+        teacher: row.teacher,
+        remarks: row.remarks,
+        line: row.line,
+      });
+    }
+    return out;
+  }
+
+  function historyDedupKey(studentId, date, course, amount) {
+    return [studentId, date, course, Math.round((Number(amount) || 0) * 100)].join('|');
+  }
+
+  // 生成「可执行计划」：预览和真正导入用的是同一份结果，不会出现"预览 42 条、实际导 45 条"
+  function buildHistoryPlan(rows) {
+    const plan = {
+      errors: [],
+      accepted: [],
+      skippedDuplicate: 0,
+      newStudents: [],
+      newCourses: [],
+      totalRows: rows.length,
+    };
+    const drafts = [];
+    rows.forEach((r) => {
+      if (r.err) { plan.errors.push({ line: r.line, msg: r.err }); return; }
+      expandHistoryRow(r).forEach((d) => drafts.push(Object.assign({}, d, { studentId: '', isNewStudent: false })));
+    });
+
+    // 学员：按名字匹配（全角/半角空格一律忽略），匹配不到就在计划里排一个新建
+    const byName = new Map();
+    students.forEach((st) => { if (st && st.name) byName.set(String(st.name).replace(/\s+/g, ''), st.id); });
+    drafts.forEach((d) => {
+      const name = String(d.student).replace(/\s+/g, '');
+      if (!byName.has(name)) {
+        const id = 'stu_hist_' + (plan.newStudents.length + 1) + '_' + Math.random().toString(36).slice(2, 7);
+        byName.set(name, id);
+        plan.newStudents.push({ id, name });
+      }
+      d.studentId = byName.get(name);
+      d.studentName = name;
+      d.isNewStudent = plan.newStudents.some((x) => x.id === d.studentId);
+    });
+
+    // 课程包：不存在则计划新建（余额默认 0 —— 历史课都已经上完了，凭空给节数会虚增存量）
+    const newCourseKey = new Set();
+    drafts.forEach((d) => {
+      const st = students.find((s) => s.id === d.studentId);
+      const has = st && (st.courses || []).some((c) => c.name === d.course);
+      if (has || newCourseKey.has(d.studentId + '|' + d.course)) return;
+      newCourseKey.add(d.studentId + '|' + d.course);
+      plan.newCourses.push({ studentId: d.studentId, course: d.course });
+    });
+
+    // 去重：系统里已有的同键流水先"消耗"掉，多出来的才导 —— 重导同一份文件是幂等的
+    const existing = new Map();
+    checkInLogs.forEach((l) => {
+      if (isRefundLog(l)) return;
+      const k = historyDedupKey(l.studentId, logDateText(l), l.courseName || '课程', l.paymentAmount);
+      existing.set(k, (existing.get(k) || 0) + 1);
+    });
+    const used = new Map();
+    drafts.forEach((d) => {
+      const k = historyDedupKey(d.studentId, d.date, d.course, d.amount);
+      const have = existing.get(k) || 0;
+      const taken = used.get(k) || 0;
+      used.set(k, taken + 1);
+      if (taken < have) { plan.skippedDuplicate++; return; }
+      plan.accepted.push(d);
+    });
+
+    plan.lessons = plan.accepted.length;
+    plan.amount = Math.round(plan.accepted.reduce((a, d) => a + d.amount, 0) * 100) / 100;
+    plan.studentsInFile = new Set(plan.accepted.map((d) => d.studentId)).size;
+    plan.coursesInFile = new Set(plan.accepted.map((d) => d.course)).size;
+    return plan;
+  }
+
+  function applyHistoryPlan(plan, opts) {
+    const seedRemaining = !!(opts && opts.seedRemaining);
+    const batchId = 'hist_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+    const totals = new Map();   // studentId|course -> 合计节数（只在勾了"历史合计作初始余额"时用）
+
+    // 新学员：课程包必须在 normalizeStudent **之前**就带好 ——
+    // 空数组会被补一个「基础课程 10 节」的默认包，等于凭空给历史学员 10 节存量（财务会虚高）
+    plan.newStudents.forEach((ns, si) => {
+      const courses = plan.newCourses
+        .filter((c) => c.studentId === ns.id)
+        .map((c, ci) => ({ id: 'course_hist_' + Date.now() + '_' + si + '_' + ci, name: c.course, remainingLessons: 0, unitPrice: 0 }));
+      const st = {
+        id: ns.id,
+        name: ns.name,
+        colorTheme: 'amber',
+        phone: '',
+        courses,                       // 至少一条，normalize 就不会塞默认包
+        importedAt: new Date().toISOString(),
+      };
+      normalizeStudent(st);
+      students.push(st);
+    });
+
+    // 已有学员：只补他还没有的课程包（余额同样给 0）
+    plan.newCourses.forEach((nc, i) => {
+      if (plan.newStudents.some((ns) => ns.id === nc.studentId)) return;
+      const st = students.find((s) => s.id === nc.studentId);
+      if (!st) return;
+      st.courses.push({ id: 'course_hist_' + Date.now() + '_' + i, name: nc.course, remainingLessons: 0, unitPrice: 0 });
+    });
+
+    plan.accepted.forEach((d, i) => {
+      const parts = d.date.split('-');
+      const local = new Date(+parts[0], +parts[1] - 1, +parts[2], 12, 0, 0);
+      const key = d.studentId + '|' + d.course;
+      totals.set(key, (totals.get(key) || 0) + 1);
+      checkInLogs.push({
+        id: 'cil_hist_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2, 5),
+        scheduleId: '',
+        studentId: d.studentId,
+        studentName: d.studentName,
+        courseName: d.course,
+        deductedLessons: 1,
+        paymentAmount: d.amount,
+        checkInTime: local.toISOString(),
+        date: d.date,
+        remarks: '历史导入' + (d.remarks ? ' · ' + d.remarks : ''),
+        teacherName: d.teacher || '',
+        source: 'history',
+        batchId,
+      });
+    });
+
+    if (seedRemaining) {
+      totals.forEach((n, key) => {
+        const [sid, course] = key.split('|');
+        const st = students.find((s) => s.id === sid);
+        const pack = st && (st.courses || []).find((c) => c.name === course);
+        if (pack) pack.remainingLessons = (Number(pack.remainingLessons) || 0) + n;
+      });
+    }
+
+    return { batchId, count: plan.accepted.length, students: plan.newStudents.length, courses: plan.newCourses.length };
+  }
+
+  function historyImportLogs() {
+    return checkInLogs.filter((l) => l && l.source === 'history');
+  }
+
+  // 撤销：不按余额反算（历史记录从不扣余额），只把流水本身抽掉
+  function removeHistoryLogs(batchId) {
+    const before = checkInLogs.length;
+    checkInLogs = checkInLogs.filter((l) => !(l && l.source === 'history' && (!batchId || l.batchId === batchId)));
+    return before - checkInLogs.length;
+  }
+
+  function downloadHistoryTemplate() {
+    const csv = '\uFEFF日期,学员,课程,节数,金额,老师,备注\r\n'
+      + '2026-03-05,陈小雨,声乐,1,180,张老师,示例行，导入前请删掉\r\n'
+      + '2026-03-12,陈小雨,声乐,2,360,张老师,一次连上两节就写节数 2\r\n';
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'LessonMate_历史消课模板.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    showToast('模板已下载，用 Excel 填好后另存为 CSV 再来导入', 'circle-check');
+  }
+
+  let historyPlanCache = null;
+
+  function renderHistoryPreview() {
+    const box = document.getElementById('historyPreview');
+    if (!box) return;
+    const plan = historyPlanCache;
+    if (!plan) { box.classList.add('hidden'); return; }
+    box.classList.remove('hidden');
+
+    const warn = [];
+    if (plan.errors.length) warn.push(`${plan.errors.length} 行有误`);
+    if (plan.skippedDuplicate) warn.push(`${plan.skippedDuplicate} 条已存在（跳过）`);
+
+    const rowsHtml = plan.accepted.slice(0, 8).map((d) => `
+      <tr class="border-t border-[#f2ece4]">
+        <td class="py-1.5 pr-2 whitespace-nowrap lm-t2">${d.date}</td>
+        <td class="py-1.5 pr-2 whitespace-nowrap font-semibold lm-t1">${escAttr(d.studentName)}</td>
+        <td class="py-1.5 pr-2 whitespace-nowrap lm-t2">${escAttr(d.course)}</td>
+        <td class="py-1.5 pr-2 whitespace-nowrap lm-t2">${d.amount > 0 ? fmtMoney(d.amount) : '—'}</td>
+        <td class="py-1.5 whitespace-nowrap lm-t3">${escAttr(d.teacher || '')}</td>
+      </tr>`).join('');
+
+    const errHtml = plan.errors.slice(0, 5).map((e) => `<div class="text-[10px] text-rose-500">第 ${e.line} 行：${e.msg}</div>`).join('')
+      + (plan.errors.length > 5 ? `<div class="text-[10px] text-rose-400">…还有 ${plan.errors.length - 5} 行</div>` : '');
+
+    box.innerHTML = `
+      <div class="rounded-xl border border-[#efe9e0] overflow-hidden">
+        <div class="bg-[#faf8f3] px-3 py-2 flex items-center justify-between">
+          <span class="font-bold text-[#44403c]">解析结果</span>
+          <span class="text-[10px] lm-t3">${plan.totalRows} 行${warn.length ? ' · ' + warn.join(' · ') : ''}</span>
+        </div>
+        <div class="px-3 py-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+          <span class="lm-t2">可导入 <b class="text-[#fe4c02]">${plan.accepted.length}</b> 条流水</span>
+          <span class="lm-t2">涉及学员 <b class="lm-t1">${plan.studentsInFile}</b> 人${plan.newStudents.length ? `（新建 ${plan.newStudents.length} 人）` : ''}</span>
+          <span class="lm-t2">课程 <b class="lm-t1">${plan.coursesInFile}</b> 门${plan.newCourses.length ? `（新建 ${plan.newCourses.length} 个课程包，余额 0）` : ''}</span>
+          <span class="lm-t2">课时费合计 <b class="lm-t1">${plan.amount > 0 ? fmtMoney(plan.amount) : '—'}</b></span>
+        </div>
+        ${plan.accepted.length ? `
+        <div class="px-3 pb-1 overflow-x-auto">
+          <table class="w-full text-[11px] text-left">
+            <thead><tr class="lm-t3 text-[10px]"><th class="pb-1 font-medium">日期</th><th class="pb-1 font-medium">学员</th><th class="pb-1 font-medium">课程</th><th class="pb-1 font-medium">金额</th><th class="pb-1 font-medium">老师</th></tr></thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+          ${plan.accepted.length > 8 ? `<div class="text-[10px] lm-t3 py-1">…下面是另 ${plan.accepted.length - 8} 条</div>` : ''}
+        </div>` : '<div class="px-3 pb-2 text-[11px] text-rose-500">没有可导入的行</div>'}
+        ${errHtml ? `<div class="px-3 py-2 border-t border-[#f2ece4] space-y-0.5">${errHtml}</div>` : ''}
+      </div>`;
+  }
+
+  function resetHistoryImport() {
+    historyPlanCache = null;
+    const fileInput = document.getElementById('historyFileInput');
+    if (fileInput) fileInput.value = '';
+    const nameEl = document.getElementById('historyFileName');
+    if (nameEl) nameEl.textContent = '未选择文件';
+    const seedEl = document.getElementById('historySeedRemaining');
+    if (seedEl) seedEl.checked = false;
+    const preview = document.getElementById('historyPreview');
+    if (preview) { preview.innerHTML = ''; preview.classList.add('hidden'); }
+    const btn = document.getElementById('btnConfirmHistoryImport');
+    if (btn) btn.disabled = true;
+  }
+
+  function refreshHistoryClearBtn() {
+    const btn = document.getElementById('btnClearHistoryLogs');
+    if (!btn) return;
+    const n = historyImportLogs().length;
+    btn.classList.toggle('hidden', n === 0);
+    btn.textContent = `清空历史导入（${n} 条）`;
+  }
+
+  function openHistoryImport() {
+    resetHistoryImport();
+    refreshHistoryClearBtn();
+    showModal('modalHistoryImport');
+  }
+
+  function handleHistoryFileChange(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const nameEl = document.getElementById('historyFileName');
+    if (nameEl) nameEl.textContent = file.name;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const parsed = parseHistoryCsv(evt.target.result);
+      const btn = document.getElementById('btnConfirmHistoryImport');
+      if (parsed.error) {
+        historyPlanCache = null;
+        renderHistoryPreview();
+        if (btn) btn.disabled = true;
+        showToast(parsed.error, 'triangle-exclamation');
+        return;
+      }
+      historyPlanCache = buildHistoryPlan(parsed.rows);
+      renderHistoryPreview();
+      if (btn) btn.disabled = historyPlanCache.accepted.length === 0;
+      if (!parsed.hasHeader) showToast('没认到表头，按「日期,学员,课程,节数,金额,老师,备注」的顺序读的', 'circle-info');
+    };
+    reader.onerror = () => showToast('文件读取失败，请重试', 'triangle-exclamation');
+    reader.readAsText(file, 'UTF-8');
+  }
+
+  function handleConfirmHistoryImport() {
+    if (!historyPlanCache || !historyPlanCache.accepted.length) { showToast('先选一个 CSV 文件', 'circle-info'); return; }
+    const seedEl = document.getElementById('historySeedRemaining');
+    const res = applyHistoryPlan(historyPlanCache, { seedRemaining: !!(seedEl && seedEl.checked) });
+    saveData();
+    refreshView();
+    const removed = historyPlanCache;
+    historyPlanCache = null;
+    hideModal('modalHistoryImport');
+    showToast(`已导入 ${res.count} 条历史消课记录${res.students ? `，新建 ${res.students} 位学员` : ''}`, 'file-import');
+    // 撤销窗口给足：历史导入动辄上百条，5 秒来不及判断，这里放在设置页卡片的「清空」里兜底
+    void removed;
+  }
+
+  function handleClearHistoryLogs() {
+    const n = historyImportLogs().length;
+    if (!n) return;
+    if (!confirm(`确定清空全部 ${n} 条历史导入的消课记录吗？\n（真实消课、退款记录不受影响；导入时新建的学员和课程包会保留）`)) return;
+    const removed = removeHistoryLogs('');
+    saveData();
+    refreshView();
+    refreshHistoryClearBtn();
+    showToast(`已清空 ${removed} 条历史导入记录`, 'trash-can');
   }
 
   // ==========================================
