@@ -371,6 +371,10 @@
             <i class="fa-solid fa-user-plus text-xs"></i> 新建学员
           </button>
         </div>
+        <div id="studentScopeTabs" class="flex items-center gap-1.5">
+          <button type="button" data-student-scope="active" class="px-3 py-1.5 rounded-full text-[11px] font-bold transition">在读 <span data-scope-count="active">0</span></button>
+          <button type="button" data-student-scope="archived" class="px-3 py-1.5 rounded-full text-[11px] font-bold transition">历史学员 <span data-scope-count="archived">0</span></button>
+        </div>
         <div id="pageStudentsList" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <!-- 动态渲染学员卡片（完整版） -->
         </div>
@@ -881,6 +885,13 @@
         <div id="historyPreview" class="hidden"></div>
 
         <label class="flex items-start gap-2 cursor-pointer bg-[#faf8f3]/60 px-3 py-2 rounded-xl">
+          <input type="checkbox" id="historyArchiveNew" class="mt-0.5 accent-[#44403c]" checked>
+          <span class="lm-t2 leading-relaxed">新建的学员直接放进「历史学员库」
+            <span class="lm-t3 block text-[10px]">默认开：这些人多半早就不在学了，不该挤进在读列表和续费预警。系统里已有的学员不受影响，之后可在学员页「历史学员」里移回在读。</span>
+          </span>
+        </label>
+
+        <label class="flex items-start gap-2 cursor-pointer bg-[#faf8f3]/60 px-3 py-2 rounded-xl">
           <input type="checkbox" id="historySeedRemaining" class="mt-0.5 accent-[#44403c]">
           <span class="lm-t2 leading-relaxed">新建课程包时把历史合计节数当作当前余额
             <span class="lm-t3 block text-[10px]">默认不开：历史课都已经上完，余额应为 0。想一次把剩余课时也定好再勾。</span>
@@ -1095,7 +1106,7 @@
   </div>
 
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=53"></script>
+  <script src="js/app.js?v=54"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

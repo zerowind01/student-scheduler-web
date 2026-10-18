@@ -201,6 +201,10 @@
             <option value="all">全部课程</option>
           </select>
         </div>
+        <div id="mStudentScopeTabs" class="items-center gap-1.5" style="display:none">
+          <button type="button" data-m-student-scope="active" class="px-3 py-1.5 rounded-full text-[11px] font-bold">在读 <span data-m-scope-count="active">0</span></button>
+          <button type="button" data-m-student-scope="archived" class="px-3 py-1.5 rounded-full text-[11px] font-bold">历史学员 <span data-m-scope-count="archived">0</span></button>
+        </div>
       </div>
 
       <!-- 学员列表列表 -->
@@ -482,6 +486,13 @@
       <div id="mHistoryPreview" class="hidden"></div>
 
       <label class="flex items-start gap-2 bg-slate-50 px-3 py-2.5 rounded-xl">
+        <input type="checkbox" id="mHistoryArchiveNew" class="mt-0.5 accent-[#111111]" checked>
+        <span class="text-slate-600 leading-relaxed text-[11px]">新建的学员直接放进「历史学员库」
+          <span class="block text-[10px] text-slate-400">默认开：这些人多半早就不在学了，不该挤进在读列表和课时预警。已有学员不受影响。</span>
+        </span>
+      </label>
+
+      <label class="flex items-start gap-2 bg-slate-50 px-3 py-2.5 rounded-xl">
         <input type="checkbox" id="mHistorySeedRemaining" class="mt-0.5 accent-[#111111]">
         <span class="text-slate-600 leading-relaxed text-[11px]">新建课程包时把历史合计节数当作当前余额
           <span class="block text-[10px] text-slate-400">默认不开：历史课都已上完，余额应为 0</span>
@@ -693,7 +704,7 @@
     </div>
   </div>
 
-  <script src="js/mobile.js?v=67"></script>
+  <script src="js/mobile.js?v=68"></script>
   <!-- 老师访问码登录遮罩（管理员数据加载后自动隐藏） -->
   <div id="teacherLoginGate" class="hidden fixed inset-0 z-[90] lm-gate flex flex-col items-center justify-center px-8">
     <div class="w-14 h-14 rounded-2xl bg-[#111111] flex items-center justify-center text-white shadow-lg mb-4">

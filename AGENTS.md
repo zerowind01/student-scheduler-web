@@ -561,3 +561,21 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       注意 `upstashDirect` 与 `proxyToUpstash` 两个分支都要实现 meta，改一处必须改两处。
     - 回归：`tmp/sync-ver-check.mjs`（15 项，服务端单测 + 内存假 Upstash，不联网）、
       `tmp/sync-poll-check.mjs`（11 项，浏览器实测：34 秒内探测 2 次 / 全量 0 次 / 后台 0 请求 / 退避生效）。
+
+47. **历史学员库 = 归档标记，不是删除**（2026-10-19，导入淳艺 49 人前先立的口径）。
+    - 字段：`student.archived` / `archivedAt` / `archiveReason`（`结课` | `停课` | `历史导入`）。
+      助手函数（两端同构）：`isArchivedSt` / `activeStudentsOf` / `archivedStudentsOf` / `setStudentArchived` /
+      `toggleStudentArchive`。移回在读是**删字段**，不做软删除标记，导出与同步都不会留脏数据。
+    - 入口：学员页顶部「在读 N / 历史学员 M」（一个历史学员都没有时自动隐藏）；历史卡片只显示
+      加入时间 / 累计 N 节 / 最后一节课 / 归档原因；详情里第三颗按钮就是「移入历史库 ↔ 移回在读」。
+    - **必须排除**：在读列表、待排课侧栏（`renderStudentList`）、排课选人（`renderFabStudentList` 与手机新建排课下拉）、
+      `lowLessonRows`（课时预警）、欠课名单（`activeDebtors`）、财务的存量/续费预警（`relStudents` 取 active）。
+    - **不能排除**：财务课消金额与明细（按 `checkInLogs` 算，历史学员当年交的钱必须照算）、学员详情
+      （消课记录 / 累计节数 / 加入时间都还能看）、历史导入的去重键。
+    - 历史导入弹层「新建的学员直接放进历史学员库」**默认勾选**，只影响**本次新建**的学员；
+      匹配到系统里已有的学员时**不动**它的 archived 状态（否则会把在读的人误归档）。取消勾选可导进在读。
+    - ⚠️ 坑：`let studentPageScope` 一开始写在 `renderPageStudents` 上方，初始化时 `refreshView()` 先跑到 →
+      **TDZ 报错整页白屏**。所有页面级状态必须放文件顶部的状态声明区。手机端 `mobileStudentScope` 同理。
+    - 回归：`tmp/archive-check.mjs`（37 项：在读/历史两个范围、预警与欠课排除、详情移入移回、导入默认归档、
+      已有学员不被误改、手机端同口径）。护栏自检：把财务欠课改回 `debts.filter(...)` → 立刻报红。
+    - 后续接「停课 / 结课」：按钮只需 `toggleStudentArchive(st, true)` + 自定义 `archiveReason`，不用另起一套结构。

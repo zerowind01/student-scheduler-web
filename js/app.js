@@ -43,6 +43,7 @@
   let selectedStudentForTap = null; // 移动端/触摸屏点击选中的学员（点击排课模式）
   let currentFilter = 'unscheduled'; // 默认仅显示未排课学生（待排课）
   let searchQuery = ''; // 学生搜索关键字
+  let studentPageScope = 'active'; // 学员页范围：active=在读 / archived=历史学员库
 
   // 同步合并：远端 teachers 覆盖本地时保留本地 accessPin（PIN 不同步下发）
   function mergeTeachersKeepPin(remoteTeachers, localTeachers) {
@@ -194,6 +195,49 @@
       ];
     }
     return st;
+  }
+
+  // ============ 历史学员库 ============
+  // 归档 ≠ 删除：学员档案、课程包、消课流水、加入时间全部原样保留，
+  // 只是从「在读」的各个入口（学员页 / 待排课 / 低课时预警 / 欠课名单 / 排课选人）里拿掉。
+  // 后续的「停课 / 结课」就是把 archived 置 true 并记下日期与原因。
+  function isArchivedSt(st) {
+    return !!(st && st.archived);
+  }
+  function activeStudentsOf(list) {
+    return (list || students).filter((s) => !isArchivedSt(s));
+  }
+  function archivedStudentsOf(list) {
+    return (list || students).filter(isArchivedSt);
+  }
+  function setStudentArchived(st, on, reason) {
+    if (!st) return;
+    if (on) {
+      st.archived = true;
+      if (!st.archivedAt) st.archivedAt = formatDate(new Date());
+      if (reason) st.archiveReason = reason;
+    } else {
+      delete st.archived;
+      delete st.archivedAt;
+      delete st.archiveReason;
+    }
+  }
+
+  // 移入 / 移出历史学员库（桌面与手机两处详情共用同一套口径）
+  function toggleStudentArchive(st, on) {
+    if (!st) return;
+    if (on) {
+      if (!confirm(`把「${st.name}」移入历史学员库？\n\n学员档案、课程包、消课记录都会保留，只是不再出现在在读列表、待排课和课时预警里。随时可以移回。`)) return;
+      setStudentArchived(st, true, '结课');
+      saveData();
+      refreshView();
+      showToast(`📦 ${st.name} 已移入历史学员库`, 'box-archive');
+    } else {
+      setStudentArchived(st, false);
+      saveData();
+      refreshView();
+      showToast(`↩️ ${st.name} 已移回在读`, 'rotate-left');
+    }
   }
 
   // ============ 教务扩展：数据迁移与规范化 ============
@@ -430,7 +474,7 @@
       <div class="flex items-center gap-3 lm-soft rounded-xl p-3">
         <div class="w-11 h-11 rounded-full ${themeColor.bg} ${themeColor.text} flex items-center justify-center font-bold text-base">${student.name.substring(0, 1)}</div>
         <div class="flex-1">
-          <div class="font-bold text-sm lm-t1">${student.name}</div>
+          <div class="font-bold text-sm lm-t1 flex items-center gap-1.5 flex-wrap">${student.name}${isArchivedSt(student) ? `<span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full lm-soft lm-t3">历史学员${student.archivedAt ? ' · ' + student.archivedAt : ''}</span>` : ''}</div>
           <div class="text-[11px] lm-t2">${student.phone ? '<i class="fa-solid fa-phone text-[9px]"></i> ' + student.phone : '未填电话'}</div>
           ${lifeText ? `<div class="text-[10px] lm-t3 mt-0.5" data-detail-life>${student.joinDate ? '<i class="fa-solid fa-calendar-plus text-[9px]"></i> ' : ''}${lifeText}</div>` : ''}
         </div>
@@ -440,12 +484,15 @@
         </div>
       </div>
 
-      <div class="grid grid-cols-2 gap-2">
+      <div class="grid grid-cols-3 gap-2">
         <button type="button" id="detailSummaryBtn" class="py-2.5 rounded-xl bg-white border border-[#f0ebe2] hover:bg-[#f8f5f0] font-bold text-xs flex items-center justify-center gap-1.5 transition">
-          <i class="fa-solid fa-image"></i> 课时总结图
+          <i class="fa-solid fa-image"></i> 总结图
         </button>
         <button type="button" id="detailRefundBtn" class="py-2.5 rounded-xl bg-white border border-[#f0ebe2] hover:bg-[#f8f5f0] font-bold text-xs flex items-center justify-center gap-1.5 transition"${canRefund ? '' : ' disabled style="opacity:.45;cursor:not-allowed"'}>
-          <i class="fa-solid fa-circle-minus" style="color:#d5304f;"></i> 退款 / 退课时${canRefund ? '' : '（无可退）'}
+          <i class="fa-solid fa-circle-minus" style="color:#d5304f;"></i> 退款${canRefund ? '' : '（无可退）'}
+        </button>
+        <button type="button" id="detailArchiveBtn" class="py-2.5 rounded-xl bg-white border border-[#f0ebe2] hover:bg-[#f8f5f0] font-bold text-xs flex items-center justify-center gap-1.5 transition" data-archived="${isArchivedSt(student) ? '1' : '0'}">
+          <i class="fa-solid ${isArchivedSt(student) ? 'fa-rotate-left' : 'fa-box-archive'}"></i> ${isArchivedSt(student) ? '移回在读' : '移入历史库'}
         </button>
       </div>
 
@@ -567,6 +614,14 @@
     if (summaryBtn) summaryBtn.addEventListener('click', () => {
       hideModal('modalStudentDetail');
       setTimeout(() => openLessonSummaryModal(student), 280);
+    });
+
+    // 归档（结课 / 停课）→ 历史学员库：档案与流水全留，只是离开在读列表
+    const archiveBtn = document.getElementById('detailArchiveBtn');
+    if (archiveBtn) archiveBtn.addEventListener('click', () => {
+      const goingArchive = !isArchivedSt(student);
+      hideModal('modalStudentDetail');
+      setTimeout(() => toggleStudentArchive(student, goingArchive), 260);
     });
 
     // 消课记录「查看全部 / 收起」：整块重渲染，展开状态存在 detailLogExpanded
@@ -1110,6 +1165,12 @@
       debts = debts.filter((x) => x.id !== d.id);
     }
     return repaid;
+  }
+
+  // 欠课名单只算在读学员：归档的人已经离校，账留着但不再催
+  function activeDebtors() {
+    const arch = new Set(archivedStudentsOf().map((s) => s.id));
+    return debts.filter((d) => d.amount > 0 && !arch.has(d.studentId));
   }
 
   function getStudentDebts(studentId) {
@@ -1816,6 +1877,7 @@
   function lowLessonRows(studentsScope, courseOf) {
     const rows = [];
     (studentsScope || students).forEach((st) => {
+      if (isArchivedSt(st)) return; // 历史学员不再补课，不能占着课时预警
       normalizeStudent(st);
       const courses = (courseOf ? courseOf(st) : st.courses) || [];
       courses.forEach((c) => {
@@ -2532,7 +2594,7 @@
     const monthLogs = checkInLogs.filter((l) => (l.checkInTime || '').startsWith(monthPrefix));
     const monthLessons = monthLogs.reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
     const monthValue = monthLogs.reduce((acc, l) => acc + (l.paymentAmount || 0), 0);
-    const debtors = debts.filter((d) => d.amount > 0);
+    const debtors = activeDebtors();
     const debtTotal = debtors.reduce((n, d) => n + d.amount, 0);
 
     const kpiRow = document.getElementById('dashKpiRow');
@@ -2930,14 +2992,84 @@
   }
 
   // 学员管理分页：完整版卡片（含课时/欠课/操作）
+  // 一个学员的累计消课与最后一节课日期（归档卡片上要显示，让老师能对上账）
+  function studentLessonStats(studentId) {
+    let total = 0, history = 0, last = '';
+    checkInLogs.forEach((l) => {
+      if (l.studentId !== studentId || isRefundLog(l)) return;
+      total += Number(l.deductedLessons) || 0;
+      if (l.source === 'history') history += Number(l.deductedLessons) || 0;
+      const d = logDateText(l);
+      if (d && d > last) last = d;
+    });
+    return { total, history, last };
+  }
+
+  function archivedStudentCardHtml(student) {
+    const themeColor = getThemeBadgeStyle(student.colorTheme || 'amber');
+    const stat = studentLessonStats(student.id);
+    const meta = [
+      student.joinDate ? `${student.joinDate} 加入` : '',
+      stat.total ? `累计 ${stat.total} 节` : '',
+      stat.last ? `最后 ${stat.last}` : '',
+    ].filter(Boolean).join(' · ');
+    const reason = student.archiveReason
+      ? `<span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full lm-soft lm-t3">${student.archiveReason}</span>`
+      : '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full lm-soft lm-t3">历史学员</span>';
+    return `
+      <div class="lm-stat-card p-3.5 space-y-2" data-student-page-id="${student.id}">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <div class="w-9 h-9 rounded-full ${themeColor.bg} ${themeColor.text} flex items-center justify-center font-bold text-sm shrink-0 opacity-80">${student.name.substring(0, 1)}</div>
+            <div class="min-w-0">
+              <div class="font-bold text-sm lm-t1 flex items-center gap-1.5"><span class="truncate">${student.name}</span>${reason}</div>
+              <div class="text-[10px] lm-t3 truncate">${meta || '暂无消课记录'}</div>
+            </div>
+          </div>
+        </div>
+        <div class="flex gap-2 pt-1">
+          <button class="flex-1 py-2 rounded-lg btn-quiet text-[11px] font-bold transition page-detail-student" data-id="${student.id}"><i class="fa-solid fa-circle-info"></i> 详情</button>
+          <button class="flex-1 py-2 rounded-lg lm-btn-ink text-white text-[11px] font-bold transition page-restore-student" data-id="${student.id}"><i class="fa-solid fa-rotate-left"></i> 移回在读</button>
+        </div>
+      </div>`;
+  }
+
   function renderPageStudents() {
     const container = document.getElementById('pageStudentsList');
     if (!container) return;
-    if (students.length === 0) {
-      container.innerHTML = `<div class="col-span-full text-center py-16 lm-t3 text-sm">还没有学员，点击右上角"新建学员"开始</div>`;
+    const activeList = activeStudentsOf();
+    const archivedList = archivedStudentsOf();
+    const tabs = document.getElementById('studentScopeTabs');
+    if (tabs) {
+      // 一个历史学员都没有时不占地方；有就常驻，方便来回切
+      tabs.classList.toggle('hidden', archivedList.length === 0 && studentPageScope === 'active');
+      tabs.querySelectorAll('[data-student-scope]').forEach((btn) => {
+        const on = btn.getAttribute('data-student-scope') === studentPageScope;
+        btn.className = 'px-3 py-1.5 rounded-full text-[11px] font-bold transition ' + (on ? 'lm-btn-ink text-white' : 'lm-btn-ghost');
+        if (!btn.__lmBound) {
+          btn.__lmBound = true;
+          btn.addEventListener('click', () => {
+            studentPageScope = btn.getAttribute('data-student-scope') || 'active';
+            renderPageStudents();
+          });
+        }
+      });
+      const ca = tabs.querySelector('[data-scope-count="active"]');
+      const cr = tabs.querySelector('[data-scope-count="archived"]');
+      if (ca) ca.textContent = activeList.length;
+      if (cr) cr.textContent = archivedList.length;
+    }
+
+    const list = studentPageScope === 'archived' ? archivedList : activeList;
+    if (list.length === 0) {
+      const emptyText = studentPageScope === 'archived'
+        ? '历史学员库是空的<br><span class="text-[11px]">在学员详情里点「移入历史学员库」，结课/停课的学员就会收在这里</span>'
+        : '还没有学员，点击右上角"新建学员"开始';
+      container.innerHTML = `<div class="col-span-full text-center py-16 lm-t3 text-sm">${emptyText}</div>`;
       return;
     }
-    container.innerHTML = students.map((student) => {
+    container.innerHTML = list.map((student) => {
+      if (studentPageScope === 'archived') return archivedStudentCardHtml(student);
       normalizeStudent(student);
       migrateStudentCourses(student);
       const totalLessons = student.courses.reduce((acc, c) => acc + c.remainingLessons, 0);
@@ -2989,6 +3121,16 @@
         if (st) openRechargeModal(st);
       });
     });
+    container.querySelectorAll('.page-restore-student').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const st = students.find((s) => s.id === btn.getAttribute('data-id'));
+        if (!st) return;
+        setStudentArchived(st, false);
+        saveData();
+        refreshView();
+        showToast(`↩️ ${st.name} 已移回在读`, 'rotate-left');
+      });
+    });
   }
 
   // 财务分页：完整经营面板（本月课消/收入明细/欠课名单）
@@ -3018,7 +3160,10 @@
     const monthRefund = monthLogs.filter(isRefundLog).reduce((acc, l) => acc + Math.abs(l.paymentAmount || 0), 0);
 
     // 老师视角：待消存量 / 课时存量价值 / 欠课名单 / 续费预警 只算**该老师授课的课程包**
-    const relStudents = scoped ? students.filter((st) => teacherRelatedStudent(st, tId)) : students;
+    // 历史学员（已归档）不算存量也不算欠课：人已经离校，课消金额仍按流水照算（上面那几项不受影响）
+    const relStudents = scoped
+      ? students.filter((st) => !isArchivedSt(st) && teacherRelatedStudent(st, tId))
+      : activeStudentsOf();
     const myCoursesOf = (st) => scoped ? (st.courses || []).filter((c) => teacherRelatedCourse(st, c.name, tId)) : (st.courses || []);
     const relIds = new Set(relStudents.map((s) => s.id));
 
@@ -3026,7 +3171,7 @@
     const totalStockValue = relStudents.reduce((acc, st) => acc + myCoursesOf(st).reduce((a, c) => a + Math.max(0, c.remainingLessons) * (c.unitPrice || 0), 0), 0);
     const debtors = scoped
       ? debts.filter((d) => d.amount > 0 && relIds.has(d.studentId) && relStudents.some((st) => st.id === d.studentId && teacherRelatedCourse(st, d.courseName, tId)))
-      : debts.filter((d) => d.amount > 0);
+      : activeDebtors();
     // 续费预警（余额 ≤2 节；欠课负数归右栏「欠课名单」，不在这里重复出现）
     const lowRows = lowLessonRows(relStudents, myCoursesOf);
 
@@ -3248,7 +3393,7 @@
     }
     if (cSel) {
       const prev = cSel.value;
-      const names = [...new Set(students.flatMap((st) => (st.courses || []).map((c) => c.name)))].filter(Boolean);
+      const names = [...new Set(activeStudentsOf().flatMap((st) => (st.courses || []).map((c) => c.name)))].filter(Boolean);
       cSel.innerHTML = '<option value="all">全部课程</option>' +
         names.map((n) => `<option value="${n}">${n}</option>`).join('');
       if ([...cSel.options].some((o) => o.value === prev)) cSel.value = prev;
@@ -3263,7 +3408,7 @@
         .map((s) => s.studentId)
     );
 
-    let filtered = students.filter((st) => {
+    let filtered = activeStudentsOf().filter((st) => {
       normalizeStudent(st);
 
       const matchNameOrPhone = st.name.toLowerCase().includes(searchQuery) || (st.phone && st.phone.includes(searchQuery));
@@ -4116,11 +4261,12 @@
   function renderFabStudentList() {
     const listEl = document.getElementById('fabStudentList');
     if (!listEl) return;
-    if (!students.length) {
+    const fabStudents = activeStudentsOf();
+    if (!fabStudents.length) {
       listEl.innerHTML = '<div class="text-[11px] text-[#a8a29e] text-center py-4">还没有学员，请先到「学员」页新建</div>';
       return;
     }
-    listEl.innerHTML = students.map((st) => {
+    listEl.innerHTML = fabStudents.map((st) => {
       const total = (st.courses || []).reduce((acc, c) => acc + (c.remainingLessons || 0), 0);
       const avTheme = getThemeBadgeStyle(st.colorTheme || 'amber');
       return `
@@ -5953,7 +6099,12 @@
       joinDateCount: 0,                 // 会写入加入时间的人数（新建 / 原本为空 / 换日期）
       joinDateUpdate: 0,                // 其中会改掉已有日期的人数
       joinDateWarn: 0,                  // 填了加入时间但看不懂的行数
+      archiveNew: true,                 // 新建的学员是否直接进历史学员库（弹层勾选，默认开）
     };
+    {
+      const el = document.getElementById('historyArchiveNew');
+      plan.archiveNew = el ? !!el.checked : true;
+    }
     const drafts = [];
     rows.forEach((r) => {
       if (r.err) { plan.errors.push({ line: r.line, msg: r.err }); return; }
@@ -6059,6 +6210,8 @@
         importedAt: new Date().toISOString(),
       };
       if (courses.length) normalizeStudent(st); else st.noDefaultCourse = true;
+      // 历史学员默认直接归档：不进修课表、不占课时预警、不挤在读列表 —— 但档案与流水都在
+      if (plan.archiveNew) setStudentArchived(st, true, '历史导入');
       students.push(st);
     });
 
@@ -6201,6 +6354,7 @@
         <div class="px-3 py-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
           <span class="lm-t2">可导入 <b class="text-[#fe4c02]">${plan.accepted.length}</b> 条流水</span>
           <span class="lm-t2">涉及学员 <b class="lm-t1">${plan.studentsInFile}</b> 人${plan.newStudents.length ? `（新建 ${plan.newStudents.length} 人）` : ''}</span>
+          ${plan.newStudents.length && plan.archiveNew ? `<span class="lm-t2">新建的 ${plan.newStudents.length} 人 → <b class="lm-t1">历史学员库</b></span>` : ''}
           ${plan.rosterCount ? `<span class="lm-t2">名单 <b class="lm-t1">${plan.rosterCount}</b> 人${plan.rosterOnly ? `（${plan.rosterOnly} 人暂无消课记录）` : ''}</span>` : ''}
           ${plan.joinDateCount ? `<span class="lm-t2">加入时间 <b class="lm-t1">${plan.joinDateCount}</b> 人${plan.joinDateUpdate ? `（${plan.joinDateUpdate} 人将更新）` : ''}</span>` : ''}
           <span class="lm-t2">课程 <b class="lm-t1">${plan.coursesInFile}</b> 门${plan.newCourses.length ? `（新建 ${plan.newCourses.length} 个课程包，余额 0）` : ''}</span>
@@ -6245,6 +6399,20 @@
   function openHistoryImport() {
     resetHistoryImport();
     refreshHistoryClearBtn();
+    // 每次打开都回到默认口径：新建学员直接进历史学员库
+    const archEl = document.getElementById('historyArchiveNew');
+    if (archEl) {
+      archEl.checked = true;
+      if (!archEl.__lmBound) {
+        archEl.__lmBound = true;
+        archEl.addEventListener('change', () => {
+          if (historyPlanCache) {
+            historyPlanCache.archiveNew = archEl.checked;
+            renderHistoryPreview();
+          }
+        });
+      }
+    }
     showModal('modalHistoryImport');
   }
 
@@ -6447,10 +6615,10 @@
     const totalRemaining = students.reduce(
       (acc, st) => acc + (st.courses || []).reduce((a, c) => a + Math.max(0, c.remainingLessons), 0), 0
     );
-    const totalStockValue = students.reduce(
+    const totalStockValue = activeStudentsOf().reduce(
       (acc, st) => acc + (st.courses || []).reduce((a, c) => a + Math.max(0, c.remainingLessons) * (c.unitPrice || 0), 0), 0
     );
-    const debtors = debts.filter((d) => d.amount > 0);
+    const debtors = activeDebtors();
 
     panel.innerHTML = `
       <div class="flex items-center justify-between mb-2">

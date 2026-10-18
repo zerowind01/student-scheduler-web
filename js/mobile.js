@@ -28,6 +28,7 @@
   // 'day3' 3日时间轴 | 'week' 一周条 + 当天清单 | 'month' 整月格 + 当天清单
   // 默认「周」：进课表先看这一周全貌，比 3 日窗口更适合快速定位。
   let calView = 'week';
+  let mobileStudentScope = 'active';           // 学员页范围：active=在读 / archived=历史学员库
   let calSelected = formatDate(getToday());    // 当前选中日期（周/月档共用）
   const CAL_CELL_H = 46;                       // 单行日期格高度（px）
   const CAL_ROW_GAP = 2;                       // #calGrid 的 gap-y-0.5 = 2px
@@ -156,6 +157,46 @@
       ];
     }
     return st;
+  }
+
+  // ============ 历史学员库（与桌面端 app.js 同口径）============
+  // 归档 ≠ 删除：档案、课程包、消课流水全留，只是从在读列表 / 课时预警 / 欠课 / 排课选人里拿掉。
+  function isArchivedSt(st) {
+    return !!(st && st.archived);
+  }
+  function activeStudentsOf(list) {
+    return (list || students).filter((s) => !isArchivedSt(s));
+  }
+  function archivedStudentsOf(list) {
+    return (list || students).filter(isArchivedSt);
+  }
+  function setStudentArchived(st, on, reason) {
+    if (!st) return;
+    if (on) {
+      st.archived = true;
+      if (!st.archivedAt) st.archivedAt = formatDate(new Date());
+      if (reason) st.archiveReason = reason;
+    } else {
+      delete st.archived;
+      delete st.archivedAt;
+      delete st.archiveReason;
+    }
+  }
+
+  function toggleMobileStudentArchive(st, on) {
+    if (!st) return;
+    if (on) {
+      if (!confirm(`把「${st.name}」移入历史学员库？\n\n档案、课程包、消课记录都会保留，只是不再出现在在读列表、课时预警和排课选人里。随时可以移回。`)) return;
+      setStudentArchived(st, true, '结课');
+      saveData();
+      refreshMobileAll();
+      showToast(`📦 ${st.name} 已移入历史学员库`);
+    } else {
+      setStudentArchived(st, false);
+      saveData();
+      refreshMobileAll();
+      showToast(`↩️ ${st.name} 已移回在读`);
+    }
   }
 
   // ============ 教务扩展（与桌面端 app.js 保持一致） ============
@@ -392,7 +433,7 @@
       <div class="flex items-center gap-3 bg-slate-50 rounded-2xl p-3">
         <div class="w-12 h-12 rounded-full bg-[#111111] text-white flex items-center justify-center font-bold text-base">${student.name.substring(0, 1)}</div>
         <div class="flex-1">
-          <div class="font-bold text-sm text-slate-800">${student.name}</div>
+          <div class="font-bold text-sm text-slate-800 flex items-center gap-1.5 flex-wrap">${student.name}${isArchivedSt(student) ? `<span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-500">历史学员${student.archivedAt ? ' · ' + student.archivedAt : ''}</span>` : ''}</div>
           <div class="text-[11px] text-slate-500">${student.phone ? '📞 ' + student.phone : '未填电话'}</div>
           ${lifeText ? `<div class="text-[10px] text-slate-400 mt-0.5" data-detail-life>${student.joinDate ? '<i class="fa-solid fa-calendar-plus text-[9px]"></i> ' : ''}${lifeText}</div>` : ''}
         </div>
@@ -406,12 +447,15 @@
         <i class="fa-solid fa-circle-plus"></i> 充值 / 新购课时包
       </button>
 
-      <div class="grid grid-cols-2 gap-2">
+      <div class="grid grid-cols-3 gap-2">
         <button type="button" id="mDetailSummaryBtn" class="py-3 rounded-xl bg-white border border-[#f0ebe2] text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 active:bg-slate-50 transition">
-          <i class="fa-solid fa-image"></i> 课时总结图
+          <i class="fa-solid fa-image"></i> 总结图
         </button>
         <button type="button" id="mDetailRefundBtn" class="py-3 rounded-xl bg-white border border-rose-200 text-rose-600 font-bold text-xs flex items-center justify-center gap-1.5 active:bg-rose-50 transition"${canRefund ? '' : ' disabled style="opacity:.45"'}>
-          <i class="fa-solid fa-circle-minus"></i> 退款 / 退课时${canRefund ? '' : '（无可退）'}
+          <i class="fa-solid fa-circle-minus"></i> 退款${canRefund ? '' : '（无可退）'}
+        </button>
+        <button type="button" id="mDetailArchiveBtn" class="py-3 rounded-xl bg-white border border-[#f0ebe2] text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 active:bg-slate-50 transition" data-archived="${isArchivedSt(student) ? '1' : '0'}">
+          <i class="fa-solid ${isArchivedSt(student) ? 'fa-rotate-left' : 'fa-box-archive'}"></i> ${isArchivedSt(student) ? '移回在读' : '移入历史库'}
         </button>
       </div>
 
@@ -539,6 +583,14 @@
     if (summaryBtn) summaryBtn.addEventListener('click', () => {
       hideModal('modalMobileStudentDetail');
       setTimeout(() => openMobileLessonSummaryModal(student), 280);
+    });
+
+    // 归档（结课 / 停课）→ 历史学员库
+    const archiveBtn = body.querySelector('#mDetailArchiveBtn');
+    if (archiveBtn) archiveBtn.addEventListener('click', () => {
+      const goingArchive = !isArchivedSt(student);
+      hideModal('modalMobileStudentDetail');
+      setTimeout(() => toggleMobileStudentArchive(student, goingArchive), 260);
     });
 
     // 消课记录「查看全部 / 收起」：整块重渲染，展开状态存在 detailLogExpanded
@@ -1714,7 +1766,12 @@
       joinDateCount: 0,                 // 会写入加入时间的人数（新建 / 原本为空 / 换日期）
       joinDateUpdate: 0,                // 其中会改掉已有日期的人数
       joinDateWarn: 0,                  // 填了加入时间但看不懂的行数
+      archiveNew: true,                 // 新建的学员是否直接进历史学员库（弹层勾选，默认开）
     };
+    {
+      const el = document.getElementById('mHistoryArchiveNew');
+      plan.archiveNew = el ? !!el.checked : true;
+    }
     const drafts = [];
     rows.forEach((r) => {
       if (r.err) { plan.errors.push({ line: r.line, msg: r.err }); return; }
@@ -1820,6 +1877,7 @@
         importedAt: new Date().toISOString(),
       };
       if (courses.length) normalizeStudent(st); else st.noDefaultCourse = true;
+      if (plan.archiveNew) setStudentArchived(st, true, '历史导入');
       students.push(st);
     });
 
@@ -1960,6 +2018,7 @@
         </div>
         <div class="px-3 py-2 space-y-0.5 text-[11px] text-slate-600">
           <div>可导入 <b class="text-[#ff5600]">${plan.accepted.length}</b> 条 · 学员 <b class="text-slate-800">${plan.studentsInFile}</b> 人${plan.newStudents.length ? `（新建 ${plan.newStudents.length}）` : ''}</div>
+          ${plan.newStudents.length && plan.archiveNew ? `<div>新建的 ${plan.newStudents.length} 人 → <b class="text-slate-800">历史学员库</b></div>` : ''}
           ${plan.rosterCount ? `<div>名单 <b class="text-slate-800">${plan.rosterCount}</b> 人${plan.rosterOnly ? `（${plan.rosterOnly} 人暂无消课记录）` : ''}</div>` : ''}
           <div>课程 <b class="text-slate-800">${plan.coursesInFile}</b> 门${plan.newCourses.length ? `（新建 ${plan.newCourses.length} 个课程包）` : ''} · 合计 <b class="text-slate-800">${plan.amount > 0 ? fmtMoney(plan.amount) : '—'}</b></div>
           ${plan.joinDateCount ? `<div>加入时间 <b class="text-slate-800">${plan.joinDateCount}</b> 人${plan.joinDateUpdate ? `（${plan.joinDateUpdate} 人将更新）` : ''}</div>` : ''}
@@ -1985,6 +2044,20 @@
     if (nameEl) nameEl.textContent = '未选择文件';
     const seedEl = document.getElementById('mHistorySeedRemaining');
     if (seedEl) seedEl.checked = false;
+    // 每次打开回到默认口径：新建学员直接进历史学员库
+    const archEl = document.getElementById('mHistoryArchiveNew');
+    if (archEl) {
+      archEl.checked = true;
+      if (!archEl.__lmBound) {
+        archEl.__lmBound = true;
+        archEl.addEventListener('change', () => {
+          if (historyPlanCache) {
+            historyPlanCache.archiveNew = archEl.checked;
+            renderMobileHistoryPreview();
+          }
+        });
+      }
+    }
     const preview = document.getElementById('mHistoryPreview');
     if (preview) { preview.innerHTML = ''; preview.classList.add('hidden'); }
     const btn = document.getElementById('mConfirmHistoryImport');
@@ -2171,6 +2244,7 @@
   function lowLessonRows(studentsScope, courseOf) {
     const rows = [];
     (studentsScope || students).forEach((st) => {
+      if (isArchivedSt(st)) return; // 历史学员不补课，不能占着课时预警
       normalizeStudent(st);
       const courses = (courseOf ? courseOf(st) : st.courses) || [];
       courses.forEach((c) => {
@@ -3912,7 +3986,7 @@
     if (!isTeacherView()) {
       // 管理员：紧凑概览
       const todayCount = schedules.filter((s) => s.date === todayStr && s.status === SCHEDULE_STATUS.SCHEDULED).length;
-      const lowStudents = students.filter((st) => (st.courses || []).some((c) => c.remainingLessons <= 2)).length;
+      const lowStudents = activeStudentsOf().filter((st) => !isArchivedSt(st) && (st.courses || []).some((c) => c.remainingLessons <= 2)).length;
       el.innerHTML = `
         <div class="lm-card px-4 py-3 flex items-center justify-between">
           <div>
@@ -5428,11 +5502,77 @@
     }
   }
 
+  // 学员页两个范围：在读 / 历史学员库（与桌面端同一套口径）
+  function mobileStudentStats(studentId) {
+    let total = 0, last = '';
+    checkInLogs.forEach((l) => {
+      if (l.studentId !== studentId || isRefundLog(l)) return;
+      total += Number(l.deductedLessons) || 0;
+      const d = logDateText(l);
+      if (d && d > last) last = d;
+    });
+    return { total, last };
+  }
+
+  function syncMobileScopeTabs() {
+    const tabs = document.getElementById('mStudentScopeTabs');
+    if (!tabs) return;
+    const activeN = activeStudentsOf().length;
+    const archivedN = archivedStudentsOf().length;
+    tabs.style.display = (archivedN === 0 && mobileStudentScope === 'active') ? 'none' : 'flex';
+    tabs.querySelectorAll('[data-m-student-scope]').forEach((btn) => {
+      const on = btn.getAttribute('data-m-student-scope') === mobileStudentScope;
+      btn.className = 'px-3 py-1.5 rounded-full text-[11px] font-bold ' + (on ? 'lm-btn-ink text-white' : 'lm-btn-ghost');
+      if (!btn.__lmBound) {
+        btn.__lmBound = true;
+        btn.addEventListener('click', () => {
+          mobileStudentScope = btn.getAttribute('data-m-student-scope') || 'active';
+          renderMobileStudents();
+        });
+      }
+    });
+    const ca = tabs.querySelector('[data-m-scope-count="active"]');
+    const cr = tabs.querySelector('[data-m-scope-count="archived"]');
+    if (ca) ca.textContent = activeN;
+    if (cr) cr.textContent = archivedN;
+  }
+
+  function mobileArchivedCard(st) {
+    const card = document.createElement('div');
+    card.className = 'lm-card p-3 space-y-2';
+    const av = avatarColorFor(st);
+    const stat = mobileStudentStats(st.id);
+    const meta = [
+      st.joinDate ? `${st.joinDate} 加入` : '',
+      stat.total ? `累计 ${stat.total} 节` : '',
+      stat.last ? `最后 ${stat.last}` : '',
+    ].filter(Boolean).join(' · ');
+    card.innerHTML = `
+      <div class="flex items-center space-x-2.5">
+        <div class="w-9 h-9 rounded-full ${av.bg} text-white font-bold flex items-center justify-center text-xs shrink-0 opacity-80">${st.name.substring(0, 1)}</div>
+        <div class="flex-1 min-w-0">
+          <div class="font-bold text-xs text-[#111111] flex items-center gap-1.5">
+            <span class="truncate">${st.name}</span>
+            <span class="text-[9px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full font-semibold shrink-0">${st.archiveReason || '历史学员'}</span>
+          </div>
+          <div class="text-[10px] text-slate-400 truncate mt-0.5">${meta || '暂无消课记录'}</div>
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <button type="button" class="flex-1 py-2 rounded-lg lm-btn-ghost text-[11px] font-bold btn-arch-detail"><i class="fa-solid fa-circle-info"></i> 详情</button>
+        <button type="button" class="flex-1 py-2 rounded-lg lm-btn-ink text-white text-[11px] font-bold btn-arch-restore"><i class="fa-solid fa-rotate-left"></i> 移回在读</button>
+      </div>`;
+    card.querySelector('.btn-arch-detail').addEventListener('click', () => openMobileStudentDetail(st.id));
+    card.querySelector('.btn-arch-restore').addEventListener('click', () => toggleMobileStudentArchive(st, false));
+    return card;
+  }
+
   function renderMobileStudents() {
     const container = document.getElementById('mobileStudentContainer');
     if (!container) return;
     container.innerHTML = '';
     populateMobileStudentFilters();
+    syncMobileScopeTabs();
 
     const filterBtn = document.querySelector('.mobile-student-filter.active');
     const filter = filterBtn ? filterBtn.getAttribute('data-filter') : 'all';
@@ -5444,17 +5584,23 @@
     const teacherFilter = tSel ? (tSel.value || 'all') : 'all';
     const courseFilter = cSel ? cSel.value : 'all';
 
-    let list = students.filter((st) => {
+    const scopeArchived = mobileStudentScope === 'archived';
+    let list = (scopeArchived ? archivedStudentsOf() : activeStudentsOf()).filter((st) => {
       normalizeStudent(st);
+      const matchName = st.name.toLowerCase().includes(query) || (st.phone && st.phone.includes(query));
+      const matchCourse = st.courses.some((c) => c.name.toLowerCase().includes(query));
+      if (!matchName && !matchCourse) return false;
+      // 历史学员只看搜索 + 课程："课时预警 / 我的学员"这些是在读口径，归档的人不参与
+      if (scopeArchived) {
+        if (courseFilter !== 'all' && !st.courses.some((c) => c.name === courseFilter)) return false;
+        return true;
+      }
       // 范围下拉：mine=我的学员（关联名单或排课相关）；all=全部；其他值=指定老师
       if (isTeacherView() && teacherFilter === 'mine') {
         const related = (st.teacherIds || []).includes(teacherSession.teacherId) ||
           schedules.some((s) => s.studentId === st.id && (s.teacherId === teacherSession.teacherId || s.assistantTeacherId === teacherSession.teacherId));
         if (!related) return false;
       }
-      const matchName = st.name.toLowerCase().includes(query) || (st.phone && st.phone.includes(query));
-      const matchCourse = st.courses.some((c) => c.name.toLowerCase().includes(query));
-      if (!matchName && !matchCourse) return false;
 
       if (filter === 'low') {
         const total = st.courses.reduce((acc, c) => acc + c.remainingLessons, 0);
@@ -5474,9 +5620,9 @@
     });
 
     if (list.length === 0) {
-      const emptyText = query || filter === 'low'
-        ? '没有符合条件的学员'
-        : '还没有学员，点击右上角"+ 新增"开始添加';
+      const emptyText = scopeArchived
+        ? '历史学员库是空的<br><span class="text-[10px]">在学员详情里点「移入历史库」，结课/停课的学员就会收在这里</span>'
+        : (query || filter === 'low' ? '没有符合条件的学员' : '还没有学员，点击右上角"+ 新增"开始添加');
       container.innerHTML = `
         <div class="text-center py-10 text-slate-400 text-xs">
           <i class="fa-solid fa-user-ghost text-3xl mb-2 block opacity-40"></i>
@@ -5486,6 +5632,7 @@
     }
 
     list.forEach((st) => {
+      if (scopeArchived) { container.appendChild(mobileArchivedCard(st)); return; }
       const card = document.createElement('div');
       card.className = 'lm-card p-3.5 flex items-center justify-between space-x-2';
 
@@ -5564,10 +5711,12 @@
     const stSelect = document.getElementById('selectMobileStudent');
     if (stSelect) {
       stSelect.innerHTML = '';
-      students.forEach((st) => {
+      let pickList = activeStudentsOf();
+      if (student && !pickList.some((x) => x.id === student.id)) pickList = pickList.concat([student]);
+      pickList.forEach((st) => {
         stSelect.innerHTML += `<option value="${st.id}">${st.name} (${st.courses.length}门课)</option>`;
       });
-      const targetStudent = student || students[0];
+      const targetStudent = student || pickList[0];
       if (targetStudent) stSelect.value = targetStudent.id;
       updateMobileCourseDropdown(targetStudent, preset ? (preset.courseId || preset.subject || '') : '');
       if (preset && preset.subject !== undefined) {
@@ -6081,7 +6230,7 @@
     const prevValue = prevScoped.reduce((acc, l) => acc + (l.paymentAmount || 0), 0);
 
     // 老师视角：待消存量/欠课学员/续费清单只统计**自己授课科目**的课时；管理员看全部
-    const relStudents = isTeacherView() ? students.filter(studentRelatedToTeacher) : students;
+    const relStudents = isTeacherView() ? students.filter((st) => !isArchivedSt(st) && studentRelatedToTeacher(st)) : activeStudentsOf();
     const myCoursesOf = (st) => isTeacherView() ? (st.courses || []).filter((c) => courseRelatedToTeacher(st, c.name)) : (st.courses || []);
     const totalRemaining = relStudents.reduce((acc, st) => acc + myCoursesOf(st).reduce((a, c) => a + Math.max(0, c.remainingLessons), 0), 0);
     const relIds = new Set(relStudents.map((s) => s.id));
