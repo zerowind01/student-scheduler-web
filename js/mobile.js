@@ -1785,8 +1785,12 @@
     return out;
   }
 
-  function historyDedupKey(studentId, date, course, amount) {
-    return [studentId, date, course, Math.round((Number(amount) || 0) * 100)].join('|');
+  // 去重键 = **学员 + 日期 + 课程**，不看金额、不看具体时刻（AGENTS 第 52 条）。
+  // 同一节课常常两边都有：LessonMate 打卡是晚上 19:00、历史表记的是中午 12:00；
+  // 打卡有金额、历史那列是空的。带上时间或金额就会把同一天同一门课算成两条，节数和金额一起翻倍。
+  // 计数消耗模型下不看金额是安全的：库里 2 条 / 文件 2 条 → 消耗 2 条、导 0 条（一天两节不会丢）。
+  function historyDedupKey(studentId, date, course) {
+    return [studentId, date, course].join('|');
   }
 
   // 课程名归一（与电脑端同语义）：只去通用后缀，「钢琴课」→「钢琴」，「钢琴陪练课」→「钢琴陪练」
@@ -1923,12 +1927,12 @@
     const existing = new Map();
     checkInLogs.forEach((l) => {
       if (isRefundLog(l)) return;
-      const k = historyDedupKey(l.studentId, logDateText(l), courseNameKey(l.courseName || '课程'), l.paymentAmount);
+      const k = historyDedupKey(l.studentId, logDateText(l), courseNameKey(l.courseName || '课程'));
       existing.set(k, (existing.get(k) || 0) + 1);
     });
     const used = new Map();
     drafts.forEach((d) => {
-      const k = historyDedupKey(d.studentId, d.date, courseNameKey(d.course), d.amount);
+      const k = historyDedupKey(d.studentId, d.date, courseNameKey(d.course));
       const have = existing.get(k) || 0;
       const taken = used.get(k) || 0;
       used.set(k, taken + 1);

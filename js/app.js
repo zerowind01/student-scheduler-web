@@ -2889,6 +2889,10 @@
     safeBind('btnCloseCourseMergeModal', 'click', () => hideModal('modalCourseMerge'));
     safeBind('btnCancelCourseMerge', 'click', () => hideModal('modalCourseMerge'));
     safeBind('btnApplyCourseMerge', 'click', applyCourseMerge);
+    safeBind('btnOpenDupLogMerge', 'click', openDupLogMergeModal);
+    safeBind('btnCloseDupLogMergeModal', 'click', () => hideModal('modalDupLogMerge'));
+    safeBind('btnCancelDupLogMerge', 'click', () => hideModal('modalDupLogMerge'));
+    safeBind('btnApplyDupLogMerge', 'click', applyDupLogMerge);
     safeBind('chkMergeSelectAll', 'change', (e) => {
       document.querySelectorAll('#courseMergeList .merge-check').forEach((c) => {
         c.checked = e.target.checked;
@@ -5029,6 +5033,77 @@
     offerUndo(`已归并 ${picked} 个课程名（${touchedPackages} 个课程包 / ${touchedLessons} 节排课 / ${touchedLogs} 条消课）`, 'code-merge', `课程名归并 ${picked} 项`);
   }
 
+  // ============ 重复消课合并（同一天同一门课：打卡 + 历史导入各一条）============
+  // 场景：那节课在 LessonMate 里打过卡，历史表里也记了一笔。日期相同、时刻不同
+  // （打卡 19:00 / 历史记的是中午 12:00），旧去重键还带金额（打卡有、历史空）→ 落成两条，
+  // 节数和金额一起翻倍。第 52 条起导入不再产生新的重复，这个工具负责把**已经进来的**清掉。
+  // 判定很保守：只有「同一天同一门课里，既有真实打卡又有历史导入」才动；
+  // 两条都是打卡、两条都是历史导入的一律不碰（那可能是真的一天上了两节）。
+  function collectDupLogGroups() {
+    const groups = new Map();
+    checkInLogs.forEach((l) => {
+      if (!l || isRefundLog(l)) return;
+      const date = logDateText(l);
+      const k = historyDedupKey(l.studentId, date, courseNameKey(l.courseName || '课程'));
+      if (!groups.has(k)) {
+        groups.set(k, { studentId: l.studentId, date, course: l.courseName || '课程', real: [], hist: [] });
+      }
+      const g = groups.get(k);
+      (l.source === 'history' ? g.hist : g.real).push(l);
+    });
+    const out = [];
+    groups.forEach((g) => {
+      if (!g.real.length || !g.hist.length) return;
+      // 一对一站配：真实打卡 N 条就顶掉 N 条历史，多出来的历史照留（那天可能真上了两节）
+      const n = Math.min(g.real.length, g.hist.length);
+      const drop = g.hist.slice(0, n);
+      out.push({ ...g, drop, lessons: drop.reduce((a, l) => a + (Number(l.deductedLessons) || 0), 0) });
+    });
+    out.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    return out;
+  }
+
+  function openDupLogMergeModal() {
+    const list = document.getElementById('dupLogList');
+    const hint = document.getElementById('dupLogHint');
+    const btn = document.getElementById('btnApplyDupLogMerge');
+    if (!list) return;
+    const groups = collectDupLogGroups();
+    const total = groups.reduce((a, g) => a + g.drop.length, 0);
+    const lessons = groups.reduce((a, g) => a + g.lessons, 0);
+    if (hint) {
+      hint.innerHTML = total
+        ? `找到 <b class="lm-t1">${groups.length}</b> 组、共 <b class="lm-t1">${total}</b> 条重复的历史记录（重复计了 <b class="lm-t1">${lessons}</b> 节）。删除的是历史导入那条，真实打卡保留。`
+        : '没有找到重复的消课记录：同一天同一门课里，没有「打卡 + 历史导入」并存的情况 👍';
+    }
+    if (btn) { btn.disabled = !total; btn.style.opacity = total ? '1' : '0.4'; }
+    const nameOf = (sid) => (students.find((s) => s.id === sid) || {}).name || '未知学员';
+    list.innerHTML = total ? groups.map((g) => `
+      <div class="lm-section rounded-xl p-2.5">
+        <div class="flex items-center justify-between gap-2">
+          <div class="font-bold lm-t1 truncate">${escAttr(nameOf(g.studentId))} <span class="lm-t3 font-medium">· ${escAttr(g.course)}</span></div>
+          <div class="text-[10px] lm-t3 shrink-0">${escAttr(g.date)}</div>
+        </div>
+        <div class="text-[10px] lm-t3 mt-1">真实打卡 ${g.real.length} 条 · 历史导入 ${g.hist.length} 条 → <b class="text-[#fe4c02]">删 ${g.drop.length} 条历史</b>（${g.lessons} 节）</div>
+      </div>
+    `).join('') : '';
+    showModal('modalDupLogMerge');
+  }
+
+  function applyDupLogMerge() {
+    const groups = collectDupLogGroups();
+    const dropSet = new Set();
+    groups.forEach((g) => g.drop.forEach((l) => dropSet.add(l)));
+    if (!dropSet.size) return;
+    const lessons = groups.reduce((a, g) => a + g.lessons, 0);
+    pushUndo(`重复消课合并 ${dropSet.size} 条`);
+    checkInLogs = checkInLogs.filter((l) => !dropSet.has(l));
+    saveData();
+    refreshView();
+    hideModal('modalDupLogMerge');
+    offerUndo(`已删掉 ${dropSet.size} 条重复历史记录（${lessons} 节）`, 'code-merge', `重复消课合并 ${dropSet.size} 条`);
+  }
+
   function openTeacherModal() {
     renderTeacherListInModal();
     showModal('modalTeacher');
@@ -6160,8 +6235,12 @@
     return out;
   }
 
-  function historyDedupKey(studentId, date, course, amount) {
-    return [studentId, date, course, Math.round((Number(amount) || 0) * 100)].join('|');
+  // 去重键 = **学员 + 日期 + 课程**，不看金额、不看具体时刻（AGENTS 第 52 条）。
+  // 同一节课常常两边都有：LessonMate 打卡是晚上 19:00、历史表记的是中午 12:00；
+  // 打卡有金额、历史那列是空的。带上时间或金额就会把同一天同一门课算成两条，节数和金额一起翻倍。
+  // 计数消耗模型下不看金额是安全的：库里 2 条 / 文件 2 条 → 消耗 2 条、导 0 条（一天两节不会丢）。
+  function historyDedupKey(studentId, date, course) {
+    return [studentId, date, course].join('|');
   }
 
   // ============ 课程名归一（历史表常写「钢琴课」，系统里叫「钢琴」）============
@@ -6306,15 +6385,17 @@
     // 去重：系统里已有的同键流水先"消耗"掉，多出来的才导 —— 重导同一份文件是幂等的
     // 课程名按归一后的 key 比：库里老数据可能写的是「钢琴课」，文件里是「钢琴」，
     // 不归一的话重导会当成两条不同记录再导一遍。
+    // 键里不含金额/时刻：同一天同一门课在 LessonMate 里打过卡、历史表里也记了一笔的，
+    // 要认成同一条（否则节数翻倍，见 AGENTS 52）。
     const existing = new Map();
     checkInLogs.forEach((l) => {
       if (isRefundLog(l)) return;
-      const k = historyDedupKey(l.studentId, logDateText(l), courseNameKey(l.courseName || '课程'), l.paymentAmount);
+      const k = historyDedupKey(l.studentId, logDateText(l), courseNameKey(l.courseName || '课程'));
       existing.set(k, (existing.get(k) || 0) + 1);
     });
     const used = new Map();
     drafts.forEach((d) => {
-      const k = historyDedupKey(d.studentId, d.date, courseNameKey(d.course), d.amount);
+      const k = historyDedupKey(d.studentId, d.date, courseNameKey(d.course));
       const have = existing.get(k) || 0;
       const taken = used.get(k) || 0;
       used.set(k, taken + 1);
