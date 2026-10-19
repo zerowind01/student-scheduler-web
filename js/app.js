@@ -687,11 +687,40 @@
     return out + '…';
   }
 
+  // 课程名归一：库里的「钢琴课」和「钢琴」在总结图里必须算同一门（第 51 条）。
+  // 优先级 = 该学员自己的课程包写法 → 全局规范名 → 原名，和导入时的解析顺序一致，
+  // 这样「剩余课时」也一定落在同一个包上。返回一个 raw → 规范名 的函数。
+  function summaryCanonOf(student) {
+    const canon = buildCourseCanon();
+    const packKeyName = new Map();
+    (student.courses || []).forEach((c) => {
+      const raw = String((c && c.name) == null ? '' : (c && c.name)).trim();
+      if (!raw) return;
+      const k = courseNameKey(raw);
+      if (k && !packKeyName.has(k)) packKeyName.set(k, raw);
+    });
+    return function (raw) {
+      const t = String(raw == null ? '' : raw).trim();
+      if (!t) return '课程';
+      const k = courseNameKey(t);
+      return packKeyName.get(k) || canon.get(k) || t;
+    };
+  }
+
   // 一个学员常常报了不止一门课（声乐 + 钢琴 + 乐理），总结图必须能按课程分开出
   // 选项来源 = 课程包 ∪ 消课流水里出现过的课程名（历史改名/已删课程包也能选到）
-  function summaryCourseNames(student, logs) {
+  // 按归一 key 去重：否则「钢琴」和「钢琴课」会变成两个选项，出图时各算一半
+  function summaryCourseNames(student, logs, canonOf) {
     const names = [];
-    const push = (n) => { if (n && names.indexOf(n) < 0) names.push(n); };
+    const seen = new Set();
+    const push = (n) => {
+      const raw = String(n == null ? '' : n).trim();
+      if (!raw) return;
+      const k = courseNameKey(raw);
+      if (!k || seen.has(k)) return;
+      seen.add(k);
+      names.push(canonOf ? canonOf(raw) : raw);
+    };
     (student.courses || []).forEach((c) => push(c && c.name));
     logs.forEach((l) => push(l.courseName));
     return names;
@@ -705,7 +734,7 @@
       .replace(/>/g, '&gt;');
   }
 
-  function buildSummaryRows(logs) {
+  function buildSummaryRows(logs, canonOf) {
     return logs.map((l) => {
       const sch = l.scheduleId ? schedules.find((s) => s.id === l.scheduleId) : null;
       const fullDate = logDateText(l);
@@ -715,7 +744,7 @@
         dateText: fullDate.slice(5) || fullDate,          // 10-09（头部已给出年份范围）
         weekText: isNaN(d.getTime()) ? '' : SUMMARY_WEEK[d.getDay()],
         clockText: logClock(l),
-        courseName: l.courseName || '课程',
+        courseName: canonOf ? canonOf(l.courseName) : (l.courseName || '课程'),
         teacherName: l.teacherName || '',
         lessons: Number(l.deductedLessons) || 0,
         amount: Number(l.paymentAmount) || 0,
@@ -730,7 +759,9 @@
     const sumAmount = rows.reduce((a, r) => a + r.amount, 0);
     // 选了课程就只算这个课程包的剩余（家长问的是「这门课还剩几节」，不是全科合计）
     // 课程包找不到时给 —（别拿 0 节骗人，历史流水里的课程名可能已经没有对应课程包）
-    const packs = (student.courses || []).filter((c) => !course || c.name === course);
+    // 按归一 key 匹配：「钢琴」和包名「钢琴课」是同一门课，别让剩余变成 —
+    const cKey = course ? courseNameKey(course) : '';
+    const packs = (student.courses || []).filter((c) => !course || courseNameKey(c && c.name) === cKey);
     const hasPack = !course || packs.length > 0;
     const remain = packs.reduce((a, c) => a + (Number(c.remainingLessons) || 0), 0);
     const byCourse = [];
@@ -981,7 +1012,9 @@
     if (!body) return;
 
     // 多课程学员默认让用户选一门再出图；只有一门课就直接出，别多一步
-    const courseNames = summaryCourseNames(student, allLogs);
+    // canonOf 让「钢琴」和「钢琴课」在整张图上算同一门（下拉、明细、剩余都走它）
+    const canonOf = summaryCanonOf(student);
+    const courseNames = summaryCourseNames(student, allLogs, canonOf);
     const courseBlock = courseNames.length > 1 ? `
       <div>
         <div class="font-bold text-[11px] lm-t2 mb-1.5">按课程</div>
@@ -1046,7 +1079,9 @@
       const from = fromInput.value || '';
       const to = toInput.value || '';
       // 先按课程收窄，再按节数/日期收窄 —— 「最近 10 节」的口径是「这门课最近 10 节」
-      const scoped = course ? allLogs.filter((l) => (l.courseName || '课程') === course) : allLogs;
+      // 比较走归一 key：选「钢琴」时，库里写成「钢琴课」的老流水也得算进来
+      const cKey = course ? courseNameKey(course) : '';
+      const scoped = course ? allLogs.filter((l) => courseNameKey(l.courseName || '课程') === cKey) : allLogs;
       if (!scoped.length) {
         // 上一张图还留在预览区会让人把旧图发出去，失败时一并收起来
         pendingCanvas = null;
@@ -1064,7 +1099,7 @@
         showToast('该范围内没有消课记录', 'circle-info');
         return;
       }
-      const rows = buildSummaryRows(picked);
+      const rows = buildSummaryRows(picked, canonOf);
       pendingCanvas = buildLessonSummaryCanvas(student, rows, buildSummaryMeta(student, rows, scoped, { count, from, to, course }));
       pendingCourse = course;
       previewImg.src = pendingCanvas.toDataURL('image/png');

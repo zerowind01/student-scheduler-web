@@ -640,3 +640,28 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
     - 回归：`history-import-check` AB 段（桌面 11 项）/ AC 段（手机 4 项）：预览提示归一、
       老流水「钢琴课」被认成重复、落库统一「钢琴」、新建学员的包也叫「钢琴」、归并清单收录并预选、
       归并后老流水也变「钢琴」。`chunyi-validate` 17 项在归一后仍全绿（重导 876 条 0 可导）。
+
+51. **课时总结图的课程名也要归一：不能再出现「钢琴」和「钢琴课」两门课**（2026-10-19 第 11 轮，
+    Jackson：「还是不行，我生成总结图的时候还是有两个课名」）
+    - 病根：第 50 条的归一只管**新导入**的流水，库里已有的老流水（导入功能上线前灌进去的）
+      名字没被改过；而总结图的课程选项是 `课程包 ∪ 消课流水的 courseName` 原样去重，于是
+      下拉里并排两个、图上 `subjectText` 也是「钢琴 3 节 · 钢琴课 2 节」。
+    - 修法在**显示层**，不改库：
+      - `summaryCanonOf(student)` 返回 `raw → 规范名` 的函数，优先级 = **该学员自己的课程包写法**
+        → 全局 `buildCourseCanon()`（标准 `courseTypes` 加权 1000，所以「钢琴」压过「钢琴课」）→ 原名。
+        和导入时的解析顺序一致，所以「剩余课时」一定落在同一个包上。
+      - `summaryCourseNames(student, logs, canonOf)` 按 `courseNameKey` 去重，收进去的是规范名。
+      - `buildSummaryRows(logs, canonOf)` 每行 `courseName` 也走 canonOf → 图里不出现混写。
+      - 收窄过滤 `courseNameKey(l.courseName) === courseNameKey(course)`，否则选「钢琴」会漏掉
+        「钢琴课」那几条（图上少几节，比多一门课更难发现）。
+      - `buildSummaryMeta` 的 `packs` 按 key 匹配：否则包叫「钢琴课」、选项叫「钢琴」，
+        剩余会变成 `—`（第 48 条那个「别拿 0 节骗人」的坑正好反过来）。
+    - 归一后**只有一门课的学员不再显示「按课程」下拉**（`courseNames.length > 1` 判断），
+      直接出全部 —— 这正是「钢琴课应该并进钢琴」的最终效果。
+    - 两端同构（`js/mobile.js` 同名函数，元素 id 是 `mSummary*`）。
+    - ⚠️ 显示层归一**不等于把库洗干净**：库里仍是两条记录，财务按课程、课程类型列表还是分开的。
+      要彻底清账得跑 设置 →「历史课程名归并」→「开始归并」（清单会按 key 预选好目标）。
+    - 回归：`lesson-summary-check` 48 → **55**（F 段桌面 5 项 / G 段手机 2 项，种子 stu_4 林小满 =
+      包「钢琴」+ 流水 3 条「钢琴」2 条「钢琴课」2 条「声乐」）：下拉只 3 项、选钢琴出 5 行
+      （3+2 合并）、选声乐只有 2 行、全部 7 行。护栏自检 = 把 `summaryCourseNames` 里的
+      `const k = courseNameKey(raw)` 改回 `raw` → F1 立刻报红（下拉出现 4 项）。
