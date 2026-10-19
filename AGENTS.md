@@ -683,6 +683,14 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       两条都是打卡、或两条都是历史导入的一律不碰（那可能是同一天真上了两节）。删的是历史那条
       （打卡有 `scheduleId` / 老师 / 金额，信息更全），一对一站配 `min(real, hist)`，多出来的历史照留。
       退款行（`isRefundLog`）不参与。`pushUndo` 快照含 `checkInLogs`，可撤销。
-    - 回归：`tmp/dup-log-check.mjs` **26 项** —— A 段导入去重（4 行只导 1 条、金额不同仍判重复）、
-      B 段一天两节不丢、C 段清理（2 组删 2 条、全是历史/全是打卡都不动、撤销能找回）、
-      D 段手机端同口径。护栏自检 = 把金额加回 `historyDedupKey` → A1/A2 报红。
+    - 入口两端都有（**同一套判定，别只改一端**）：电脑「设置 → 课程类型 → 重复消课合并」；
+      手机「设置 → 课程类型 → 重复消课合并」（`btnMobileOpenDupLogMerge` → `modalMobileDupLogMerge`，
+      实现是 `mCollectDupLogGroups` / `applyMobileDupLogMerge`，与桌面 `collectDupLogGroups` /
+      `applyDupLogMerge` 逐行同构；删除后 `refreshMobileAll()` + `offerUndo`）。
+      第 12 轮漏了手机端，Jackson 当场问「手机里没有这个重复消课合并吗」——以后新增清理/批量工具，
+      默认两端一起加，不要再留「请去电脑上操作」的口子。
+    - 回归：`tmp/dup-log-check.mjs` **37 项** —— A 段导入去重（4 行只导 1 条、金额不同仍判重复）、
+      B 段一天两节不丢、C 段桌面清理（2 组删 2 条、全是历史/全是打卡都不动、撤销能找回）、
+      D 段手机端导入同口径、E 段手机端清理入口 11 项（入口可见 / 2 组 2 条 / 清单日期 /
+      删的是历史那条 / 打卡保留 / 撤销能找回 / 无 JS 报错）。
+      护栏自检 = 把金额加回 `historyDedupKey` → A1/A2 报红。
