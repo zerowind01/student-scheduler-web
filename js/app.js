@@ -4856,20 +4856,23 @@
     showModal('modalCourseTypes');
   }
 
-  // 扫描数据里出现过的所有课程名（课程包 + 排课科目）
+  // 扫描数据里出现过的所有课程名（课程包 + 排课科目 + 消课流水）
   function collectCourseNameStats() {
     const map = new Map();
     const bump = (name, kind) => {
       const n = (name || '').trim();
       if (!n) return;
-      if (!map.has(n)) map.set(n, { name: n, packages: 0, lessons: 0, debts: 0 });
+      if (!map.has(n)) map.set(n, { name: n, packages: 0, lessons: 0, logs: 0, debts: 0 });
       map.get(n)[kind] += 1;
     };
     students.forEach((s) => (s.courses || []).forEach((c) => bump(c.name, 'packages')));
     schedules.forEach((s) => bump(s.subject, 'lessons'));
+    // 消课流水必须算：历史导入的科目名可能**只**出现在流水里（现有学员不补课程包），
+    // 不纳入的话「钢琴课」这种名字在归并弹窗里根本不出现，也就永远合不掉。
+    checkInLogs.forEach((l) => { if (!isRefundLog(l)) bump(l.courseName, 'logs'); });
     // 欠课账也按课程名匹配，一并纳入候选（否则只有欠课记录的科目归并不到）
     debts.forEach((d) => bump(d.courseName, 'debts'));
-    return [...map.values()].sort((a, b) => (b.packages + b.lessons) - (a.packages + a.lessons));
+    return [...map.values()].sort((a, b) => (b.packages + b.lessons + b.logs) - (a.packages + a.lessons + a.logs));
   }
 
   function openCourseMergeModal() {
@@ -4889,18 +4892,25 @@
       return;
     }
 
-    const options = courseTypes.map((c) => `<option value="${escAttr(c.name)}">${escAttr(c.name)}</option>`).join('');
-    list.innerHTML = rows.map((r, i) => `
+    // 预选：名字去掉「课」之后跟某个标准科目同名（钢琴课 → 钢琴），直接把目标选好，
+    // 否则用户要点开每个下拉自己找，很容易漏掉一行就还是分叉的
+    const guessTarget = (name) => {
+      const k = courseNameKey(name);
+      const hit = courseTypes.find((c) => c.name && courseNameKey(c.name) === k);
+      return hit ? hit.name : '';
+    };
+
+    list.innerHTML = rows.map((r) => `
       <div class="merge-row flex items-center gap-2 p-2 lm-section rounded-xl" data-old="${escAttr(r.name)}">
         <input type="checkbox" class="merge-check rounded border-[#e3dbd0] shrink-0" checked>
         <div class="min-w-0 flex-1">
           <div class="font-bold lm-t1 truncate">${escAttr(r.name)}</div>
-          <div class="text-[10px] lm-t3">${r.packages} 个课程包 · ${r.lessons} 节排课${r.debts ? ` · ${r.debts} 条欠课` : ''}</div>
+          <div class="text-[10px] lm-t3">${r.packages} 个课程包 · ${r.lessons} 节排课${r.logs ? ` · ${r.logs} 条消课` : ''}${r.debts ? ` · ${r.debts} 条欠课` : ''}</div>
         </div>
         <i class="fa-solid fa-arrow-right lm-t3 text-[10px] shrink-0"></i>
         <select class="merge-target px-2 py-1.5 lm-field rounded-lg text-xs font-semibold lm-t1 shrink-0 max-w-[9rem]">
           <option value="">（选择目标类型）</option>
-          ${options}
+          ${courseTypes.map((c) => `<option value="${escAttr(c.name)}"${c.name === guessTarget(r.name) ? ' selected' : ''}>${escAttr(c.name)}</option>`).join('')}
         </select>
       </div>
     `).join('');
@@ -4931,12 +4941,13 @@
     }
 
     const summary = Object.keys(mapping).map((k) => `「${k}」→「${mapping[k]}」`).join('\n');
-    if (!confirm(`即将归并 ${picked} 个课程名：\n\n${summary}\n\n会同步改动：学员课程包名、排课科目、欠课账。\n历史消课流水里的科目名保持原样（那是当时的记录）。\n\n确定应用吗？`)) return;
+    if (!confirm(`即将归并 ${picked} 个课程名：\n\n${summary}\n\n会同步改动：学员课程包名、排课科目、欠课账、消课流水的科目名\n（含历史导入的流水，否则财务按课程和课时总结图还是分开的）。\n\n确定应用吗？`)) return;
 
     pushUndo(`课程名归并 ${picked} 项`);
 
     let touchedPackages = 0;
     let touchedLessons = 0;
+    let touchedLogs = 0;
     students.forEach((s) => {
       (s.courses || []).forEach((c) => {
         if (mapping[c.name]) {
@@ -4966,12 +4977,21 @@
     });
     debts = [...merged.values()];
 
+    // 消课流水也改：财务「按课程」、课时总结图、学员详情的消课记录都读这个字段，
+    // 留着「钢琴课」不改的话，包和科目都合并了、账目还是两门课（退款行一起改，保持同科同名）
+    checkInLogs.forEach((l) => {
+      if (l && mapping[l.courseName]) {
+        l.courseName = mapping[l.courseName];
+        touchedLogs += 1;
+      }
+    });
+
     Object.values(mapping).forEach((n) => addCourseType(n));
     saveData();
     refreshView();
     hideModal('modalCourseMerge');
     renderCourseTypesList();
-    offerUndo(`已归并 ${picked} 个课程名（${touchedPackages} 个课程包 / ${touchedLessons} 节排课）`, 'code-merge', `课程名归并 ${picked} 项`);
+    offerUndo(`已归并 ${picked} 个课程名（${touchedPackages} 个课程包 / ${touchedLessons} 节排课 / ${touchedLogs} 条消课）`, 'code-merge', `课程名归并 ${picked} 项`);
   }
 
   function openTeacherModal() {
@@ -6109,6 +6129,47 @@
     return [studentId, date, course, Math.round((Number(amount) || 0) * 100)].join('|');
   }
 
+  // ============ 课程名归一（历史表常写「钢琴课」，系统里叫「钢琴」）============
+  // 只去**通用后缀**，不动主干：「钢琴陪练课」→「钢琴陪练」，绝不会并进「钢琴」。
+  // 不归一的话同一个学生的同一门课会多一个「课」字就变成两门：财务按课程、课时总结图、
+  // 课时包全部对不上（Jackson 2026-10-19：「钢琴课和 LessonMate 的钢琴没有合并在一起」）。
+  function courseNameKey(name) {
+    const raw = String(name == null ? '' : name).replace(/\s+/g, '');
+    const key = raw.replace(/(课程|课时|小班|大班|一对一|1对1|课)$/g, '');
+    return key || raw;   // 名字本身就叫「课」的别归一成空串
+  }
+
+  // 规范名：同一 key 下出现最多的写法。`courseTypes` 里的标准科目名额外加权，
+  // 保证「钢琴」压过「钢琴课」而不是反过来。同分取更短的、再按字典序 —— 结果必须稳定，
+  // 否则同一份文件今天导成「钢琴」明天导成「钢琴课」。
+  function buildCourseCanon() {
+    const buckets = new Map();
+    const put = (name, weight) => {
+      const n = String(name == null ? '' : name).trim();
+      if (!n) return;
+      const k = courseNameKey(n);
+      if (!buckets.has(k)) buckets.set(k, new Map());
+      const m = buckets.get(k);
+      m.set(n, (m.get(n) || 0) + weight);
+    };
+    students.forEach((s) => (s.courses || []).forEach((c) => put(c && c.name, 1)));
+    ensureCourseTypes();
+    courseTypes.forEach((ct) => put(ct && ct.name, 1000));
+    const canon = new Map();
+    buckets.forEach((m, k) => {
+      let best = '';
+      let bestN = -1;
+      m.forEach((n, name) => {
+        const better = n > bestN
+          || (n === bestN && name.length < best.length)
+          || (n === bestN && name.length === best.length && name < best);
+        if (better) { best = name; bestN = n; }
+      });
+      if (best) canon.set(k, best);
+    });
+    return canon;
+  }
+
   // 生成「可执行计划」：预览和真正导入用的是同一份结果，不会出现"预览 42 条、实际导 45 条"
   // 生成「可执行计划」：预览和真正导入用的是同一份结果，不会出现"预览 42 条、实际导 45 条"
   function buildHistoryPlan(rows, roster) {
@@ -6158,6 +6219,34 @@
       d.isNewStudent = plan.newStudents.some((x) => x.id === d.studentId);
     });
 
+    // 课程名归一：先认「该学员自己的课程包」里的写法，再认全局规范名（含标准课程类型）。
+    // 「钢琴课」的流水因此会并进他已有的「钢琴」包，而不是另立一门课。
+    const canon = buildCourseCanon();
+    const ownPacks = new Map();
+    students.forEach((st) => {
+      const m = new Map();
+      (st.courses || []).forEach((c) => {
+        const k = c && c.name ? courseNameKey(c.name) : '';
+        if (k && !m.has(k)) m.set(k, c.name);
+      });
+      ownPacks.set(st.id, m);
+    });
+    plan.courseRenames = new Map();      // 原名 -> { to: 落库名, n: 条数 }
+    drafts.forEach((d) => {
+      const k = courseNameKey(d.course);
+      const own = ownPacks.get(d.studentId);
+      const next = (own && own.get(k)) || canon.get(k) || d.course;
+      if (!next || next === d.course) return;
+      const cur = plan.courseRenames.get(d.course);
+      plan.courseRenames.set(d.course, { to: next, n: (cur ? cur.n : 0) + 1 });
+      d.course = next;
+    });
+    plan.courseRenameText = [...plan.courseRenames.entries()]
+      .sort((a, b) => b[1].n - a[1].n)
+      .slice(0, 3)
+      .map(([from, v]) => `${from} → ${v.to}`)
+      .join(' · ');
+
     // 课程包：**只给本次新建的学员建**（余额 0 —— 历史课都上完了，凭空给节数会虚增存量）。
     // 已有学员一律不补包（AGENTS 48）：导入对他只做两件事 —— 覆盖加入时间、把他的历史课
     // 累进「累计已上」。补一个余额 0 的包只会挤进低课时预警（0 →「已用完」），
@@ -6180,15 +6269,17 @@
     });
 
     // 去重：系统里已有的同键流水先"消耗"掉，多出来的才导 —— 重导同一份文件是幂等的
+    // 课程名按归一后的 key 比：库里老数据可能写的是「钢琴课」，文件里是「钢琴」，
+    // 不归一的话重导会当成两条不同记录再导一遍。
     const existing = new Map();
     checkInLogs.forEach((l) => {
       if (isRefundLog(l)) return;
-      const k = historyDedupKey(l.studentId, logDateText(l), l.courseName || '课程', l.paymentAmount);
+      const k = historyDedupKey(l.studentId, logDateText(l), courseNameKey(l.courseName || '课程'), l.paymentAmount);
       existing.set(k, (existing.get(k) || 0) + 1);
     });
     const used = new Map();
     drafts.forEach((d) => {
-      const k = historyDedupKey(d.studentId, d.date, d.course, d.amount);
+      const k = historyDedupKey(d.studentId, d.date, courseNameKey(d.course), d.amount);
       const have = existing.get(k) || 0;
       const taken = used.get(k) || 0;
       used.set(k, taken + 1);
@@ -6417,6 +6508,7 @@
           ${plan.rosterCount ? `<span class="lm-t2">名单 <b class="lm-t1">${plan.rosterCount}</b> 人${plan.rosterOnly ? `（${plan.rosterOnly} 人暂无消课记录）` : ''}</span>` : ''}
           ${plan.joinDateCount ? `<span class="lm-t2">加入时间 <b class="lm-t1">${plan.joinDateCount}</b> 人${plan.joinDateUpdate ? `（${plan.joinDateUpdate} 人将更新）` : ''}</span>` : ''}
           <span class="lm-t2">课程 <b class="lm-t1">${plan.coursesInFile}</b> 门${plan.newCourses.length ? `（新建 ${plan.newCourses.length} 个课程包，余额 0）` : ''}${plan.noPackCourses ? `（${plan.noPackCourses} 门只记流水，不建课程包）` : ''}</span>
+          ${plan.courseRenames && plan.courseRenames.size ? `<span class="lm-t2">课程名归一 <b class="lm-t1">${plan.courseRenames.size}</b> 项<span class="lm-t3"> · ${escAttr(plan.courseRenameText)}</span></span>` : ''}
           <span class="lm-t2">课时费合计 <b class="lm-t1">${plan.amount > 0 ? fmtMoney(plan.amount) : '—'}</b></span>
         </div>
         ${plan.accepted.length ? `

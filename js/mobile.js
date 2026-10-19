@@ -1757,6 +1757,41 @@
     return [studentId, date, course, Math.round((Number(amount) || 0) * 100)].join('|');
   }
 
+  // 课程名归一（与电脑端同语义）：只去通用后缀，「钢琴课」→「钢琴」，「钢琴陪练课」→「钢琴陪练」
+  function courseNameKey(name) {
+    const raw = String(name == null ? '' : name).replace(/\s+/g, '');
+    const key = raw.replace(/(课程|课时|小班|大班|一对一|1对1|课)$/g, '');
+    return key || raw;
+  }
+
+  function buildCourseCanon() {
+    const buckets = new Map();
+    const put = (name, weight) => {
+      const n = String(name == null ? '' : name).trim();
+      if (!n) return;
+      const k = courseNameKey(n);
+      if (!buckets.has(k)) buckets.set(k, new Map());
+      const m = buckets.get(k);
+      m.set(n, (m.get(n) || 0) + weight);
+    };
+    students.forEach((s) => (s.courses || []).forEach((c) => put(c && c.name, 1)));
+    ensureDefaultCourseTypes();
+    courseTypes.forEach((ct) => put(ct && ct.name, 1000));
+    const canon = new Map();
+    buckets.forEach((m, k) => {
+      let best = '';
+      let bestN = -1;
+      m.forEach((n, name) => {
+        const better = n > bestN
+          || (n === bestN && name.length < best.length)
+          || (n === bestN && name.length === best.length && name < best);
+        if (better) { best = name; bestN = n; }
+      });
+      if (best) canon.set(k, best);
+    });
+    return canon;
+  }
+
   // 生成「可执行计划」：预览和真正导入用的是同一份结果，不会出现"预览 42 条、实际导 45 条"
   function buildHistoryPlan(rows, roster) {
     const rosterList = (roster || []).filter((r) => r && r.name);
@@ -1805,6 +1840,33 @@
       d.isNewStudent = plan.newStudents.some((x) => x.id === d.studentId);
     });
 
+    // 课程名归一（同电脑端）：先认他自己的课程包写法，再认全局规范名
+    const canon = buildCourseCanon();
+    const ownPacks = new Map();
+    students.forEach((st) => {
+      const m = new Map();
+      (st.courses || []).forEach((c) => {
+        const k = c && c.name ? courseNameKey(c.name) : '';
+        if (k && !m.has(k)) m.set(k, c.name);
+      });
+      ownPacks.set(st.id, m);
+    });
+    plan.courseRenames = new Map();
+    drafts.forEach((d) => {
+      const k = courseNameKey(d.course);
+      const own = ownPacks.get(d.studentId);
+      const next = (own && own.get(k)) || canon.get(k) || d.course;
+      if (!next || next === d.course) return;
+      const cur = plan.courseRenames.get(d.course);
+      plan.courseRenames.set(d.course, { to: next, n: (cur ? cur.n : 0) + 1 });
+      d.course = next;
+    });
+    plan.courseRenameText = [...plan.courseRenames.entries()]
+      .sort((a, b) => b[1].n - a[1].n)
+      .slice(0, 2)
+      .map(([from, v]) => `${from} → ${v.to}`)
+      .join(' · ');
+
     // 课程包：**只给本次新建的学员建**（余额 0 —— 历史课都上完了，凭空给节数会虚增存量）。
     // 已有学员一律不补包（AGENTS 48，与电脑端同语义）。
     const newCourseKey = new Set();
@@ -1825,15 +1887,16 @@
     });
 
     // 去重：系统里已有的同键流水先"消耗"掉，多出来的才导 —— 重导同一份文件是幂等的
+    // 课程名按归一后的 key 比（库里老数据可能是「钢琴课」，文件里是「钢琴」）
     const existing = new Map();
     checkInLogs.forEach((l) => {
       if (isRefundLog(l)) return;
-      const k = historyDedupKey(l.studentId, logDateText(l), l.courseName || '课程', l.paymentAmount);
+      const k = historyDedupKey(l.studentId, logDateText(l), courseNameKey(l.courseName || '课程'), l.paymentAmount);
       existing.set(k, (existing.get(k) || 0) + 1);
     });
     const used = new Map();
     drafts.forEach((d) => {
-      const k = historyDedupKey(d.studentId, d.date, d.course, d.amount);
+      const k = historyDedupKey(d.studentId, d.date, courseNameKey(d.course), d.amount);
       const have = existing.get(k) || 0;
       const taken = used.get(k) || 0;
       used.set(k, taken + 1);
@@ -2044,6 +2107,7 @@
           ${plan.existingInFile ? `<div>现有学员 <b class="text-slate-800">${plan.existingInFile}</b> 人 · 只覆盖加入时间、累加已上节数</div>` : ''}
           ${plan.newStudents.length && plan.archiveNew ? `<div>新建的 ${plan.newStudents.length} 人 → <b class="text-slate-800">历史学员库</b></div>` : ''}
           ${plan.rosterCount ? `<div>名单 <b class="text-slate-800">${plan.rosterCount}</b> 人${plan.rosterOnly ? `（${plan.rosterOnly} 人暂无消课记录）` : ''}</div>` : ''}
+          ${plan.courseRenames && plan.courseRenames.size ? `<div>课程名归一 <b class="text-slate-800">${plan.courseRenames.size}</b> 项 · ${plan.courseRenameText}</div>` : ''}
           <div>课程 <b class="text-slate-800">${plan.coursesInFile}</b> 门${plan.newCourses.length ? `（新建 ${plan.newCourses.length} 个课程包）` : ''}${plan.noPackCourses ? `（${plan.noPackCourses} 门只记流水）` : ''} · 合计 <b class="text-slate-800">${plan.amount > 0 ? fmtMoney(plan.amount) : '—'}</b></div>
           ${plan.joinDateCount ? `<div>加入时间 <b class="text-slate-800">${plan.joinDateCount}</b> 人${plan.joinDateUpdate ? `（${plan.joinDateUpdate} 人将更新）` : ''}</div>` : ''}
         </div>
