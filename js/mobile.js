@@ -3883,6 +3883,10 @@
     safeBind('btnCloseMobileCourseMerge', 'click', () => hideModal('modalMobileCourseMerge'));
     safeBind('btnCancelMobileCourseMerge', 'click', () => hideModal('modalMobileCourseMerge'));
     safeBind('btnApplyMobileCourseMerge', 'click', applyMobileCourseMerge);
+    safeBind('btnMobileOpenDupLogMerge', 'click', openMobileDupLogMergeModal);
+    safeBind('btnCloseMobileDupLogMerge', 'click', () => hideModal('modalMobileDupLogMerge'));
+    safeBind('btnCancelMobileDupLogMerge', 'click', () => hideModal('modalMobileDupLogMerge'));
+    safeBind('btnApplyMobileDupLogMerge', 'click', applyMobileDupLogMerge);
     // 选课程包时，科目框若为空就自动带出同名科目
     safeBind('selectMobileCourse', 'change', (e) => {
       const opt = e.target.options[e.target.selectedIndex];
@@ -4383,6 +4387,75 @@
     renderCalendar();
     renderMobileStudents();
     offerUndo(`已归并 ${picked} 个课程名（${touchedPackages} 个课程包 / ${touchedLessons} 节排课）`, `课程名归并 ${picked} 项`);
+  }
+
+  // ============ 重复消课合并（同一天同一门课：打卡 + 历史导入各一条）============
+  // 与桌面端 collectDupLogGroups / applyDupLogMerge 同构（AGENTS 第 52 条）。
+  // 判定很保守：只有「同一天同一门课里，既有真实打卡又有历史导入」才动；
+  // 两条都是打卡、两条都是历史导入的一律不碰（那可能是真的一天上了两节）。
+  function mCollectDupLogGroups() {
+    const groups = new Map();
+    checkInLogs.forEach((l) => {
+      if (!l || isRefundLog(l)) return;
+      const date = logDateText(l);
+      const k = historyDedupKey(l.studentId, date, courseNameKey(l.courseName || '课程'));
+      if (!groups.has(k)) {
+        groups.set(k, { studentId: l.studentId, date, course: l.courseName || '课程', real: [], hist: [] });
+      }
+      const g = groups.get(k);
+      (l.source === 'history' ? g.hist : g.real).push(l);
+    });
+    const out = [];
+    groups.forEach((g) => {
+      if (!g.real.length || !g.hist.length) return;
+      // 一对一站配：真实打卡 N 条就顶掉 N 条历史，多出来的历史照留
+      const n = Math.min(g.real.length, g.hist.length);
+      const drop = g.hist.slice(0, n);
+      out.push({ ...g, drop, lessons: drop.reduce((a, l) => a + (Number(l.deductedLessons) || 0), 0) });
+    });
+    out.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    return out;
+  }
+
+  function openMobileDupLogMergeModal() {
+    const list = document.getElementById('mobileDupLogList');
+    const hint = document.getElementById('mobileDupLogHint');
+    const btn = document.getElementById('btnApplyMobileDupLogMerge');
+    if (!list) return;
+    const groups = mCollectDupLogGroups();
+    const total = groups.reduce((a, g) => a + g.drop.length, 0);
+    const lessons = groups.reduce((a, g) => a + g.lessons, 0);
+    if (hint) {
+      hint.innerHTML = total
+        ? `找到 <b class="lm-t1">${groups.length}</b> 组、共 <b class="lm-t1">${total}</b> 条重复的历史记录（重复计了 <b class="lm-t1">${lessons}</b> 节）。删除的是历史导入那条，真实打卡保留。`
+        : '没有找到重复的消课记录：同一天同一门课里，没有「打卡 + 历史导入」并存的情况 👍';
+    }
+    if (btn) { btn.disabled = !total; btn.style.opacity = total ? '1' : '0.4'; }
+    const nameOf = (sid) => (students.find((s) => s.id === sid) || {}).name || '未知学员';
+    list.innerHTML = total ? groups.map((g) => `
+      <div class="lm-section rounded-xl p-2.5">
+        <div class="flex items-center justify-between gap-2">
+          <div class="font-bold lm-t1 truncate">${mEscAttr(nameOf(g.studentId))} <span class="lm-t3 font-medium">· ${mEscAttr(g.course)}</span></div>
+          <div class="text-[10px] lm-t3 shrink-0">${mEscAttr(g.date)}</div>
+        </div>
+        <div class="text-[10px] lm-t3 mt-1">真实打卡 ${g.real.length} 条 · 历史导入 ${g.hist.length} 条 → <b class="text-rose-500">删 ${g.drop.length} 条历史</b>（${g.lessons} 节）</div>
+      </div>
+    `).join('') : '';
+    showModal('modalMobileDupLogMerge');
+  }
+
+  function applyMobileDupLogMerge() {
+    const groups = mCollectDupLogGroups();
+    const dropSet = new Set();
+    groups.forEach((g) => g.drop.forEach((l) => dropSet.add(l)));
+    if (!dropSet.size) return;
+    const lessons = groups.reduce((a, g) => a + g.lessons, 0);
+    pushUndo(`重复消课合并 ${dropSet.size} 条`);
+    checkInLogs = checkInLogs.filter((l) => !dropSet.has(l));
+    saveData();
+    refreshMobileAll();
+    hideModal('modalMobileDupLogMerge');
+    offerUndo(`已删掉 ${dropSet.size} 条重复历史记录（${lessons} 节）`);
   }
 
   function renderMobileTeacherManager() {

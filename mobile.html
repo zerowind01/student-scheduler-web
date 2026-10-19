@@ -683,6 +683,29 @@
       <button id="btnMobileOpenCourseMerge" type="button" class="w-full py-2.5 bg-amber-500 text-white rounded-xl font-bold active:bg-amber-600">
         <i class="fa-solid fa-code-merge mr-1"></i> 历史课程名归并
       </button>
+      <button id="btnMobileOpenDupLogMerge" type="button" class="w-full py-2.5 bg-rose-500 text-white rounded-xl font-bold active:bg-rose-600">
+        <i class="fa-solid fa-clone mr-1"></i> 重复消课合并
+      </button>
+    </div>
+  </div>
+
+  <!-- 重复消课合并 Modal（手机端底部抽屉） -->
+  <div id="modalMobileDupLogMerge" role="dialog" aria-modal="true" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-end justify-center z-50 hidden transition-opacity">
+    <div class="bg-white lm-sheet w-full max-h-[88dvh] overflow-y-auto p-5 space-y-3 text-xs transform transition-all modal-box" style="padding-bottom: calc(1.5rem + env(safe-area-inset-bottom))">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <h3 class="font-bold text-base text-slate-800">重复消课合并</h3>
+        <button id="btnCloseMobileDupLogMerge" aria-label="关闭" class="text-slate-400 hover:text-slate-700 transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+      </div>
+      <div id="mobileDupLogHint" class="lm-section rounded-xl p-2.5 text-[11px] lm-t2 leading-relaxed"></div>
+      <div class="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-[11px] text-amber-800 leading-relaxed">
+        同一天同一门课，LessonMate 打卡和历史表各记了一笔（时间、金额不同）。<b>只删历史导入那条</b>，真实打卡保留。
+        两条都是打卡、或两条都是历史的一律不碰（那可能是真的一天上了两节）。
+      </div>
+      <div id="mobileDupLogList" class="space-y-2"></div>
+      <div class="flex items-center gap-2 pt-2 border-t border-slate-100">
+        <button id="btnCancelMobileDupLogMerge" type="button" class="flex-1 py-2.5 text-slate-600 bg-slate-100 rounded-xl font-medium active:bg-slate-200">取消</button>
+        <button id="btnApplyMobileDupLogMerge" type="button" class="flex-1 py-2.5 bg-rose-500 text-white rounded-xl font-bold active:bg-rose-600">删除重复</button>
+      </div>
     </div>
   </div>
 
@@ -704,7 +727,7 @@
     </div>
   </div>
 
-  <script src="js/mobile.js?v=73"></script>
+  <script src="js/mobile.js?v=74"></script>
   <!-- 老师访问码登录遮罩（管理员数据加载后自动隐藏） -->
   <div id="teacherLoginGate" class="hidden fixed inset-0 z-[90] lm-gate flex flex-col items-center justify-center px-8">
     <div class="w-14 h-14 rounded-2xl bg-[#111111] flex items-center justify-center text-white shadow-lg mb-4">
