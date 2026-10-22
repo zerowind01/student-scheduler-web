@@ -90,11 +90,30 @@
 
   function isTeacherView() { return !!teacherSession; }
 
+  // 老师名归一：去所有空格 + 去尾部「老师」（档案叫「温沛愉老师」、排课写「温沛愉」也算同一个）
+  function teacherNameKey(n) {
+    return String(n == null ? '' : n).replace(/\s+/g, '').replace(/老师$/, '');
+  }
+
+  // 排课归属某位老师：**id 命中或名字命中都算**（2026-10-22，Jackson：「温沛愉的排课怎么在手机端
+  // 不显示」—— 他当时是老师身份登录）。只比 id 会漏掉两类真实数据，而且**管理员视角完全正常**，
+  // 只有老师本人登录后课表空成一片，极难自查：
+  //   ① 老师档案删过又重建 → 老排课里留的是旧 teacherId，teacherName 还是对的；
+  //   ② 历史导入 / 早期排课只写了 teacherName，压根没有 teacherId。
+  // 代价：真正同名的两位老师会互相看到对方的课（机构里几乎不会；宁可多显示也别漏课）。
+  function schRelatedToTeacher(s, tid, tname) {
+    if (!s) return false;
+    if (tid && (s.teacherId === tid || s.assistantTeacherId === tid)) return true;
+    const key = teacherNameKey(tname);
+    if (!key) return false;
+    return teacherNameKey(s.teacherName) === key || teacherNameKey(s.assistantTeacherName) === key;
+  }
+
   // 老师视角：判断学员是否与该老师有关（显式关联名单、或主讲/助教上过/将上该学员的课）
   function studentRelatedToTeacher(st) {
     if (!teacherSession) return true;
     if ((st.teacherIds || []).includes(teacherSession.teacherId)) return true;
-    return schedules.some((s) => s.studentId === st.id && (s.teacherId === teacherSession.teacherId || s.assistantTeacherId === teacherSession.teacherId));
+    return schedules.some((s) => s.studentId === st.id && schRelatedToTeacher(s, teacherSession.teacherId, teacherSession.name));
   }
 
   // 老师视角：某条学员课程是否属于该老师的教学范围
@@ -102,16 +121,16 @@
   function courseRelatedToTeacher(st, courseName) {
     if (!teacherSession) return true;
     return schedules.some((s) => s.studentId === st.id &&
-      (s.teacherId === teacherSession.teacherId || s.assistantTeacherId === teacherSession.teacherId) &&
+      schRelatedToTeacher(s, teacherSession.teacherId, teacherSession.name) &&
       ((s.subject || '') === courseName || s.courseId === st.courses.find((c) => c.name === courseName)?.id));
   }
 
   // 老师视角：某条消课流水是否属于该老师的课（流水带 teacherId 直接判，老流水回退查排课）
   function logRelatedToTeacher(log) {
     if (!teacherSession) return true;
-    if (log.teacherId) return log.teacherId === teacherSession.teacherId;
+    if (log.teacherId || log.teacherName) return schRelatedToTeacher(log, teacherSession.teacherId, teacherSession.name);
     const sch = schedules.find((s) => s.id === log.scheduleId);
-    if (sch) return sch.teacherId === teacherSession.teacherId || sch.assistantTeacherId === teacherSession.teacherId;
+    if (sch) return schRelatedToTeacher(sch, teacherSession.teacherId, teacherSession.name);
     // 历史导入的流水只有老师名字（无 teacherId / 无排课）→ 按名字归属，否则会重复算进每位老师
     if (log.teacherName) return log.teacherName === teacherSession.name;
     return true;
@@ -4128,7 +4147,7 @@
     }
 
     // 老师个人主页
-    const myToday = schedules.filter((s) => s.date === todayStr && (s.teacherId === teacherSession.teacherId || s.assistantTeacherId === teacherSession.teacherId));
+    const myToday = schedules.filter((s) => s.date === todayStr && schRelatedToTeacher(s, teacherSession.teacherId, teacherSession.name));
     const myUpcoming = myToday.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).sort((a, b) => a.startTime.localeCompare(b.startTime));
     const myLow = students
       .filter(studentRelatedToTeacher)
@@ -4625,7 +4644,7 @@
     const tomorrowStr = formatDate(d);
 
     // 视角内的排课集合
-    const inScope = (s) => !isTeacherView() || s.teacherId === teacherSession.teacherId || s.assistantTeacherId === teacherSession.teacherId;
+    const inScope = (s) => !isTeacherView() || schRelatedToTeacher(s, teacherSession.teacherId, teacherSession.name);
 
     // ---- Hero（Intercom 风白卡大标题） ----
     // 本周范围（周一~周日）
@@ -4944,7 +4963,11 @@
   // 老师范围筛选（3日时间轴 / 周条 / 整月格 共用一份口径）
   function filterByTeacher(list) {
     if (selectedTeacherFilter === 'all') return list;
-    return list.filter((s) => s.teacherId === selectedTeacherFilter || s.assistantTeacherId === selectedTeacherFilter);
+    // 筛选也可以靠名字兜底：老排课没有 teacherId 时，光比 id 会让人以为这节课丢了
+    const t = teachers.find((x) => x.id === selectedTeacherFilter)
+      || (teacherSession && teacherSession.teacherId === selectedTeacherFilter ? teacherSession : null);
+    const nm = t && t.name;
+    return list.filter((s) => schRelatedToTeacher(s, selectedTeacherFilter, nm));
   }
 
   // 状态判定：done / leave / leavePend / leaveDone / live / due / todo（首页今日课时与日历共用一份口径）。
@@ -5813,7 +5836,7 @@
       // 范围下拉：mine=我的学员（关联名单或排课相关）；all=全部；其他值=指定老师
       if (isTeacherView() && teacherFilter === 'mine') {
         const related = (st.teacherIds || []).includes(teacherSession.teacherId) ||
-          schedules.some((s) => s.studentId === st.id && (s.teacherId === teacherSession.teacherId || s.assistantTeacherId === teacherSession.teacherId));
+          schedules.some((s) => s.studentId === st.id && schRelatedToTeacher(s, teacherSession.teacherId, teacherSession.name));
         if (!related) return false;
       }
 
