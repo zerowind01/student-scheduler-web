@@ -694,3 +694,27 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       D 段手机端导入同口径、E 段手机端清理入口 11 项（入口可见 / 2 组 2 条 / 清单日期 /
       删的是历史那条 / 打卡保留 / 撤销能找回 / 无 JS 报错）。
       护栏自检 = 把金额加回 `historyDedupKey` → A1/A2 报红。
+
+53. **老师视角的排课归属：id 命中**或**名字命中**都算**（2026-10-22，Jackson：「温沛愉的排课怎么在
+    手机端不显示」，追问后确认：他是**老师身份登录**在看课表日历）
+    - 病根：手机端老师视角全部用 `s.teacherId === teacherSession.teacherId || s.assistantTeacherId === ...`
+      严格比 id。只要排课的 id 对不上就整节消失，**管理员视角完全正常**，所以极难自查、也极容易
+      被当成「数据丢了」。真实数据里有两类：
+      ① 老师档案删过又重建 → 老排课留着旧 teacherId，`teacherName` 还是对的；
+      ② 早期排课 / 历史导入来的课只写了 `teacherName`，压根没有 `teacherId`。
+    - 修法：唯一入口 `schRelatedToTeacher(s, tid, tname)` + `teacherNameKey(n)`（去所有空格、去尾部「老师」）：
+      `id` 命中返回 true，否则拿 `teacherName / assistantTeacherName` 跟老师名归一后比。
+      **不许再写裸的 `s.teacherId === ...`**（已有 8 处全部替换：学员归属 `studentRelatedToTeacher`、
+      课程归属 `courseRelatedToTeacher`、流水归属 `logRelatedToTeacher`、首页今日 `myToday`、
+      首页概览 `inScope`、课表筛选 `filterByTeacher`、学员详情排课）。
+      `filterByTeacher` 还要从 `teachers` 里取名字（筛选项是 id，不是会话），否则管理员筛选同样漏。
+    - 代价：真正同名的两位老师会互相看到对方的课。机构里几乎不存在，宁可多显示也别漏课
+      —— 漏课的排查成本远高于多看一眼。
+    - 桌面端没有老师登录态，不受影响；`/api/ics` 本来就更宽（id / 助教 id / 名字三种都认），无需改。
+    - 回归：`tmp/teacher-visible-check.mjs` **15 项** —— A 三档日历可见性、B/C 管理员按老师筛选、
+      D 老师登录只看自己、E 脏数据（旧 teacherId / 无 teacherId / 名字写成「温沛愉老师」带空格）
+      三节都能看到且别人的课仍不可见。护栏自检 = 把 `schRelatedToTeacher` 改回只比 id → E1/E3 报红
+      （老师视角 0 节课），与线上故障现象完全一致。
+    - ⚠️ 测试坑（又踩一次）：`addInitScript(fn)` 序列化后在页面执行，fixture 里**不能引用模块作用域的
+      辅助函数**（这次是 `fmt`）→ `ReferenceError`，种子静默落空、表现为「一条课都没有」。
+      另外 `boot()` 里写死 `addInitScript(fixture)` 时，新用例要记得把 fixture 作为参数传进去。
