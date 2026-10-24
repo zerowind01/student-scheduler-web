@@ -29,6 +29,9 @@
   // 默认「周」：进课表先看这一周全貌，比 3 日窗口更适合快速定位。
   let calView = 'week';
   let mobileStudentScope = 'active';           // 学员页范围：active=在读 / archived=历史学员库
+  // 学员状态（2026-10-24）：页面级状态必须声明在顶部，写在函数上方会 TDZ 白屏
+  let mStatusStudentId = '';                   // 状态弹层当前学员
+  let pauseExpiredNoticeQueued = false;        // 停课到期提示只弹一次
   let calSelected = formatDate(getToday());    // 当前选中日期（周/月档共用）
   const CAL_CELL_H = 46;                       // 单行日期格高度（px）
   const CAL_ROW_GAP = 2;                       // #calGrid 的 gap-y-0.5 = 2px
@@ -202,16 +205,183 @@
     }
   }
 
+  // ============ 学员三态：在读 / 短期停课 / 已结课（与桌面端 app.js 同口径）============
+  //   在读     —— 参与待排课、课时预警、欠课催收
+  //   短期停课 —— 仍算在读（学员页看得到、能手动排课、财务存量照算），不进那三个催促入口
+  //   已结课   —— 就是移入历史学员库（archived=true，archivedAt=结课日期）
+  // ⚠️ activeStudentsOf() 保持「未归档」老语义（含停课）；要「能催课的人」用 schedulableStudentsOf()
+  const STUDENT_STATUS = { ACTIVE: 'active', PAUSED: 'paused', ENDED: 'ended' };
+
+  function todayStr0() { return formatDate(new Date()); }
+
+  function isPausedSt(st) {
+    if (!st || !st.paused || isArchivedSt(st)) return false;
+    const until = String(st.pausedUntil || '').trim();
+    if (until && until < todayStr0()) return false;
+    return true;
+  }
+  function isActiveSt(st) { return !isArchivedSt(st) && !isPausedSt(st); }
+  function pausedStudentsOf(list) { return (list || students).filter(isPausedSt); }
+  function schedulableStudentsOf(list) { return (list || students).filter(isActiveSt); }
+
+  function clearPauseFields(st) {
+    if (!st) return;
+    delete st.paused;
+    delete st.pausedAt;
+    delete st.pausedUntil;
+    delete st.pauseReason;
+  }
+  function clearArchiveFields(st) {
+    if (!st) return;
+    delete st.archived;
+    delete st.archivedAt;
+    delete st.archiveReason;
+  }
+
+  function setStudentStatus(st, status, opts) {
+    if (!st) return;
+    const o = opts || {};
+    const next = status === STUDENT_STATUS.PAUSED ? STUDENT_STATUS.PAUSED
+      : status === STUDENT_STATUS.ENDED ? STUDENT_STATUS.ENDED
+        : STUDENT_STATUS.ACTIVE;
+    if (next === STUDENT_STATUS.ENDED) {
+      clearPauseFields(st);
+      st.archived = true;
+      st.archivedAt = o.date || st.archivedAt || todayStr0();
+      st.archiveReason = o.reason || '结课';
+      return;
+    }
+    clearArchiveFields(st);
+    if (next === STUDENT_STATUS.PAUSED) {
+      st.paused = true;
+      st.pausedAt = o.from || st.pausedAt || todayStr0();
+      st.pausedUntil = o.until || '';
+      if (o.reason) st.pauseReason = o.reason;
+      else delete st.pauseReason;
+      return;
+    }
+    clearPauseFields(st);
+  }
+
+  function studentStatusOf(st) {
+    if (isArchivedSt(st)) return STUDENT_STATUS.ENDED;
+    if (isPausedSt(st)) return STUDENT_STATUS.PAUSED;
+    return STUDENT_STATUS.ACTIVE;
+  }
+
+  const STUDENT_STATUS_UI = {
+    active: { icon: 'fa-circle-play', label: '在读' },
+    paused: { icon: 'fa-circle-pause', label: '停课中' },
+    ended: { icon: 'fa-flag-checkered', label: '已结课' },
+  };
+
+  function mobileStatusChip(st) {
+    const s = studentStatusOf(st);
+    if (s === STUDENT_STATUS.ENDED) {
+      return `<span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-500">已结课${st && st.archivedAt ? ' · ' + st.archivedAt : ''}</span>`;
+    }
+    if (s === STUDENT_STATUS.PAUSED) {
+      const until = st && st.pausedUntil ? ' · 至 ' + String(st.pausedUntil).slice(5) : '';
+      return `<span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style="background:#fff5eb;color:#c2410c;">⏸ 停课中${until}</span>`;
+    }
+    return '';
+  }
+
+  function expirePauses() {
+    const today = todayStr0();
+    let n = 0;
+    (students || []).forEach((st) => {
+      if (!st || !st.paused || isArchivedSt(st)) return;
+      const until = String(st.pausedUntil || '').trim();
+      if (!until || until >= today) return;
+      clearPauseFields(st);
+      n++;
+    });
+    if (n > 0 && !pauseExpiredNoticeQueued) {
+      pauseExpiredNoticeQueued = true;
+      setTimeout(() => showToast(`⏰ ${n} 位学员停课到期，已自动回到在读`), 1100);
+    }
+    return n;
+  }
+
+  // ============ 学员状态弹层（手机端，与桌面 modalStudentStatus 同构）============
+  function mStatusPicked() {
+    const r = document.querySelector('input[name="mStudentStatusPick"]:checked');
+    return r ? r.value : STUDENT_STATUS.ACTIVE;
+  }
+
+  function syncMobileStatusFields() {
+    const picked = mStatusPicked();
+    const pauseBox = document.getElementById('mStatusPauseFields');
+    const endBox = document.getElementById('mStatusEndFields');
+    if (pauseBox) pauseBox.classList.toggle('hidden', picked !== STUDENT_STATUS.PAUSED);
+    if (endBox) endBox.classList.toggle('hidden', picked !== STUDENT_STATUS.ENDED);
+    document.querySelectorAll('#mStatusOptions label').forEach((lb) => {
+      const on = lb.getAttribute('data-status') === picked;
+      lb.style.borderColor = on ? '#111111' : '#f0ebe2';
+      lb.style.background = on ? '#faf8f3' : '#ffffff';
+    });
+  }
+
+  function openMobileStudentStatusModal(st) {
+    if (!st) return;
+    const el = document.getElementById('modalMobileStudentStatus');
+    if (!el) return;
+    mStatusStudentId = st.id;
+    const cur = studentStatusOf(st);
+    const who = document.getElementById('mStatusWho');
+    if (who) who.innerHTML = `<b>${st.name}</b> · 当前：${STUDENT_STATUS_UI[cur].label}${st.pausedUntil ? `（至 ${st.pausedUntil}）` : ''}`;
+    document.querySelectorAll('input[name="mStudentStatusPick"]').forEach((r) => { r.checked = r.value === cur; });
+    const fromEl = document.getElementById('mInputStatusPauseFrom');
+    const untilEl = document.getElementById('mInputStatusPauseUntil');
+    const reasonEl = document.getElementById('mInputStatusPauseReason');
+    const endEl = document.getElementById('mInputStatusEndDate');
+    if (fromEl) fromEl.value = st.pausedAt || todayStr0();
+    if (untilEl) untilEl.value = st.pausedUntil || '';
+    if (reasonEl) reasonEl.value = st.pauseReason || '';
+    if (endEl) endEl.value = st.archivedAt || todayStr0();
+    syncMobileStatusFields();
+    showModal('modalMobileStudentStatus');
+  }
+
+  function applyMobileStatusModal() {
+    const st = students.find((s) => s.id === mStatusStudentId);
+    if (!st) { hideModal('modalMobileStudentStatus'); return; }
+    const picked = mStatusPicked();
+    const opts = {};
+    if (picked === STUDENT_STATUS.PAUSED) {
+      const from = (document.getElementById('mInputStatusPauseFrom') || {}).value || todayStr0();
+      const until = (document.getElementById('mInputStatusPauseUntil') || {}).value || '';
+      const reason = ((document.getElementById('mInputStatusPauseReason') || {}).value || '').trim();
+      if (until && until < from) { showToast('预计恢复日不能早于停课开始日'); return; }
+      opts.from = from;
+      opts.until = until;
+      opts.reason = reason;
+    } else if (picked === STUDENT_STATUS.ENDED) {
+      opts.date = (document.getElementById('mInputStatusEndDate') || {}).value || todayStr0();
+      opts.reason = '结课';
+    }
+    setStudentStatus(st, picked, opts);
+    saveData();
+    hideModal('modalMobileStudentStatus');
+    refreshMobileAll();
+    const ui = STUDENT_STATUS_UI[picked];
+    const extra = picked === STUDENT_STATUS.PAUSED
+      ? (opts.until ? `（预计 ${opts.until} 复课）` : '（手动复课）')
+      : picked === STUDENT_STATUS.ENDED ? '，已移入历史学员库' : '';
+    showToast(`${picked === STUDENT_STATUS.ACTIVE ? '▶️' : picked === STUDENT_STATUS.PAUSED ? '⏸' : '🎓'} ${st.name} → ${ui.label}${extra}`);
+  }
+
   function toggleMobileStudentArchive(st, on) {
     if (!st) return;
     if (on) {
-      if (!confirm(`把「${st.name}」移入历史学员库？\n\n档案、课程包、消课记录都会保留，只是不再出现在在读列表、课时预警和排课选人里。随时可以移回。`)) return;
-      setStudentArchived(st, true, '结课');
+      if (!confirm(`给「${st.name}」结课并移入历史学员库？\n\n档案、课程包、消课记录都会保留，只是不再出现在在读列表、课时预警和排课选人里。随时可以移回。`)) return;
+      setStudentStatus(st, STUDENT_STATUS.ENDED);
       saveData();
       refreshMobileAll();
-      showToast(`📦 ${st.name} 已移入历史学员库`);
+      showToast(`🎓 ${st.name} 已结课`);
     } else {
-      setStudentArchived(st, false);
+      setStudentStatus(st, STUDENT_STATUS.ACTIVE);
       saveData();
       refreshMobileAll();
       showToast(`↩️ ${st.name} 已移回在读`);
@@ -459,7 +629,7 @@
       <div class="flex items-center gap-3 bg-slate-50 rounded-2xl p-3">
         <div class="w-12 h-12 rounded-full bg-[#111111] text-white flex items-center justify-center font-bold text-base">${student.name.substring(0, 1)}</div>
         <div class="flex-1">
-          <div class="font-bold text-sm text-slate-800 flex items-center gap-1.5 flex-wrap">${student.name}${isArchivedSt(student) ? `<span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-500">历史学员${student.archivedAt ? ' · ' + student.archivedAt : ''}</span>` : ''}</div>
+          <div class="font-bold text-sm text-slate-800 flex items-center gap-1.5 flex-wrap">${student.name}${mobileStatusChip(student)}</div>
           <div class="text-[11px] text-slate-500">${student.phone ? '📞 ' + student.phone : '未填电话'}</div>
           ${lifeText ? `<div class="text-[10px] text-slate-400 mt-0.5" data-detail-life>${joinShow ? '<i class="fa-solid fa-calendar-plus text-[9px]"></i> ' : ''}${lifeText}</div>` : ''}
         </div>
@@ -480,8 +650,8 @@
         <button type="button" id="mDetailRefundBtn" class="py-3 rounded-xl bg-white border border-rose-200 text-rose-600 font-bold text-xs flex items-center justify-center gap-1.5 active:bg-rose-50 transition"${canRefund ? '' : ' disabled style="opacity:.45"'}>
           <i class="fa-solid fa-circle-minus"></i> 退款${canRefund ? '' : '（无可退）'}
         </button>
-        <button type="button" id="mDetailArchiveBtn" class="py-3 rounded-xl bg-white border border-[#f0ebe2] text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 active:bg-slate-50 transition" data-archived="${isArchivedSt(student) ? '1' : '0'}">
-          <i class="fa-solid ${isArchivedSt(student) ? 'fa-rotate-left' : 'fa-box-archive'}"></i> ${isArchivedSt(student) ? '移回在读' : '移入历史库'}
+        <button type="button" id="mDetailStatusBtn" class="py-3 rounded-xl bg-white border border-[#f0ebe2] text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 active:bg-slate-50 transition" data-status="${studentStatusOf(student)}">
+          <i class="fa-solid ${STUDENT_STATUS_UI[studentStatusOf(student)].icon}"></i> ${STUDENT_STATUS_UI[studentStatusOf(student)].label}
         </button>
       </div>
 
@@ -611,12 +781,11 @@
       setTimeout(() => openMobileLessonSummaryModal(student), 280);
     });
 
-    // 归档（结课 / 停课）→ 历史学员库
-    const archiveBtn = body.querySelector('#mDetailArchiveBtn');
-    if (archiveBtn) archiveBtn.addEventListener('click', () => {
-      const goingArchive = !isArchivedSt(student);
+    // 学员状态（在读 / 短期停课 / 结课）：档案与流水全留，只改参与哪些提醒
+    const statusBtn = body.querySelector('#mDetailStatusBtn');
+    if (statusBtn) statusBtn.addEventListener('click', () => {
       hideModal('modalMobileStudentDetail');
-      setTimeout(() => toggleMobileStudentArchive(student, goingArchive), 260);
+      setTimeout(() => openMobileStudentStatusModal(student), 260);
     });
 
     // 消课记录「查看全部 / 收起」：整块重渲染，展开状态存在 detailLogExpanded
@@ -2389,6 +2558,7 @@
     const rows = [];
     (studentsScope || students).forEach((st) => {
       if (isArchivedSt(st)) return; // 历史学员不补课，不能占着课时预警
+      if (isPausedSt(st)) return;   // 短期停课期间不催续费
       normalizeStudent(st);
       const courses = (courseOf ? courseOf(st) : st.courses) || [];
       courses.forEach((c) => {
@@ -2995,6 +3165,9 @@
     schedules = schedules.map(normalizeSchedule);
     migrateSeriesIds();
 
+    // 停课到期自动回到在读（只清 paused 字段，幂等）
+    expirePauses();
+
     // 历史账目校准：旧口径把长课时记成多节 → 先回正节数/金额/课时余额，再对欠课账
     migrateLessonUnits();
 
@@ -3092,6 +3265,7 @@
             debts = (remoteData.debts || []).map(normalizeDebt);
 
             // 云端拿回来的仍可能是旧口径数据 → 每次覆盖后都校准一次（幂等）
+            expirePauses();
             migrateLessonUnits();
 
             // 欠课账校准：负课时（欠课）同步进欠课账
@@ -3218,6 +3392,7 @@
           schedules = (data.schedules || []).map(normalizeSchedule);
           migrateSeriesIds();
           teachers = mergeTeachersKeepPin(data.teachers, teachers);
+          expirePauses();
           saveDataLocalOnly();
           showToast('⚡ 扫码同步成功！已载入电脑端最新课表！');
           history.replaceState(null, '', location.pathname);
@@ -3906,6 +4081,13 @@
     safeBind('btnCloseMobileDupLogMerge', 'click', () => hideModal('modalMobileDupLogMerge'));
     safeBind('btnCancelMobileDupLogMerge', 'click', () => hideModal('modalMobileDupLogMerge'));
     safeBind('btnApplyMobileDupLogMerge', 'click', applyMobileDupLogMerge);
+    // 学员状态弹层（在读 / 短期停课 / 结课）
+    safeBind('btnCloseMobileStudentStatus', 'click', () => hideModal('modalMobileStudentStatus'));
+    safeBind('btnCancelMobileStudentStatus', 'click', () => hideModal('modalMobileStudentStatus'));
+    safeBind('btnApplyMobileStudentStatus', 'click', applyMobileStatusModal);
+    document.querySelectorAll('input[name="mStudentStatusPick"]').forEach((r) => {
+      r.addEventListener('change', syncMobileStatusFields);
+    });
     // 选课程包时，科目框若为空就自动带出同名科目
     safeBind('selectMobileCourse', 'change', (e) => {
       const opt = e.target.options[e.target.selectedIndex];
@@ -4134,7 +4316,7 @@
     if (!isTeacherView()) {
       // 管理员：紧凑概览
       const todayCount = schedules.filter((s) => s.date === todayStr && s.status === SCHEDULE_STATUS.SCHEDULED).length;
-      const lowStudents = activeStudentsOf().filter((st) => !isArchivedSt(st) && (st.courses || []).some((c) => c.remainingLessons <= 2)).length;
+      const lowStudents = schedulableStudentsOf().filter((st) => (st.courses || []).some((c) => c.remainingLessons <= 2)).length;
       el.innerHTML = `
         <div class="lm-card px-4 py-3 flex items-center justify-between">
           <div>
@@ -4150,7 +4332,7 @@
     const myToday = schedules.filter((s) => s.date === todayStr && schRelatedToTeacher(s, teacherSession.teacherId, teacherSession.name));
     const myUpcoming = myToday.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).sort((a, b) => a.startTime.localeCompare(b.startTime));
     const myLow = students
-      .filter(studentRelatedToTeacher)
+      .filter((st) => studentRelatedToTeacher(st) && isActiveSt(st))
       .flatMap((st) => (isTeacherView() ? (st.courses || []).filter((c) => c.remainingLessons <= 2 && courseRelatedToTeacher(st, c.name)) : (st.courses || []).filter((c) => c.remainingLessons <= 2)).map((c) => ({ st, c })));
     const nextClass = myUpcoming[0];
     el.innerHTML = `
@@ -4735,17 +4917,23 @@
     const weekDoneCnt = schedules.filter((s) => inScope(s) && s.date >= wkStart && s.date <= wkEnd && s.status === SCHEDULE_STATUS.COMPLETED).length;
 
     // 欠费学员（欠课账 > 0）
-    const debtStudents = isTeacherView() ? [] : (debts || []).filter((x) => (x.amount || 0) > 0);
+    const debtStudents = isTeacherView() ? [] : (debts || []).filter((x) => (x.amount || 0) > 0 && (() => {
+      const st = students.find((s) => s.id === x.studentId);
+      return !!st && isActiveSt(st);
+    })());
     const debtCount = debtStudents.length;
     const debtTotal = debtStudents.reduce((n, x) => n + (x.amount || 0), 0);
 
     // 待续费：剩余课时 ≤2 的学员-课程（老师视角只看自己课上的学员）
     const myStudentIds = new Set(schedules.filter((s) => inScope(s)).map((s) => s.studentId));
     const lowList = [];
-    students.forEach((st) => (st.courses || []).forEach((c) => {
-      if (isTeacherView() && !myStudentIds.has(st.id)) return;
-      if (c.remainingLessons <= 2) lowList.push({ student: st.name, course: c.courseName || c.name || '', remaining: c.remainingLessons });
-    }));
+    students.forEach((st) => {
+      if (!isActiveSt(st)) return; // 结课 / 停课不催续费
+      (st.courses || []).forEach((c) => {
+        if (isTeacherView() && !myStudentIds.has(st.id)) return;
+        if (c.remainingLessons <= 2) lowList.push({ student: st.name, course: c.courseName || c.name || '', remaining: c.remainingLessons });
+      });
+    });
     const lowCount = lowList.length;
     // 老师视角的欠费统计（我的学员）
     const tDebtList = isTeacherView() ? (debts || []).filter((x) => (x.amount || 0) > 0 && myStudentIds.has(x.studentId)) : [];
@@ -5841,6 +6029,7 @@
       }
 
       if (filter === 'low') {
+        if (isPausedSt(st)) return false; // 停课期间不催续费
         const total = st.courses.reduce((acc, c) => acc + c.remainingLessons, 0);
         return total <= 2 || st.courses.some((c) => c.remainingLessons <= 2);
       }
@@ -5885,9 +6074,10 @@
             ${st.name.substring(0, 1)}
           </div>
           <div class="flex-1 min-w-0">
-            <div class="font-bold text-xs text-[#111111] flex items-center gap-1.5">
+            <div class="font-bold text-xs text-[#111111] flex items-center gap-1.5 flex-wrap">
               <span>${st.name}</span>
               <span class="text-[10px] ${tone.text} ${tone.bg} px-1.5 py-0.2 rounded-full font-semibold">${tone.label}课时</span>
+              ${mobileStatusChip(st)}
             </div>
             <div class="text-[10.5px] text-[#9c9fa5] truncate mt-0.5">${coursesStr}</div>
           </div>
@@ -5952,7 +6142,9 @@
       let pickList = activeStudentsOf();
       if (student && !pickList.some((x) => x.id === student.id)) pickList = pickList.concat([student]);
       pickList.forEach((st) => {
-        stSelect.innerHTML += `<option value="${st.id}">${st.name} (${st.courses.length}门课)</option>`;
+        // 停课学员照样能手动排课，但下拉里标注一下，免得老师以为名单漏了
+        const tag = isPausedSt(st) ? ' · 停课中' : '';
+        stSelect.innerHTML += `<option value="${st.id}">${st.name} (${st.courses.length}门课)${tag}</option>`;
       });
       const targetStudent = student || pickList[0];
       if (targetStudent) stSelect.value = targetStudent.id;
@@ -6472,9 +6664,9 @@
     const myCoursesOf = (st) => isTeacherView() ? (st.courses || []).filter((c) => courseRelatedToTeacher(st, c.name)) : (st.courses || []);
     const totalRemaining = relStudents.reduce((acc, st) => acc + myCoursesOf(st).reduce((a, c) => a + Math.max(0, c.remainingLessons), 0), 0);
     const relIds = new Set(relStudents.map((s) => s.id));
-    const debtors = isTeacherView()
-      ? debts.filter((d) => d.amount > 0 && relIds.has(d.studentId) && relStudents.some((st) => st.id === d.studentId && courseRelatedToTeacher(st, d.courseName)))
-      : debts.filter((d) => d.amount > 0 && relIds.has(d.studentId));
+    // 欠课名单只统计在读且未停课的学员（停课期间账留着，但不催）
+    const debtors = debts.filter((d) => d.amount > 0 && relIds.has(d.studentId) &&
+      relStudents.some((st) => st.id === d.studentId && isActiveSt(st) && (!isTeacherView() || courseRelatedToTeacher(st, d.courseName))));
 
     // 续费预警（剩余课时落在 [0, 2]；老师视角只看自己授课科目）
     // 欠课（负数）不在这里 —— 它们进下方「欠课名单」，两处重复列同一个人会让老师以为要退钱

@@ -709,6 +709,74 @@
     </div>
   </div>
 
+  <!-- 学员状态 Modal（在读 / 短期停课 / 结课） -->
+  <div id="modalMobileStudentStatus" role="dialog" aria-modal="true" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-end justify-center z-50 hidden transition-opacity">
+    <div class="bg-white lm-sheet w-full max-h-[88dvh] overflow-y-auto p-5 space-y-3 text-xs transform transition-all modal-box" style="padding-bottom: calc(1.5rem + env(safe-area-inset-bottom))">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <h3 class="font-bold text-base text-slate-800">学员状态</h3>
+        <button id="btnCloseMobileStudentStatus" aria-label="关闭" class="text-slate-400 hover:text-slate-700 transition"><i class="fa-solid fa-xmark text-xl"></i></button>
+      </div>
+
+      <div id="mStatusWho" class="lm-section rounded-xl p-2.5 text-[11px] text-slate-600 leading-relaxed"></div>
+
+      <div id="mStatusOptions" class="space-y-2">
+        <label data-status="active" class="flex items-start gap-2.5 border rounded-xl p-3 active:bg-slate-50" style="border-color:#f0ebe2">
+          <input type="radio" name="mStudentStatusPick" value="active" class="mt-0.5">
+          <div class="flex-1">
+            <div class="font-bold text-[12px] text-slate-800"><i class="fa-solid fa-circle-play text-emerald-500"></i> 在读</div>
+            <div class="text-[10.5px] text-slate-400 mt-0.5 leading-relaxed">正常排课，参与课时不足预警和欠课提醒。</div>
+          </div>
+        </label>
+
+        <label data-status="paused" class="flex items-start gap-2.5 border rounded-xl p-3 active:bg-slate-50" style="border-color:#f0ebe2">
+          <input type="radio" name="mStudentStatusPick" value="paused" class="mt-0.5">
+          <div class="flex-1">
+            <div class="font-bold text-[12px] text-slate-800"><i class="fa-solid fa-circle-pause" style="color:#c2410c;"></i> 短期停课</div>
+            <div class="text-[10.5px] text-slate-400 mt-0.5 leading-relaxed">不催排课、不催续费、不催欠课；仍然是你的在读学员，想排课随时能排。</div>
+          </div>
+        </label>
+
+        <label data-status="ended" class="flex items-start gap-2.5 border rounded-xl p-3 active:bg-slate-50" style="border-color:#f0ebe2">
+          <input type="radio" name="mStudentStatusPick" value="ended" class="mt-0.5">
+          <div class="flex-1">
+            <div class="font-bold text-[12px] text-slate-800"><i class="fa-solid fa-flag-checkered text-slate-400"></i> 结课</div>
+            <div class="text-[10.5px] text-slate-400 mt-0.5 leading-relaxed">移入历史学员库：档案、课时、消课记录全留，财务课消金额照算，只是不再出现在各类提醒里。</div>
+          </div>
+        </label>
+      </div>
+
+      <div id="mStatusPauseFields" class="hidden space-y-2 rounded-xl p-3" style="background:#fff9f2;border:1px solid #fde6c8;">
+        <div class="grid grid-cols-2 gap-2">
+          <label class="block">
+            <span class="text-[10px] font-bold text-slate-400">停课开始</span>
+            <input id="mInputStatusPauseFrom" type="date" class="w-full mt-0.5 border border-[#e7e2d9] rounded-lg px-2 py-1.5 text-[11px] bg-white">
+          </label>
+          <label class="block">
+            <span class="text-[10px] font-bold text-slate-400">预计恢复（可空）</span>
+            <input id="mInputStatusPauseUntil" type="date" class="w-full mt-0.5 border border-[#e7e2d9] rounded-lg px-2 py-1.5 text-[11px] bg-white">
+          </label>
+        </div>
+        <label class="block">
+          <span class="text-[10px] font-bold text-slate-400">原因（可空）</span>
+          <input id="mInputStatusPauseReason" type="text" placeholder="如：生病 / 出差 / 备考" class="w-full mt-0.5 border border-[#e7e2d9] rounded-lg px-2 py-1.5 text-[11px] bg-white">
+        </label>
+        <div class="text-[10px] text-slate-400 leading-relaxed">留空恢复日 = 一直停到你手动改回在读；填了到期自动回到在读。</div>
+      </div>
+
+      <div id="mStatusEndFields" class="hidden rounded-xl p-3" style="background:#f7f5f2;border:1px solid #e7e2d9;">
+        <label class="block">
+          <span class="text-[10px] font-bold text-slate-400">结课日期</span>
+          <input id="mInputStatusEndDate" type="date" class="w-full mt-0.5 border border-[#e7e2d9] rounded-lg px-2 py-1.5 text-[11px] bg-white">
+        </label>
+      </div>
+
+      <div class="flex items-center gap-2 pt-2 border-t border-slate-100">
+        <button id="btnCancelMobileStudentStatus" type="button" class="flex-1 py-2.5 text-slate-600 bg-slate-100 rounded-xl font-medium active:bg-slate-200">取消</button>
+        <button id="btnApplyMobileStudentStatus" type="button" class="flex-1 py-2.5 bg-[#111111] text-white rounded-xl font-bold active:bg-[#2b2b2b]">保存</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 历史课程名归并 Modal（手机端底部抽屉） -->
   <div id="modalMobileCourseMerge" role="dialog" aria-modal="true" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-end justify-center z-50 hidden transition-opacity">
     <div class="bg-white lm-sheet w-full max-h-[88dvh] overflow-y-auto p-5 space-y-3 text-xs transform transition-all modal-box" style="padding-bottom: calc(1.5rem + env(safe-area-inset-bottom))">
@@ -727,7 +795,7 @@
     </div>
   </div>
 
-  <script src="js/mobile.js?v=75"></script>
+  <script src="js/mobile.js?v=76"></script>
   <!-- 老师访问码登录遮罩（管理员数据加载后自动隐藏） -->
   <div id="teacherLoginGate" class="hidden fixed inset-0 z-[90] lm-gate flex flex-col items-center justify-center px-8">
     <div class="w-14 h-14 rounded-2xl bg-[#111111] flex items-center justify-center text-white shadow-lg mb-4">

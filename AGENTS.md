@@ -718,3 +718,43 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
     - ⚠️ 测试坑（又踩一次）：`addInitScript(fn)` 序列化后在页面执行，fixture 里**不能引用模块作用域的
       辅助函数**（这次是 `fmt`）→ `ReferenceError`，种子静默落空、表现为「一条课都没有」。
       另外 `boot()` 里写死 `addInitScript(fixture)` 时，新用例要记得把 fixture 作为参数传进去。
+54. **学员三态：在读 / 短期停课 / 已结课**（2026-10-24，Jackson：「加入结课和短期停课功能」）
+    - 口径（当场用 AskUserQuestion 定的，别自行改）：
+      · **在读** `STUDENT_STATUS.ACTIVE` —— 参与待排课、课时预警、欠课催收。
+      · **短期停课** `PAUSED` —— 仍是学员页成员（在读列表照样看得见、**照样能手动排课**、
+        财务存量与课消金额照算），只是不进「待排课 / 课时预警(≤2) / 欠课名单」三个催办入口。
+        可填预计恢复日：**填了到期自动回到在读**；留空 = 一直停到手动复课。
+      · **已结课** `ENDED` —— **就是原来的「移入历史学员库」**（`archived=true` +
+        `archivedAt=结课日期` + `archiveReason='结课'`）。没有第四种状态，别再造一个。
+    - 字段：`paused` / `pausedAt` / `pausedUntil` / `pauseReason`（都在 `student` 上，云同步整包走，
+      后端不用改）。结课时 `clearPauseFields()`，复课时 `clearArchiveFields()`。
+    - 唯一写入点 `setStudentStatus(st, status, opts)`（两端同构）：结课走 `opts.date`，
+      停课走 `opts.from / opts.until / opts.reason`。UI 层不许自己拼字段。
+    - 助手：`isPausedSt` / `isActiveSt` / `studentStatusOf` / `studentStatusChip`（桌面）/
+      `mobileStatusChip`（手机）/ `schedulableStudentsOf`。
+      ⚠️ **`activeStudentsOf()` 语义没变**（= 未归档，**含停课**）—— 学员页「在读」列表要靠它；
+      要「能催课的人」一律用 `schedulableStudentsOf()`，别在调用点自己写条件。
+    - **`isPausedSt` 是计算态不是存储态**：`pausedUntil < today` 就当已恢复（兜底），
+      同时 `expirePauses()` 在 `loadData` / `pullFromCloudSync` / `checkUrlSyncData` 三处把过期字段清掉
+      （只删 paused 系列，幂等、不碰账），并弹一次「N 位学员停课到期」提示。
+      顺序：`expirePauses()` → `migrateLessonUnits()` → `syncAllDebts()`。
+    - 已接入的过滤点（两端都要，漏一处就变成「停课了还在催」）：
+      `lowLessonRows`、`activeDebtors`、桌面侧栏 `unscheduled/low` 筛选、财务续费预警与欠课名单
+      （含老师视角那个单独算的 `debtors`）、手机 `课时预警(≤2)` 筛选、手机首页/概览的预警数与欠费数、
+      手机老师个人主页 `myLow`。**排课选人（桌面 FAB / 手机 `selectMobileStudent`）故意不排除**，
+      只在下拉/列表里标注「停课中」。
+    - UI：详情里第三个按钮由「移入历史库」改成**学员状态**（`detailStatusBtn` / `mDetailStatusBtn`，
+      文案随状态走：在读 / 停课中 / 已结课），点开是 `modalStudentStatus`（桌面）/
+      `modalMobileStudentStatus`（手机底部抽屉）三选一 + 日期 + 原因。
+      列表卡片统一用 `studentStatusChip()` 打「⏸ 停课中 · 至 MM-DD」「已结课 · 日期」。
+      历史学员库卡片上的「移回在读」保留（走 `setStudentStatus(st, ACTIVE)`）。
+    - 回归：`tmp/student-status-check.mjs` **41 项** —— A 过期自动恢复（未到期 / 无恢复日不动）、
+      B 侧栏待排课与预警、C 学员页全部列表与标签、D 顶部计数（停课算在读）、E 财务续费预警/欠课名单、
+      F 详情按钮与徽章、G 复课立刻回预警、H 停课→结课（日期与原因）、I 排课选人仍可选并标注、
+      J 结课→移回在读、K 手机端同口径。护栏自检三连：去掉 `lowLessonRows` 的停课判断 → E1 报红；
+      去掉待排课的 `pausedSt` 判断 → B1 报红；`isPausedSt` 恒 `false` → 9 项报红。
+    - ⚠️ 改这块必须同步改 `tmp/archive-check.mjs`（它以前点 `detailArchiveBtn`，现在走状态弹层）。
+    - ⚠️ 测试坑：手机端「课时预警(≤2)」是 **toggle** 按钮，没有 `data-filter="all"`；
+      退回全部要**再点一次**同一个按钮。
+    - ⚠️ 测试坑：别只数 `[data-home-checkin]` 判断「课在不在」—— 那个按钮只在待上课/待消课渲染，
+      课正在上（live）时变成普通徽章，按真实时钟跑会误判成丢课。

@@ -44,6 +44,9 @@
   let currentFilter = 'unscheduled'; // 默认仅显示未排课学生（待排课）
   let searchQuery = ''; // 学生搜索关键字
   let studentPageScope = 'active'; // 学员页范围：active=在读 / archived=历史学员库
+  // 学员状态（2026-10-24）：这两个页面级状态必须声明在顶部，写在函数上方会 TDZ 白屏
+  let statusModalStudentId = '';        // 状态弹层当前学员
+  let pauseExpiredNoticeQueued = false; // 停课到期提示只弹一次（加载/云拉取各跑一遍 expirePauses）
 
   // 同步合并：远端 teachers 覆盖本地时保留本地 accessPin（PIN 不同步下发）
   function mergeTeachersKeepPin(remoteTeachers, localTeachers) {
@@ -135,6 +138,7 @@
           schedules = (data.schedules || []).map(normalizeSchedule);
           migrateSeriesIds();
           teachers = mergeTeachersKeepPin(data.teachers, teachers);
+          expirePauses();
           migrateLessonUnits();
           // 欠课账校准：负课时（欠课）同步进欠课账
           syncAllDebts();
@@ -223,17 +227,202 @@
     }
   }
 
+  // ============ 学员三态：在读 / 短期停课 / 已结课 ============
+  // 口径（2026-10-24，见 AGENTS 第 54 条）：
+  //   在读      —— 参与待排课、课时不足预警、欠课催收。
+  //   短期停课  —— 仍算在读学员（学员页照样看得见、照样能手动排课、财务存量照算），
+  //               但不再进「待排课 / 课时预警 / 欠课名单」三个催促性入口。
+  //               可设预计恢复日期 pausedUntil，到期**自动回到在读**（数据里不留 paused 字段）。
+  //   已结课    —— 就是原来的「移入历史学员库」（archived=true + archivedAt=结课日期 + archiveReason='结课'）。
+  // ⚠️ activeStudentsOf() 保持「未归档」的老语义（含停课）—— 学员页「在读」列表要靠它；
+  //    需要「真正能催课的人」时用 schedulableStudentsOf()，别在别处自己拼条件。
+  const STUDENT_STATUS = { ACTIVE: 'active', PAUSED: 'paused', ENDED: 'ended' };
+
+  function todayStr0() { return formatDate(new Date()); }
+
+  // 停课中 = 打了 paused 标记、未结课、且没过预计恢复日（过了就当已恢复）
+  function isPausedSt(st) {
+    if (!st || !st.paused || isArchivedSt(st)) return false;
+    const until = String(st.pausedUntil || '').trim();
+    if (until && until < todayStr0()) return false;
+    return true;
+  }
+  // 真正「在读」：没结课也没停课
+  function isActiveSt(st) { return !isArchivedSt(st) && !isPausedSt(st); }
+  function pausedStudentsOf(list) { return (list || students).filter(isPausedSt); }
+  // 可催可排的人：待排课 / 课时预警 / 欠课名单统一走这里
+  function schedulableStudentsOf(list) { return (list || students).filter(isActiveSt); }
+
+  function clearPauseFields(st) {
+    if (!st) return;
+    delete st.paused;
+    delete st.pausedAt;
+    delete st.pausedUntil;
+    delete st.pauseReason;
+  }
+  function clearArchiveFields(st) {
+    if (!st) return;
+    delete st.archived;
+    delete st.archivedAt;
+    delete st.archiveReason;
+  }
+
+  // 统一状态写入点（两端 UI 都只调这一个函数）
+  // opts: { from:'2026-10-24', until:'', reason:'生病' } 只对 PAUSED 有意义；ENDED 用 opts.date
+  function setStudentStatus(st, status, opts) {
+    if (!st) return;
+    const o = opts || {};
+    const next = status === STUDENT_STATUS.PAUSED ? STUDENT_STATUS.PAUSED
+      : status === STUDENT_STATUS.ENDED ? STUDENT_STATUS.ENDED
+        : STUDENT_STATUS.ACTIVE;
+
+    if (next === STUDENT_STATUS.ENDED) {
+      clearPauseFields(st);
+      st.archived = true;
+      st.archivedAt = o.date || st.archivedAt || todayStr0();
+      st.archiveReason = o.reason || '结课';
+      return;
+    }
+
+    clearArchiveFields(st);           // 复课 / 恢复在读都要先把结课痕迹清掉
+    if (next === STUDENT_STATUS.PAUSED) {
+      st.paused = true;
+      st.pausedAt = o.from || st.pausedAt || todayStr0();
+      st.pausedUntil = o.until || '';  // 空 = 一直停到手动复课
+      if (o.reason) st.pauseReason = o.reason;
+      else delete st.pauseReason;
+      return;
+    }
+    clearPauseFields(st);
+  }
+
+  function studentStatusOf(st) {
+    if (isArchivedSt(st)) return STUDENT_STATUS.ENDED;
+    if (isPausedSt(st)) return STUDENT_STATUS.PAUSED;
+    return STUDENT_STATUS.ACTIVE;
+  }
+
+  // 列表/详情共用的状态小标签（在读不显示，避免每条都挂个「在读」）
+  function studentStatusChip(st) {
+    const s = studentStatusOf(st);
+    if (s === STUDENT_STATUS.ENDED) {
+      return `<span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full lm-soft lm-t3">已结课${st && st.archivedAt ? ' · ' + st.archivedAt : ''}</span>`;
+    }
+    if (s === STUDENT_STATUS.PAUSED) {
+      const until = st && st.pausedUntil ? ' · 至 ' + String(st.pausedUntil).slice(5) : '';
+      return `<span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style="background:#fff5eb;color:#c2410c;border:1px solid #fed7aa">⏸ 停课中${until}</span>`;
+    }
+    return '';
+  }
+
+  const STUDENT_STATUS_UI = {
+    active: { icon: 'fa-circle-play', label: '在读' },
+    paused: { icon: 'fa-circle-pause', label: '停课中' },
+    ended: { icon: 'fa-flag-checkered', label: '已结课' },
+  };
+
+  // 停课到期自动回到在读：只在加载/云同步后跑，只删字段不改别的账（幂等）
+  function expirePauses() {
+    const today = todayStr0();
+    let n = 0;
+    (students || []).forEach((st) => {
+      if (!st || !st.paused || isArchivedSt(st)) return;
+      const until = String(st.pausedUntil || '').trim();
+      if (!until || until >= today) return;   // 没设恢复日 = 不自动恢复
+      clearPauseFields(st);
+      n++;
+    });
+    if (n > 0) {
+      if (!pauseExpiredNoticeQueued) {
+        pauseExpiredNoticeQueued = true;
+        setTimeout(() => showToast(`⏰ ${n} 位学员停课到期，已自动回到在读`, 'clock-rotate-left'), 1100);
+      }
+    }
+    return n;
+  }
+
+  // ============ 学员状态弹层（在读 / 短期停课 / 结课）============
+  // 三态共用一张面板：用户点详情里的状态按钮进来，选一档、填日期、保存。
+  // 口径全在 setStudentStatus 里，这里只管取值与文案。
+  function statusModalPicked() {
+    const r = document.querySelector('input[name="studentStatusPick"]:checked');
+    return r ? r.value : STUDENT_STATUS.ACTIVE;
+  }
+
+  function syncStatusModalFields() {
+    const picked = statusModalPicked();
+    const pauseBox = document.getElementById('statusPauseFields');
+    const endBox = document.getElementById('statusEndFields');
+    if (pauseBox) pauseBox.classList.toggle('hidden', picked !== STUDENT_STATUS.PAUSED);
+    if (endBox) endBox.classList.toggle('hidden', picked !== STUDENT_STATUS.ENDED);
+    document.querySelectorAll('#statusModalOptions label').forEach((lb) => {
+      const on = lb.getAttribute('data-status') === picked;
+      lb.style.borderColor = on ? '#111111' : '#f0ebe2';
+      lb.style.background = on ? '#faf8f3' : '#ffffff';
+    });
+  }
+
+  function openStudentStatusModal(st) {
+    if (!st) return;
+    const el = document.getElementById('modalStudentStatus');
+    if (!el) return;
+    statusModalStudentId = st.id;
+    const cur = studentStatusOf(st);
+    const who = document.getElementById('statusModalWho');
+    if (who) who.innerHTML = `<b>${st.name}</b> · 当前：${STUDENT_STATUS_UI[cur].label}${st.pausedUntil ? `（至 ${st.pausedUntil}）` : ''}`;
+    document.querySelectorAll('input[name="studentStatusPick"]').forEach((r) => { r.checked = r.value === cur; });
+    const fromEl = document.getElementById('inputStatusPauseFrom');
+    const untilEl = document.getElementById('inputStatusPauseUntil');
+    const reasonEl = document.getElementById('inputStatusPauseReason');
+    const endEl = document.getElementById('inputStatusEndDate');
+    if (fromEl) fromEl.value = st.pausedAt || todayStr0();
+    if (untilEl) untilEl.value = st.pausedUntil || '';
+    if (reasonEl) reasonEl.value = st.pauseReason || '';
+    if (endEl) endEl.value = st.archivedAt || todayStr0();
+    syncStatusModalFields();
+    showModal('modalStudentStatus');
+  }
+
+  function applyStatusModal() {
+    const st = students.find((s) => s.id === statusModalStudentId);
+    if (!st) { hideModal('modalStudentStatus'); return; }
+    const picked = statusModalPicked();
+    const opts = {};
+    if (picked === STUDENT_STATUS.PAUSED) {
+      const from = (document.getElementById('inputStatusPauseFrom') || {}).value || todayStr0();
+      const until = (document.getElementById('inputStatusPauseUntil') || {}).value || '';
+      const reason = ((document.getElementById('inputStatusPauseReason') || {}).value || '').trim();
+      if (until && until < from) { showToast('预计恢复日不能早于停课开始日', 'circle-exclamation'); return; }
+      opts.from = from;
+      opts.until = until;
+      opts.reason = reason;
+    } else if (picked === STUDENT_STATUS.ENDED) {
+      opts.date = (document.getElementById('inputStatusEndDate') || {}).value || todayStr0();
+      opts.reason = '结课';
+    }
+    setStudentStatus(st, picked, opts);
+    saveData();
+    hideModal('modalStudentStatus');
+    refreshView();
+    const ui = STUDENT_STATUS_UI[picked];
+    const extra = picked === STUDENT_STATUS.PAUSED
+      ? (opts.until ? `（预计 ${opts.until} 复课）` : '（手动复课）')
+      : picked === STUDENT_STATUS.ENDED ? '，已移入历史学员库' : '';
+    showToast(`${ui.icon === 'fa-circle-play' ? '▶️' : picked === STUDENT_STATUS.PAUSED ? '⏸' : '🎓'} ${st.name} → ${ui.label}${extra}`, 'flag');
+  }
+
   // 移入 / 移出历史学员库（桌面与手机两处详情共用同一套口径）
+  // 结课 / 复课 的正式入口是 setStudentStatus，这里保留给历史按钮与旧调用点
   function toggleStudentArchive(st, on) {
     if (!st) return;
     if (on) {
-      if (!confirm(`把「${st.name}」移入历史学员库？\n\n学员档案、课程包、消课记录都会保留，只是不再出现在在读列表、待排课和课时预警里。随时可以移回。`)) return;
-      setStudentArchived(st, true, '结课');
+      if (!confirm(`给「${st.name}」结课并移入历史学员库？\n\n学员档案、课程包、消课记录都会保留，只是不再出现在在读列表、待排课和课时预警里。随时可以移回。`)) return;
+      setStudentStatus(st, STUDENT_STATUS.ENDED);
       saveData();
       refreshView();
-      showToast(`📦 ${st.name} 已移入历史学员库`, 'box-archive');
+      showToast(`🎓 ${st.name} 已结课，移入历史学员库`, 'flag-checkered');
     } else {
-      setStudentArchived(st, false);
+      setStudentStatus(st, STUDENT_STATUS.ACTIVE);
       saveData();
       refreshView();
       showToast(`↩️ ${st.name} 已移回在读`, 'rotate-left');
@@ -482,7 +671,7 @@
       <div class="flex items-center gap-3 lm-soft rounded-xl p-3">
         <div class="w-11 h-11 rounded-full ${themeColor.bg} ${themeColor.text} flex items-center justify-center font-bold text-base">${student.name.substring(0, 1)}</div>
         <div class="flex-1">
-          <div class="font-bold text-sm lm-t1 flex items-center gap-1.5 flex-wrap">${student.name}${isArchivedSt(student) ? `<span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full lm-soft lm-t3">历史学员${student.archivedAt ? ' · ' + student.archivedAt : ''}</span>` : ''}</div>
+          <div class="font-bold text-sm lm-t1 flex items-center gap-1.5 flex-wrap">${student.name}${studentStatusChip(student)}</div>
           <div class="text-[11px] lm-t2">${student.phone ? '<i class="fa-solid fa-phone text-[9px]"></i> ' + student.phone : '未填电话'}</div>
           ${lifeText ? `<div class="text-[10px] lm-t3 mt-0.5" data-detail-life>${joinShow ? '<i class="fa-solid fa-calendar-plus text-[9px]"></i> ' : ''}${lifeText}</div>` : ''}
         </div>
@@ -499,8 +688,8 @@
         <button type="button" id="detailRefundBtn" class="py-2.5 rounded-xl bg-white border border-[#f0ebe2] hover:bg-[#f8f5f0] font-bold text-xs flex items-center justify-center gap-1.5 transition"${canRefund ? '' : ' disabled style="opacity:.45;cursor:not-allowed"'}>
           <i class="fa-solid fa-circle-minus" style="color:#d5304f;"></i> 退款${canRefund ? '' : '（无可退）'}
         </button>
-        <button type="button" id="detailArchiveBtn" class="py-2.5 rounded-xl bg-white border border-[#f0ebe2] hover:bg-[#f8f5f0] font-bold text-xs flex items-center justify-center gap-1.5 transition" data-archived="${isArchivedSt(student) ? '1' : '0'}">
-          <i class="fa-solid ${isArchivedSt(student) ? 'fa-rotate-left' : 'fa-box-archive'}"></i> ${isArchivedSt(student) ? '移回在读' : '移入历史库'}
+        <button type="button" id="detailStatusBtn" class="py-2.5 rounded-xl bg-white border border-[#f0ebe2] hover:bg-[#f8f5f0] font-bold text-xs flex items-center justify-center gap-1.5 transition" data-status="${studentStatusOf(student)}">
+          <i class="fa-solid ${STUDENT_STATUS_UI[studentStatusOf(student)].icon}"></i> ${STUDENT_STATUS_UI[studentStatusOf(student)].label}
         </button>
       </div>
 
@@ -624,12 +813,11 @@
       setTimeout(() => openLessonSummaryModal(student), 280);
     });
 
-    // 归档（结课 / 停课）→ 历史学员库：档案与流水全留，只是离开在读列表
-    const archiveBtn = document.getElementById('detailArchiveBtn');
-    if (archiveBtn) archiveBtn.addEventListener('click', () => {
-      const goingArchive = !isArchivedSt(student);
+    // 学员状态（在读 / 短期停课 / 结课）：档案与流水全留，只改参与哪些提醒
+    const statusBtn = document.getElementById('detailStatusBtn');
+    if (statusBtn) statusBtn.addEventListener('click', () => {
       hideModal('modalStudentDetail');
-      setTimeout(() => toggleStudentArchive(student, goingArchive), 260);
+      setTimeout(() => openStudentStatusModal(student), 260);
     });
 
     // 消课记录「查看全部 / 收起」：整块重渲染，展开状态存在 detailLogExpanded
@@ -1210,10 +1398,13 @@
     return repaid;
   }
 
-  // 欠课名单只算在读学员：归档的人已经离校，账留着但不再催
+  // 欠课名单只算在读学员：归档的人已经离校、停课的人这阵子不来，账都留着但不再催
   function activeDebtors() {
-    const arch = new Set(archivedStudentsOf().map((s) => s.id));
-    return debts.filter((d) => d.amount > 0 && !arch.has(d.studentId));
+    return debts.filter((d) => {
+      if (!(d.amount > 0)) return false;
+      const st = students.find((s) => s.id === d.studentId);
+      return !!st && isActiveSt(st);
+    });
   }
 
   function getStudentDebts(studentId) {
@@ -1313,6 +1504,9 @@
 
     schedules = schedules.map(normalizeSchedule);
     migrateSeriesIds();
+
+    // 停课到期自动回到在读（只清 paused 字段，幂等）
+    expirePauses();
 
     // 历史账目校准：旧口径把长课时记成多节 → 先回正节数/金额/课时余额，再对欠课账
     migrateLessonUnits();
@@ -1415,6 +1609,7 @@
             debts = (remoteData.debts || []).map(normalizeDebt);
 
             // 云端拿回来的仍可能是旧口径数据 → 每次覆盖后都校准一次（幂等）
+            expirePauses();
             migrateLessonUnits();
 
             // 欠课账校准：负课时（欠课）同步进欠课账
@@ -1921,6 +2116,7 @@
     const rows = [];
     (studentsScope || students).forEach((st) => {
       if (isArchivedSt(st)) return; // 历史学员不再补课，不能占着课时预警
+      if (isPausedSt(st)) return;   // 短期停课期间不催续费（复课/到期自动恢复后再提醒）
       normalizeStudent(st);
       const courses = (courseOf ? courseOf(st) : st.courses) || [];
       courses.forEach((c) => {
@@ -2893,6 +3089,13 @@
     safeBind('btnCloseDupLogMergeModal', 'click', () => hideModal('modalDupLogMerge'));
     safeBind('btnCancelDupLogMerge', 'click', () => hideModal('modalDupLogMerge'));
     safeBind('btnApplyDupLogMerge', 'click', applyDupLogMerge);
+    // 学员状态弹层（在读 / 短期停课 / 结课）
+    safeBind('btnCloseStudentStatus', 'click', () => hideModal('modalStudentStatus'));
+    safeBind('btnCancelStudentStatus', 'click', () => hideModal('modalStudentStatus'));
+    safeBind('btnApplyStudentStatus', 'click', applyStatusModal);
+    document.querySelectorAll('input[name="studentStatusPick"]').forEach((r) => {
+      r.addEventListener('change', syncStatusModalFields);
+    });
     safeBind('chkMergeSelectAll', 'change', (e) => {
       document.querySelectorAll('#courseMergeList .merge-check').forEach((c) => {
         c.checked = e.target.checked;
@@ -3148,7 +3351,7 @@
           <div class="flex items-center gap-2.5">
             <div class="w-9 h-9 rounded-full ${themeColor.bg} ${themeColor.text} flex items-center justify-center font-bold text-sm shrink-0">${student.name.substring(0, 1)}</div>
             <div>
-              <div class="font-bold text-sm lm-t1">${student.name}</div>
+              <div class="font-bold text-sm lm-t1 flex items-center gap-1.5 flex-wrap">${student.name}${studentStatusChip(student)}</div>
               <div class="text-[10px] lm-t3"><i class="fa-solid fa-phone text-[9px]"></i> ${student.phone || '无电话'}</div>
             </div>
           </div>
@@ -3191,7 +3394,7 @@
       btn.addEventListener('click', () => {
         const st = students.find((s) => s.id === btn.getAttribute('data-id'));
         if (!st) return;
-        setStudentArchived(st, false);
+        setStudentStatus(st, STUDENT_STATUS.ACTIVE);
         saveData();
         refreshView();
         showToast(`↩️ ${st.name} 已移回在读`, 'rotate-left');
@@ -3236,7 +3439,7 @@
     const totalRemaining = relStudents.reduce((acc, st) => acc + myCoursesOf(st).reduce((a, c) => a + Math.max(0, c.remainingLessons), 0), 0);
     const totalStockValue = relStudents.reduce((acc, st) => acc + myCoursesOf(st).reduce((a, c) => a + Math.max(0, c.remainingLessons) * (c.unitPrice || 0), 0), 0);
     const debtors = scoped
-      ? debts.filter((d) => d.amount > 0 && relIds.has(d.studentId) && relStudents.some((st) => st.id === d.studentId && teacherRelatedCourse(st, d.courseName, tId)))
+      ? debts.filter((d) => d.amount > 0 && relIds.has(d.studentId) && relStudents.some((st) => st.id === d.studentId && isActiveSt(st) && teacherRelatedCourse(st, d.courseName, tId)))
       : activeDebtors();
     // 续费预警（余额 ≤2 节；欠课负数归右栏「欠课名单」，不在这里重复出现）
     const lowRows = lowLessonRows(relStudents, myCoursesOf);
@@ -3494,10 +3697,14 @@
       }
 
       const totalLessons = st.courses.reduce((acc, c) => acc + c.remainingLessons, 0);
+      // 短期停课：待排课 / 预警 是「催老师干活」的入口，停课期间不往里塞（用户 2026-10-24 定的口径）
+      const pausedSt = isPausedSt(st);
 
       if (currentFilter === 'unscheduled') {
+        if (pausedSt) return false;
         return !scheduledStudentIdsThisWeek.has(st.id);
       } else if (currentFilter === 'low') {
+        if (pausedSt) return false;
         return (totalLessons <= 2 || st.courses.some((c) => c.remainingLessons <= 2)) && !scheduledStudentIdsThisWeek.has(st.id);
       } else if (currentFilter === 'scheduled') {
         return scheduledStudentIdsThisWeek.has(st.id);
@@ -3559,9 +3766,10 @@
               ${student.name.substring(0, 1)}
             </div>
             <div>
-              <div class="font-bold text-xs lm-t1 flex items-center gap-1">
+              <div class="font-bold text-xs lm-t1 flex items-center gap-1 flex-wrap">
                 <span>${student.name}</span>
                 <span class="text-[10px] lm-t3 font-normal">(${student.courses.length}门课)</span>
+                ${studentStatusChip(student)}
               </div>
               <div class="text-[10px] lm-t3">
                 <i class="fa-solid fa-phone text-[9px]"></i> ${student.phone || '无电话'}
@@ -4340,7 +4548,7 @@
         <span class="w-7 h-7 rounded-full ${avTheme.bg} ${avTheme.text} flex items-center justify-center font-bold text-[11px] shrink-0">${(st.name || '?').substring(0, 1)}</span>
         <span class="flex-1 min-w-0">
           <span class="block text-xs font-bold text-[#111111] truncate">${st.name || ''}</span>
-          <span class="block text-[10px] lm-t3">剩 ${total} 课时</span>
+          <span class="block text-[10px] lm-t3">剩 ${total} 课时${isPausedSt(st) ? ' · ⏸ 停课中' : ''}</span>
         </span>
         <i class="fa-solid fa-chevron-right text-[9px] text-[#d6d3d1]"></i>
       </button>`;
