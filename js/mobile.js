@@ -282,7 +282,7 @@
     }
     if (s === STUDENT_STATUS.PAUSED) {
       const until = st && st.pausedUntil ? ' · 至 ' + String(st.pausedUntil).slice(5) : '';
-      return `<span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style="background:#fff5eb;color:#c2410c;">⏸ 停课中${until}</span>`;
+      return `<span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full inline-flex items-center gap-1" style="background:#fff5eb;color:#c2410c;"><i class="fa-solid fa-circle-pause" style="font-size:8px"></i>停课中${until}</span>`;
     }
     return '';
   }

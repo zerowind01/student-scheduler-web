@@ -310,7 +310,7 @@
     }
     if (s === STUDENT_STATUS.PAUSED) {
       const until = st && st.pausedUntil ? ' · 至 ' + String(st.pausedUntil).slice(5) : '';
-      return `<span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style="background:#fff5eb;color:#c2410c;border:1px solid #fed7aa">⏸ 停课中${until}</span>`;
+      return `<span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full inline-flex items-center gap-1" style="background:#fff5eb;color:#c2410c;border:1px solid #fed7aa"><i class="fa-solid fa-circle-pause" style="font-size:8px"></i>停课中${until}</span>`;
     }
     return '';
   }
@@ -4548,7 +4548,7 @@
         <span class="w-7 h-7 rounded-full ${avTheme.bg} ${avTheme.text} flex items-center justify-center font-bold text-[11px] shrink-0">${(st.name || '?').substring(0, 1)}</span>
         <span class="flex-1 min-w-0">
           <span class="block text-xs font-bold text-[#111111] truncate">${st.name || ''}</span>
-          <span class="block text-[10px] lm-t3">剩 ${total} 课时${isPausedSt(st) ? ' · ⏸ 停课中' : ''}</span>
+          <span class="block text-[10px] lm-t3">剩 ${total} 课时${isPausedSt(st) ? ' · 停课中' : ''}</span>
         </span>
         <i class="fa-solid fa-chevron-right text-[9px] text-[#d6d3d1]"></i>
       </button>`;
