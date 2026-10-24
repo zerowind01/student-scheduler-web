@@ -10,7 +10,7 @@
 | 维度 | 现状 |
 |---|---|
 | 架构 | 双代码库镜像（桌面 `js/app.js` + 手机 `js/mobile.js`），共享 localStorage key 与 Upstash 云同步 |
-| 部署 | Cloudflare Pages（主站）+ CF Pages Function 云同步（`functions/api/sync.js`）；Netlify 已废，GitHub 无 CI |
+| 部署 | Cloudflare Pages（主站）+ CF Pages Function 云同步（`functions/api/sync.js`）；Netlify / Vercel 旧函数已于 2026-10-24 删除，GitHub 无 CI |
 | 数据层 | 6 大集合（students / schedules / teachers / course_types / checkin_logs / debts），课时语义 =「消课才扣」 |
 | UI 体系 | 2026-09-07 重设计完成：tokens.css 设计令牌 + anim.js 动效层 + 四区分色（课表琥珀/学员绿/财务玫红/设置天蓝） |
 | 可访问性 | 2026-09-07 审查基线已落地（aria-label / role=dialog / Esc 关弹窗 / reduced-motion 兜底） |

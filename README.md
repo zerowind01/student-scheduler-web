@@ -68,7 +68,11 @@ student_scheduler_web/
 
 ## 🔄 云同步部署说明
 
-- 电脑端 / 手机端请通过 Netlify 部署后的网址访问（如 `https://zippy-meerkat-cfab1f.netlify.app`）
-- 双方在设置里填同一个"同步码"即可实时同步（约 2 秒）
-- 云端数据存储在 Upstash Redis，凭据由 Netlify 服务端函数持有，前端代码不含任何密钥
+- 电脑端 / 手机端统一访问 **Cloudflare Pages**：`https://lesson-mate.pages.dev`
+  （手机端 `https://lesson-mate.pages.dev/mobile`）
+- 双方在设置里填同一个"同步码"即可同步（写入即时推送，每 15 秒探测一次版本号）
+- 云端数据存储在 **Upstash Redis**，由 Cloudflare Pages Function `functions/api/sync.js` 直连，
+  凭据存在 CF Pages 环境变量 `UPSTASH_REST_URL` / `UPSTASH_REST_TOKEN`，前端代码不含任何密钥
+- 部署：`npx -y wrangler@4.138.0 pages deploy . --project-name lesson-mate --branch main --commit-dirty=true`
+- Netlify / Vercel 的两套旧函数已于 2026-10-24 删除，`lesson-mate.netlify.app` 不再使用
 - 本地开发时直接双击 `index.html` 只能用本地存储，云同步功能不可用（会有提示）

@@ -1530,7 +1530,7 @@
   let cloudSyncFailedOnce = false; // 只提醒一次，避免弹窗轰炸
 
   // 云端同步改走同源 /api/sync 代理（凭据由服务端函数持有，前端不再暴露 token）
-  // 服务端实现见 netlify/functions/sync.js —— 读取 UPSTASH_REST_URL / UPSTASH_REST_TOKEN 环境变量
+  // 服务端实现见 functions/api/sync.js（CF Pages Function）—— 读取 UPSTASH_REST_URL / UPSTASH_REST_TOKEN
   const CLOUD_SYNC_ENDPOINT = '/api/sync';
 
   async function pushToCloudSync() {

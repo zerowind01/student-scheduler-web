@@ -1,9 +1,8 @@
 // Cloudflare Pages Function — ICS 日历订阅（iPhone/iPad 原生日历提醒）
 // GET /api/ics?key=<同步码>&teacher=<teacherId 或老师姓名>
 // 返回该老师名下全部课程的 VCALENDAR；手机日历订阅后可设"提前15分钟提醒"一次生效
-// 取数逻辑与 sync.js 一致：有 UPSTASH 环境变量时直连，否则回退代理到 Netlify
-
-const NETLIFY_UPSTREAM = 'https://lesson-mate.netlify.app/.netlify/functions/sync';
+// 取数：直连 Upstash（与 functions/api/sync.js 同一份凭据）
+// 2026-10-24 起不再有"没配凭据就转发 Netlify"的回退 —— Netlify 站点与函数已下线，缺凭据就当空库
 
 function corsHeaders() {
   return {
@@ -29,11 +28,8 @@ async function fetchSchoolData(key, env) {
         try { raw = JSON.parse(raw); } catch (e) { /* 保持原样 */ }
       }
     }
-  } else {
-    // 阶段一回退：转发 Netlify 同名函数
-    const res = await fetch(`${NETLIFY_UPSTREAM}?key=${encodeURIComponent(key)}`);
-    if (res.ok) raw = await res.json();
   }
+  // 没配 Upstash 凭据时 raw 保持 null → 返回空日历（不再转发任何第三方）
 
   return raw && typeof raw === 'object' ? raw : { schedules: [], students: [], teachers: [] };
 }

@@ -1,9 +1,7 @@
-// Cloudflare Pages Function — 云端同步（唯一真源）
-// 阶段一（当前）：反向代理到 Netlify 的同名函数（Upstash 凭据留在 Netlify 环境变量里，零迁移）
-// 阶段二（可选）：拿到 UPSTASH_REST_URL / UPSTASH_REST_TOKEN 环境变量后直连 Upstash
-// 接口契约与 Netlify 版完全一致：GET/POST /api/sync?key=xxx
-
-const UPSTREAM = 'https://lesson-mate.netlify.app/.netlify/functions/sync';
+// Cloudflare Pages Function — 云端同步（唯一后端，2026-10-24 已切断 Netlify 反向代理）
+// 直连 Upstash Redis：凭据在 CF Pages 环境变量 UPSTASH_REST_URL / UPSTASH_REST_TOKEN
+// 接口契约：GET /api/sync?key=xxx  取整份快照；GET ?meta=1 只取版本号；POST 写入
+// ⚠️ 这里不再有"没有 env 就转发到 Netlify"的回退分支 —— Netlify 站点与函数已于 2026-10-24 下线。
 
 function corsHeaders() {
   return {
@@ -11,28 +9,6 @@ function corsHeaders() {
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   };
-}
-
-async function proxyToUpstash(request, env) {
-  // 阶段二：配置了 Upstash 凭据时直连
-  const url = env.UPSTASH_REST_URL;
-  const token = env.UPSTASH_REST_TOKEN;
-  if (url && token) {
-    return upstashDirect(request, { url: url.replace(/\/+$/, ''), token });
-  }
-  // 阶段一：转发给 Netlify（保持 query）
-  const incoming = new URL(request.url);
-  const target = UPSTREAM + incoming.search;
-  const init = {
-    method: request.method,
-    headers: { 'Content-Type': 'application/json' },
-  };
-  if (request.method === 'POST') init.body = await request.text();
-  const res = await fetch(target, init);
-  return new Response(await res.text(), {
-    status: res.status,
-    headers: { ...corsHeaders(), 'Content-Type': 'application/json' },
-  });
 }
 
 async function upstashDirect(request, up) {
@@ -120,12 +96,21 @@ async function upstashDirect(request, up) {
 }
 
 export async function onRequest(context) {
-  const { request } = context;
+  const { request, env } = context;
   if (request.method === 'OPTIONS') {
     return new Response('', { status: 200, headers: corsHeaders() });
   }
+  const url = env && env.UPSTASH_REST_URL;
+  const token = env && env.UPSTASH_REST_TOKEN;
+  if (!url || !token) {
+    // 配错了要一眼看出来，别再静默退化成内存/转发（那个坑 2026-09 踩过）
+    return new Response(JSON.stringify({
+      error: 'UPSTASH_REST_URL / UPSTASH_REST_TOKEN 未配置',
+      hint: 'Cloudflare Pages → lesson-mate → Settings → Environment variables',
+    }), { status: 500, headers: { ...corsHeaders(), 'Content-Type': 'application/json' } });
+  }
   try {
-    return await proxyToUpstash(request, context.env);
+    return await upstashDirect(request, { url: String(url).replace(/\/+$/, ''), token });
   } catch (e) {
     return new Response(JSON.stringify({ error: e.message }), {
       status: 500,

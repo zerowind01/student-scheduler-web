@@ -556,12 +556,17 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
     - 兼容两条：① 老服务端不认识 `meta` 会把整份快照吐回来 → 客户端当一次全量处理（不能空转）；
       ② 老库只有快照没有 ver → 服务端在 meta 分支里**自愈**（读一次全量取 `updatedAt` 再补 ver，只发生一次）。
       所以前后端可以不同时上线，但**两个都上线才算真省**。
-    - **真实后端是 `functions/api/sync.js` 的 `upstashDirect`（CF Pages 已配 `UPSTASH_REST_URL/TOKEN`），
-      Netlify 那个函数只是死代码**。判别方法（别猜）：`curl .../api/sync?key=空key&meta=1`
-      → 新代码回 `{"v":""}`（8 字节）；再直连 `lesson-mate.netlify.app/.netlify/functions/sync` → 老代码回 `{}`。
-      两条都对上就说明 CF 走的是直连。**所以服务端改动只需要 `wrangler pages deploy`，不用碰 Netlify。**
-      注意 `upstashDirect` 与 `proxyToUpstash` 两个分支都要实现 meta，改一处必须改两处。
-    - 回归：`tmp/sync-ver-check.mjs`（15 项，服务端单测 + 内存假 Upstash，不联网）、
+    - **唯一后端是 `functions/api/sync.js` 的 `upstashDirect`**（CF Pages 生产环境已配 `UPSTASH_REST_URL/TOKEN`，
+      `npx wrangler pages secret list --project-name lesson-mate` 可复验）。
+      **2026-10-24 已把 Netlify / Vercel 两套旧函数连同 `netlify.toml` / `netlify/` / `.netlify/` /
+      `_redirects` / `api/`（Vercel 版）全部删除** —— 起因：`lesson-mate.netlify.app` 居然还活着，
+      页面停在 `app.js?v=11`（当时线上 v61），旧网址一打开就会用 9 月的老代码写真实数据（老口径
+      `deductedLessons>1`、旧去重键），比多一个部署危险得多。
+      现在 `sync.js` **没有转发分支**：env 缺失直接回 500 + 提示去哪配，不再静默退化成内存/转发；
+      `ics.js` 缺凭据时回空日历。验证：`curl .../api/sync?key=no_such_key&meta=1` 回 {"v":""}
+      （⚠️ 别用 `key=` 空串测：代码兜底成默认演示 key `school_demo_2026`，会返回它的版本号）。
+      **服务端改动只需要 `wrangler pages deploy`。**
+    - 回归：`tmp/sync-ver-check.mjs`（18 项，服务端单测 + 内存假 Upstash，不联网；S6 专测缺 env 回 500）、
       `tmp/sync-poll-check.mjs`（11 项，浏览器实测：34 秒内探测 2 次 / 全量 0 次 / 后台 0 请求 / 退避生效）。
 
 47. **历史学员库 = 归档标记，不是删除**（2026-10-19，导入淳艺 49 人前先立的口径）。
