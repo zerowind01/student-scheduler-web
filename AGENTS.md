@@ -763,3 +763,38 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       退回全部要**再点一次**同一个按钮。
     - ⚠️ 测试坑：别只数 `[data-home-checkin]` 判断「课在不在」—— 那个按钮只在待上课/待消课渲染，
       课正在上（live）时变成普通徽章，按真实时钟跑会误判成丢课。
+
+55. **排完补课要有「已排」状态：`isPendingMakeup` 不够，必须再看 `makeupPlanOf`**（2026-10-24，
+    Jackson：「首页排补课后，没有完成排补课的状态显示」）
+    - 根因：`isPendingMakeup(s)` 回答的是「**这账还完了吗**」——只要没上课（`!madeUpById`）它就恒 true，
+      排了补课也一样。所以界面拿它当唯一依据时，排完还显示「请假待补 / 排补课」，等于没有完成状态。
+    - 新增两个助手（两端同构，放在 `isMakeupDone` 旁边）：
+      · `makeupPlanOf(src, list)` —— 找 `makeupOfId === src.id && status === SCHEDULE_STATUS.SCHEDULED`
+        的补课课次，按 `date+startTime` 升序取第一节；没有就 `null`。
+        ⚠️ **补课那节自己又请假（student_leave）不算已排** —— 那说明还是没补上，得再排。
+        `completed` 时源课已经有 `madeUpById`，压根不进 pending，轮不到这个分支。
+      · `makeupPlanLabel(plan)` —— 统一成 `MM/DD HH:MM`，清单/徽章/菜单共用一套措辞。
+    - 「已排」用**青色 `#2E5D68`**（补课族），与「待补黄 `#FEA/#B98235`」「请假玫红」拉开；
+      手机徽章类是 `.lm-tag-leavePlan`（`css/intercom-tokens.css`），桌面一律内联。
+    - 接入点（漏一处就会自相矛盾）：
+      · 手机 `buildStatusBadge`：`leavePend` 且已排 → 文案「已排补课」；
+      · 桌面看板时间轴 `statusHtml`：已排 → 「已排补课」；日历角标 → `假·已排`（窄卡仍 `假!`）；
+      · 首页/看板待补清单行：第二行改「已排补课 · MM/DD HH:MM」，圆点/文字转青色，
+        行上带 `data-makeup-planned="1|0"`；
+      · 标题计数：「已排 N 节 · 待排 M 节」（全排完写「全部已安排」）；
+      · 操作菜单 `statusText`：「学员请假 · 已排补课 MM/DD HH:MM」；
+      · 学员详情请假记录：「已排 MM/DD HH:MM」小标。
+    - **按钮跟着变**：已排时把「排补课」换成「改期」，点开的是**那节补课课次**的编辑弹层
+      （手机 `data-home-makeup-edit` → `openMobileScheduleModalForEdit(plan)`；
+      桌面 `.dash-makeup-edit-btn` → `openScheduleModalForEdit(plan)`；菜单项 `data-act="makeupEdit"`）。
+      再点「排补课」会多排一节，所以不能只是把文案改掉、按钮留着。
+    - ⚠️ **顺手修掉的真 bug**：手机 `openMobileScheduleActionMenu` 的 `act === 'delete'` 回调原本只
+      `renderCalendar(); renderMobileStudents();`，**漏了首页** → 删掉补课课次后首页还显示「已排补课」。
+      改成 `refreshMobileAll()`（= 日历 + 学员 + 首页）。测试 `makeup-check` H4 专钉这一条。
+    - 回归：`tmp/makeup-plan-check.mjs` **39 项** —— A 手机今日行、B 已排行、C 未排行、D 补课又请假、
+      F 标题计数、G「改期」回填的是补课课次（标题必须是「修改课程排期」、隐藏域必须清空）、
+      H 未排仍走「安排补课」、I–K 桌面时间轴 / 待补卡 / 月视图菜单。
+      线上冒烟 `tmp/makeup-plan-live.mjs` 12 项。出图 `tmp/makeup-plan-shots.mjs`。
+      护栏：`makeupPlanOf` 恒 `null` → **14 项报红**（A1/A2/A3/A4/B1/B2/B3/F1/F2/G1~G5）。
+    - ⚠️ 旧断言要同步改：`tmp/makeup-check.mjs` G3 以前期望撤销消课后回到「请假待补」，
+      现在补课课次仍在排期 → 正确结果是「已排补课」；新增 H4 钉「删掉补课课次才退回待补」。

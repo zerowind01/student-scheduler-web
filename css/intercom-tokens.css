@@ -131,6 +131,8 @@
    普通请假（不补）沿用上面的 .lm-tag-leave（玫红）。 */
 .lm-tag-leavePend { background: #FEF3C7; color: #7C4A03; }
 .lm-tag-leaveDone { background: #f1ece3; color: #78716c; }
+/* 已排补课：补课已经排进日程、只是还没上课 —— 用补课族的柔和青，和「待补黄」拉开 */
+.lm-tag-leavePlan { background: #e8f2f4; color: #2E5D68; }
 
 /* ---- 补课（F11）：柔和青 ----
    项目禁用琥珀，而课表域原本就是琥珀 —— 补课借「学员绿」同族的柔和青，
