@@ -1512,7 +1512,9 @@
     return fixed;
   }
 
-  // 归还欠课（新购/充值时自动抵扣）：返回实际抵扣掉的节数
+  // 归还欠课（把欠课账核销掉，返回实际核销的节数）。
+  // ⚠️ 返回值**只用于提示文案，绝不能从充值节数里再减一次** —— 见 purchaseCoursePack 的注释。
+  //   欠课时课程包余额本来就是负数，那一节已经在余额里体现过了。
   function repayDebt(studentId, courseName, amount) {
     const d = debts.find((x) => x.studentId === studentId && x.courseName === courseName);
     if (!d || d.amount <= 0) return 0;
@@ -2133,32 +2135,44 @@
   }
 
   // 新购/充值课时包（自动抵扣同课程名欠课）
+  // ⚠️ 抵扣**不能**从充值节数里再减一次（2026-10-25 修的线上 bug）：
+  //   欠课时课程包的 remainingLessons 本来就是负数（欠 1 节 = 余 -1），欠课账只是它的镜像，
+  //   同一件事记了两处。旧实现 remaining = lessons - repaid 再加到 -1 的余额上，
+  //   于是欠 1 充 10 变成 8 节；欠 5 充 2 更极端，余额纹丝不动（等于白充）。
+  //   正确口径（与手机端 purchaseCoursePack 逐字一致）：充值**全额**进余额，
+  //   再按新余额重算欠课账（syncDebtForCourse：余额转正 → 欠课自动清除），
+  //   抵扣了多少节只拿去写提示文案。
   function purchaseCoursePack(studentId, courseName, lessons, unitPrice) {
     const student = students.find((st) => st.id === studentId);
     if (!student) return;
     normalizeStudent(student);
     migrateStudentCourses(student);
 
-    let remaining = lessons;
     let remark = '';
-    const repaid = repayDebt(studentId, courseName, lessons);
-    if (repaid > 0) {
-      remaining -= repaid;
-      remark = ` (自动抵扣欠课 ${repaid} 节)`;
-    }
+    const debtBefore = debts.find((x) => x.studentId === studentId && x.courseName === courseName && x.amount > 0);
+    const owedBefore = debtBefore ? debtBefore.amount : 0;
 
     const existing = (student.courses || []).find((c) => c.name === courseName);
+    let leftAfter;
     if (existing) {
-      existing.remainingLessons += remaining;
+      existing.remainingLessons = (Number(existing.remainingLessons) || 0) + lessons;
+      leftAfter = existing.remainingLessons;
       if (unitPrice > 0) existing.unitPrice = unitPrice;
     } else {
+      leftAfter = lessons;
       student.courses.push({
         id: 'course_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
         name: courseName,
-        remainingLessons: remaining,
+        remainingLessons: lessons,
         unitPrice,
       });
     }
+
+    // 充值全额计入余额后，按新余额重算欠课（余额转正则欠课自动清除；仍为负则欠课收缩）
+    syncDebtForCourse(studentId, courseName, leftAfter);
+    const debtAfter = debts.find((x) => x.studentId === studentId && x.courseName === courseName && x.amount > 0);
+    const repaid = Math.max(0, owedBefore - (debtAfter ? debtAfter.amount : 0));
+    if (repaid > 0) remark = ` (自动抵扣欠课 ${repaid} 节)`;
 
     saveData();
     refreshView();

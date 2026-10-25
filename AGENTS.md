@@ -860,3 +860,27 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       ② 把 `cellW = CW / 3`（格数变了布局没跟上）→ M2–M6 共 4 项红（右半格 width=0、mid 3647）。
     - 写这段测试的两个坑：① 预览图会盖住「生成图片」→ 重复生成必须走
       `page.evaluate(el => el.click())`；② 换学员前先点 `#btnCloseLessonSummary` 关掉上一张弹层。
+
+58. **充值时「抵扣欠课」不能从充值节数里再减一次**（2026-10-25，Jackson：「学生本身欠课 1 节，
+    充值了 10 节课，怎么还剩 8 节」）
+    - 根因：**欠课是负余额的镜像，同一件事记了两处**。欠 1 节 = `course.remainingLessons === -1`
+      + `debts` 里 `amount:1`（`executeCheckIn` 扣成负数时 `addDebt`，`syncAllDebts` 每次加载再按
+      `max(0, -remaining)` 全量校准，两边永远等值）。旧 `purchaseCoursePack` 先
+      `repayDebt(10)` 拿到 1，把节数减成 9，再 `remainingLessons += 9` 加到已经为 **-1** 的余额上
+      → `-1 + 9 = 8`，那 1 节被扣了两次。欠 5 充 2 更极端：`-5 + 0 = -5`，**等于完全没充**。
+    - 正确口径（`js/mobile.js` 一直是对的，桌面端照抄即可）：
+      1. 充值**全额**加到余额（`-1 + 10 = 9`），不预先抵扣；
+      2. 再 `syncDebtForCourse(studentId, courseName, 新余额)` 按新余额重算欠课 ——
+         余额转正 → 欠课记录自动删除；仍为负 → 欠课收缩（欠 5 充 2 → 余 -3、欠 3）；
+      3. `repaid = owedBefore - owedAfter` **只用来写提示文案**「(自动抵扣欠课 N 节)」。
+    - `repayDebt()` 因此没有调用者了，**函数保留但禁止再把返回值从节数里减**（注释已写明）。
+      别把它当成「充值时顺手还欠课」的工具 —— 它只核销 `debts`，不动余额。
+    - 前提不变：`debts` 与负余额必须始终等值，靠 `loadData` / `pullFromCloudSync` / `checkUrlSyncData`
+      三处的 `syncAllDebts()` 维护。所以「`debts` 有记录但余额 0」在运行期不存在，充值清账是安全的。
+    - 回归 `tmp/recharge-debt-check.mjs` **22 项**（修前 4 红：D3=8 / D6=9 / D8=-5 / M4 跨端不一致）：
+      D3 欠 1 充 10 → 9；D6 清账后再充 1 → 10（不再无端抵扣）；D8 欠 5 充 2 → -3 且欠课剩 3；
+      D11 无欠课 2+10=12 老路径不回归；D14 新课程包不受影响；D15/D16 欠课名单该消失的消失、该留的留；
+      M1–M5 手机端同构 + 两端逐条相等。
+    - 定位充值入口的位置：桌面 `#studentListContainer .student-card` 里那个**只有图标**的
+      `.btn-recharge-student`；手机是 `.btn-detail-mobile-student` → `#mDetailRechargeBtn`
+      （手机学员卡 class 是 `lm-card`，不是 `student-card`）。
