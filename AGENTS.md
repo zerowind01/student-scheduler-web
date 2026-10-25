@@ -798,3 +798,31 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       护栏：`makeupPlanOf` 恒 `null` → **14 项报红**（A1/A2/A3/A4/B1/B2/B3/F1/F2/G1~G5）。
     - ⚠️ 旧断言要同步改：`tmp/makeup-check.mjs` G3 以前期望撤销消课后回到「请假待补」，
       现在补课课次仍在排期 → 正确结果是「已排补课」；新增 H4 钉「删掉补课课次才退回待补」。
+
+56. **总结图可以带「请假时间记录」**（2026-10-24，Jackson：「生成总结图里增加选项：加上请假时间记录」）
+    - 入口：桌面 `#summaryWithLeave`、手机 `#mSummaryWithLeave`，**默认不勾** —— 不勾时图上
+      一个字都不多，老图和以前逐像素一致（家长已经习惯那张卡，别擅自改版）。
+    - 取数 `buildSummaryLeaveRows(studentId, { course, from, to, canonOf })`（两端同构，
+      紧跟 `buildSummaryMeta` 之前）：
+      · 只读 `schedules` 里 `status === 'student_leave'` 的课次，按 `date + startTime` **倒序**；
+      · 只受**课程 + 日期范围**约束 —— ⚠️ **「取多少节」绝不能拿来砍请假**，那个说的是消课条数；
+      · `SUMMARY_MAX_ROWS = 40` 兜底：`rows` 截 40，`total` 返回**全量**（标题写「共 N 次」）。
+      · 四态与 `stateColor`：已补课 `#78716c` / 已排补课 `#2E5D68`（判 `makeupPlanOf`，
+        见第 55 条）/ 待补课 `#B98235` / 不补课 `#a8a29e`。
+    - **图片高度公式（测试全靠它断言条数）**：`buildLessonSummaryCanvas(student, rows, meta, leaveRows)`
+      第四参是请假行，`meta.withLeave` 决定画不画：
+      · 不勾：`H = 780 + 96n`（**与老版本完全一致，改公式前先看这条**）
+      · 勾了且 m > 0：`H = 964 + 96(n + m)`
+      · 勾了但 m = 0：请假卡走空态 150 高 → `H = 1114 + 96n`
+      推导：`LIST_TOP=640` + `96n` → 标题间距 96 → 标题高 88 → 卡高 `96m` → 页脚间距 44 → 页脚 96。
+    - 换条件必须**收起旧预览**：`withLeaveBox` 要一起进 change 监听数组，否则预览里挂的是
+      没勾/旧范围的图，点保存就发出去了（和老 bug 同源）。
+    - 回归 `tmp/lesson-summary-check.mjs` **77 项**，其中新增 22 项：
+      · L1–L15 桌面：默认不勾 / 不勾高度不变 / 勾选收预览 / 四种状态着色 / 取多少节不砍请假 /
+        按课程收窄 / 日期范围收窄 / 取消勾选退回老尺寸；
+      · N1 请假 42 条 → 只画 40 行；
+      · R1–R6 手机端同构（尺寸与状态着色必须与桌面一致）。
+      ⚠️ **状态文字是画在 Canvas 上的，DOM 里读不到** → 用 `leaveColors()` 按行采样状态列
+      （x∈[800,990]、行中心 ±26px）对四个目标色取容差 30 命中最多者；改动状态列排版要同步改采样区。
+    - 护栏：`withLeave` 恒 `false` → **桌面 10 项报红**（L6–L14、N1）、**手机 2 项报红**（R5/R6）。
+    - 出图 `tmp/summary-leave-shots.mjs`（`lvsum-d1/d2`、`lvsum-m1/m2`、`summary-img-leave*.png`）。

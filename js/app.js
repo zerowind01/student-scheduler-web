@@ -947,6 +947,38 @@
     });
   }
 
+  // 总结图里的「请假记录」：按**排课**取（不是消课流水），同一学员 / 同一课程口径 / 同一日期区间。
+  // 条数不受「取多少节」限制（那个选项说的是消课条数），但仍受 SUMMARY_MAX_ROWS 保护。
+  // 状态口径与首页一致：已补课（补课已核销）/ 已排补课（补课排期还在）/ 待补课 / 不补课。
+  function buildSummaryLeaveRows(studentId, opts) {
+    const o = opts || {};
+    const cKey = o.course ? courseNameKey(o.course) : '';
+    const canonOf = o.canonOf;
+    const all = (schedules || [])
+      .filter((s) => s && s.studentId === studentId && s.status === SCHEDULE_STATUS.STUDENT_LEAVE)
+      .filter((s) => !cKey || courseNameKey(s.subject || s.courseName || '') === cKey)
+      .filter((s) => (!o.from || (s.date || '') >= o.from) && (!o.to || (s.date || '') <= o.to))
+      .sort((a, b) => ((b.date || '') + (b.startTime || '')).localeCompare((a.date || '') + (a.startTime || '')));
+    const rows = all.slice(0, SUMMARY_MAX_ROWS).map((s) => {
+      const full = s.date || '';
+      const d = new Date(full + 'T00:00:00');
+      const raw = s.subject || s.courseName || '';
+      const done = isMakeupDone(s);
+      const plan = isPendingMakeup(s) ? makeupPlanOf(s) : null;
+      return {
+        fullDate: full,
+        dateText: full.slice(5) || full,
+        weekText: isNaN(d.getTime()) ? '' : SUMMARY_WEEK[d.getDay()],
+        clockText: s.startTime || '',
+        courseName: canonOf ? canonOf(raw) : (raw || '课程'),
+        teacherName: s.teacherName || '',
+        stateText: done ? '已补课' : (plan ? '已排补课' : (s.needMakeup ? '待补课' : '不补课')),
+        stateColor: done ? '#78716c' : (plan ? '#2E5D68' : (s.needMakeup ? '#B98235' : '#a8a29e')),
+      };
+    });
+    return { rows, total: all.length };
+  }
+
   function buildSummaryMeta(student, rows, allLogs, opts) {
     const course = opts.course || '';
     const sumLessons = rows.reduce((a, r) => a + r.lessons, 0);
@@ -982,7 +1014,7 @@
     };
   }
 
-  function buildLessonSummaryCanvas(student, rows, meta) {
+  function buildLessonSummaryCanvas(student, rows, meta, leaveRows) {
     const W = 1080;
     const PAD = 60;
     const CW = W - PAD * 2;
@@ -991,8 +1023,15 @@
     const LIST_TITLE_TOP = 552;
     const LIST_TOP = 640;
     const ROW_H = 96;
+    const leaveList = Array.isArray(leaveRows) ? leaveRows : [];
+    // 勾了「加上请假时间记录」才画第二张卡；没勾时高度必须与老版本完全一致（780+96n）
+    const withLeave = !!(meta && meta.withLeave);
     const listH = rows.length ? rows.length * ROW_H : 150;
-    const FOOT_TOP = LIST_TOP + listH + 44;
+    const LIST_BOTTOM = LIST_TOP + listH;
+    const LEAVE_TITLE_TOP = LIST_BOTTOM + 96;
+    const LEAVE_TOP = LEAVE_TITLE_TOP + 88;
+    const leaveH = withLeave ? (leaveList.length ? leaveList.length * ROW_H : 150) : 0;
+    const FOOT_TOP = (withLeave ? LEAVE_TOP + leaveH : LIST_BOTTOM) + 44;
     const H = FOOT_TOP + 96;
 
     const canvas = document.createElement('canvas');
@@ -1158,6 +1197,82 @@
       ctx.textAlign = 'left';
     });
 
+    // ---- 请假记录（勾选才画）----
+    // 家长常拿"这几个月请了哪些天假"跟上课明细对着看，所以版式刻意与明细一致：
+    // 左列日期+周几+时间、中间课程+老师、右侧补课状态（已补 / 已排 / 待补 / 不补）。
+    if (withLeave) {
+      ctx.textAlign = 'left';
+      ctx.font = summaryFont(34, 700);
+      ctx.fillStyle = '#1c1917';
+      ctx.fillText('请假记录', PAD, LEAVE_TITLE_TOP);
+      ctx.textAlign = 'right';
+      ctx.font = summaryFont(26, 400);
+      ctx.fillStyle = '#a8a29e';
+      const leaveTotal = Number(meta.leaveTotal) || leaveList.length;
+      ctx.fillText(`共 ${leaveTotal} 次`, W - PAD, LEAVE_TITLE_TOP);
+      ctx.textAlign = 'left';
+
+      summaryRoundRect(ctx, PAD, LEAVE_TOP, CW, leaveH, 28);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.strokeStyle = '#f2ece4';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      if (!leaveList.length) {
+        ctx.textAlign = 'center';
+        ctx.font = summaryFont(28, 400);
+        ctx.fillStyle = '#a8a29e';
+        ctx.fillText('该范围内没有请假记录', W / 2, LEAVE_TOP + leaveH / 2 + 10);
+        ctx.textAlign = 'left';
+      }
+
+      leaveList.forEach((r, i) => {
+        const top = LEAVE_TOP + i * ROW_H;
+        if (i > 0) {
+          ctx.beginPath();
+          ctx.moveTo(leftX, top);
+          ctx.lineTo(rightX, top);
+          ctx.strokeStyle = '#f2ece4';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+        const midY = top + ROW_H / 2;
+
+        ctx.font = summaryFont(30, 700);
+        ctx.fillStyle = '#1c1917';
+        ctx.fillText(r.dateText, leftX, midY - 2);
+        const dateW = ctx.measureText(r.dateText).width;
+        if (r.weekText) {
+          ctx.font = summaryFont(24, 400);
+          ctx.fillStyle = '#a8a29e';
+          ctx.fillText(r.weekText, leftX + dateW + 10, midY - 2);
+        }
+        if (r.clockText) {
+          ctx.font = summaryFont(24, 400);
+          ctx.fillStyle = '#a8a29e';
+          ctx.fillText(r.clockText, leftX, midY + 30);
+        }
+
+        const midX = leftX + 220;
+        const midW = rightX - 190 - midX;
+        ctx.font = summaryFont(32, 700);
+        ctx.fillStyle = '#1c1917';
+        ctx.fillText(summaryFit(ctx, r.courseName, midW), midX, midY + 2);
+        if (r.teacherName) {
+          ctx.font = summaryFont(24, 400);
+          ctx.fillStyle = '#78716c';
+          ctx.fillText(summaryFit(ctx, r.teacherName, midW), midX, midY + 33);
+        }
+
+        ctx.textAlign = 'right';
+        ctx.font = summaryFont(28, 700);
+        ctx.fillStyle = r.stateColor || '#78716c';
+        ctx.fillText(r.stateText || '请假', rightX, midY + 10);
+        ctx.textAlign = 'left';
+      });
+    }
+
     ctx.textAlign = 'center';
     ctx.font = summaryFont(26, 400);
     ctx.fillStyle = '#a8a29e';
@@ -1244,6 +1359,13 @@
           <input id="summaryTo" type="date" class="flex-1 min-w-0 px-3 py-2 border border-[#f0ebe2] rounded-xl lm-t2 outline-none" />
         </div>
       </div>
+      <div>
+        <label class="flex items-center gap-2 cursor-pointer select-none">
+          <input id="summaryWithLeave" type="checkbox" class="w-4 h-4 rounded accent-[#111111]" />
+          <span class="font-bold text-[11px] lm-t2">加上请假时间记录</span>
+        </label>
+        <div class="text-[10px] lm-t3 mt-1">勾选后在「上课明细」下面多一张请假清单（日期 / 星期 / 时间 / 课程 / 补课状态），说明哪几天没上课。</div>
+      </div>
       <button type="button" id="summaryGenerate" class="w-full py-3 rounded-xl bg-[#111111] text-white font-bold text-sm transition hover:opacity-90">生成图片</button>
       <div id="summaryPreview" class="hidden">
         <div class="max-h-[52vh] overflow-y-auto rounded-xl border border-[#f0ebe2] custom-scrollbar">
@@ -1262,6 +1384,7 @@
     const countSel = document.getElementById('summaryCount');
     const fromInput = document.getElementById('summaryFrom');
     const toInput = document.getElementById('summaryTo');
+    const withLeaveBox = document.getElementById('summaryWithLeave');
     const previewBox = document.getElementById('summaryPreview');
     const previewImg = document.getElementById('summaryImg');
     let pendingCanvas = null;
@@ -1294,7 +1417,15 @@
         return;
       }
       const rows = buildSummaryRows(picked, canonOf);
-      pendingCanvas = buildLessonSummaryCanvas(student, rows, buildSummaryMeta(student, rows, scoped, { count, from, to, course }));
+      // 请假记录只受「课程 + 日期范围」约束：那个「取多少节」说的是消课条数，别拿来砍请假
+      const withLeave = !!(withLeaveBox && withLeaveBox.checked);
+      const leaveInfo = withLeave
+        ? buildSummaryLeaveRows(student.id, { course, from, to, canonOf })
+        : { rows: [], total: 0 };
+      const meta = buildSummaryMeta(student, rows, scoped, { count, from, to, course });
+      meta.withLeave = withLeave;
+      meta.leaveTotal = leaveInfo.total;
+      pendingCanvas = buildLessonSummaryCanvas(student, rows, meta, leaveInfo.rows);
       pendingCourse = course;
       previewImg.src = pendingCanvas.toDataURL('image/png');
       previewBox.classList.remove('hidden');
@@ -1306,8 +1437,8 @@
       exportSummaryImage(pendingCanvas, student, pendingCourse);
     });
 
-    // 改了课程/节数/日期就收起上一张图：否则预览里挂着的是旧条件的图，很容易直接发出去
-    [courseSel, countSel, fromInput, toInput].forEach((el) => {
+    // 改了课程/节数/日期（或请假开关）就收起上一张图：否则预览里挂着的是旧条件的图，很容易直接发出去
+    [courseSel, countSel, fromInput, toInput, withLeaveBox].forEach((el) => {
       if (!el) return;
       el.addEventListener('change', () => {
         pendingCanvas = null;
