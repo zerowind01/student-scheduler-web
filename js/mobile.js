@@ -914,7 +914,7 @@
   }
 
   // 单节课的课时费：**流水里真实记下的金额优先**（收费当时的单价快照最准）。
-  // 老数据 / 课程包没填单价时流水是 0，图上「本期课时费」永远显示「—」，家长以为不收费 ——
+  // 老数据 / 课程包没填单价时流水是 0，这一行就没钱可显示，家长以为不收费 ——
   // 这时才按「节数 × 课程包单价」折算兜底。与 js/app.js 同构。
   function summaryRowAmount(log, lessons, unitPrice) {
     const logged = summaryMoneyOf(log && log.paymentAmount);
@@ -976,7 +976,6 @@
   function buildSummaryMeta(student, rows, allLogs, opts) {
     const course = opts.course || '';
     const sumLessons = rows.reduce((a, r) => a + r.lessons, 0);
-    const sumAmount = rows.reduce((a, r) => a + r.amount, 0);
     // 选了课程就只算这个课程包的剩余（家长问的是「这门课还剩几节」，不是全科合计）
     // 课程包找不到时给 —（别拿 0 节骗人，历史流水里的课程名可能已经没有对应课程包）
     const cKey = course ? courseNameKey(course) : '';
@@ -1005,7 +1004,6 @@
     return {
       titleText: course ? `课时总结 · ${course}` : '课时总结',
       lessonCount: sumLessons,
-      amountText: sumAmount > 0 ? fmtMoney(sumAmount) : '—',
       remain,
       remainText: !hasPack ? '—' : (remain < 0 ? `欠 ${-remain} 节` : `${remain} 节`),
       remainOwed: hasPack && remain < 0,
@@ -1083,17 +1081,19 @@
     ctx.lineWidth = 2;
     ctx.stroke();
 
+    // KPI 只留两格：**「本期课时费」不在这里显示**（Jackson 2026-10-25：「去掉这个卡片，不要显示本期课时费」）。
+    // 明细行右列的单节金额照旧保留 —— 家长要看的是哪天上了几节，不是这期一共收了多少钱。
     const cells = [
       { label: '本期上课', value: `${meta.lessonCount} 节`, color: '#fe4c02' },
-      { label: '本期课时费', value: meta.amountText, color: '#1c1917' },
       { label: '当前剩余课时', value: meta.remainText, color: meta.remainOwed ? '#d5304f' : '#1c1917' },
     ];
+    const cellW = CW / cells.length;
     cells.forEach((c, i) => {
-      const cx = PAD + (CW / 3) * (i + 0.5);
+      const cx = PAD + cellW * (i + 0.5);
       if (i > 0) {
         ctx.beginPath();
-        ctx.moveTo(PAD + (CW / 3) * i, KPI_TOP + 44);
-        ctx.lineTo(PAD + (CW / 3) * i, KPI_TOP + KPI_H - 44);
+        ctx.moveTo(PAD + cellW * i, KPI_TOP + 44);
+        ctx.lineTo(PAD + cellW * i, KPI_TOP + KPI_H - 44);
         ctx.strokeStyle = '#f2ece4';
         ctx.lineWidth = 2;
         ctx.stroke();

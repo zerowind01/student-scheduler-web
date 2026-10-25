@@ -836,26 +836,27 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       去掉 `items.sort(...)` → **4 项报红**（L8/L9/L10/L15，全是顺序判据）。
     - 出图 `tmp/summary-leave-shots.mjs`（`lvsum-d1/d2`、`lvsum-m1/m2`、`summary-img-leave*.png`）。
 
-57. **总结图「本期课时费」：真金额优先，没记金额才按 节数×单价 折算**
-    （2026-10-25，Jackson：「总结图不显示本期课时费」）
-    - 症状 = KPI 中间那格画的是「—」：`amountText: sumAmount > 0 ? fmtMoney(sumAmount) : '—'`，
-      而该区间的消课流水 `paymentAmount` **合计是 0** —— 课程包没填单价、历史导入金额列为空、
-      或老数据压根没记钱。家长看到「—」只会以为这期不收费。
-    - 规则在 `summaryRowAmount(log, lessons, unitPrice)`（两端同构，紧跟 `buildSummaryRows`）：
-      · `summaryMoneyOf(l.paymentAmount) > 0` → **就用它**（收费当时的单价快照，最准，绝不改）；
+57. **总结图 KPI 只有两格：不显示「本期课时费」合计**
+    （2026-10-25，Jackson 澄清两次：先说「总结图不显示本期课时费」→ 先被我修成折算金额 →
+    再说明「我的意思是去掉这个卡片，不要显示本期课时费」。**下次遇到「不显示 X」先问清是修对还是删掉**）
+    - 最终口径：KPI 只剩 `本期上课` / `当前剩余课时` 两格，布局由 `cells.length` 驱动
+      （`cellW = CW / cells.length`）。`meta.amountText` 与 `sumAmount` **已删除**，
+      `grep -n "amountText\|sumAmount" js/` 搜不到才算干净。别再把它加回去。
+    - 明细行右列的单节金额**保留** —— 家长要看的是「哪天上了几节」，不是这期一共收了多少钱。
+    - 单行金额的来源 `summaryRowAmount(log, lessons, unitPrice)`（两端同构，紧跟 `buildSummaryRows`）：
+      · `summaryMoneyOf(l.paymentAmount) > 0` → 就用它（收费当时的单价快照，最准，绝不改）；
       · 否则 `lessons × summaryUnitPriceOf(student, courseName)` 折算兜底；
-      · 单价也是 0 → 仍然「—」，**绝不编数字**（赠课、没定价的课就该怎么空着怎么空着）。
-    - `summaryMoneyOf` 负责把 `"¥1,500"` / `"200元"` / `"1,200"` 这类字符串解析成数字 ——
-      历史导入和手填都会出现，`Number()` 直接吃会全变 0。
-    - 单价按 `courseNameKey` 归一匹配（「钢琴」=「钢琴课」），和下拉、剩余课时同一口径，见第 51 条。
-    - KPI 与明细行右列**同源**（都来自 `buildSummaryRows` 的 `amount`），不会出现
-      「上面写 ¥800、下面每行没有钱」的自相矛盾。
-    - 回归 `tmp/lesson-summary-check.mjs` **85 项**，新增 5 项：M1 流水 0 / 单价 200 / 2 节 → ¥400；
-      M2 流水 `"¥1,500"` 字符串 → 真金额优先（不是折算的 ¥20）；M3 单价与流水都是 0 → 仍「—」；
-      M4 正常学员金额不变；MM1 手机端同构。
-    - ⚠️ **KPI 文字画在 Canvas 上、DOM 读不到** → 用 `kpiInk(page, imgId, cellIndex)` 采样中间格墨迹：
-      x = 格子中心 ±140、y ∈ [390, 452]（要避开 x=380/700 的分隔线与 y=368 的浅灰标签）。
-      实测「—」width≈59 / count≈420，「¥400」width≈130 / count≈2200。
-    - 护栏两条都验过：`summaryRowAmount` 只 `return logged` → M1 红；把 `logged > 0` 反转成折算优先 → M2 红。
-    - 写这段测试的两个坑：① 预览图会盖住「生成图片」按钮 → 重复生成的点击必须走
-      `page.evaluate(() => el.click())`；② 换学员前先点 `#btnCloseLessonSummary` 关掉上一张弹层。
+      · 单价也是 0 → 行上不画金额，**别编数字**（赠课、没定价的课就该空着）。
+    - `summaryMoneyOf` 要把 `"¥1,500"` / `"200元"` / `"1,200"` 解析成数字（历史导入、手填都会出现，
+      `Number()` 直接吃会全变 0）；单价按 `courseNameKey` 归一（「钢琴」=「钢琴课」，见第 51 条）。
+    - ⚠️ **改 KPI 格数会连带改坐标**：两格时格心 x = 300 / 780（`PAD=60`、`CW=960`、`cellW=480`），
+      分隔线只剩 x=540 一条。测试里的 `KPI_CELL_X` 与 `kpiMidInk` 窗口必须同步改，
+      否则采样位置全错但测试照样绿 —— 这是最容易骗过自己的地方。
+    - 回归 `tmp/lesson-summary-check.mjs` **89 项**，KPI 相关 9 项：
+      · M1/M2 两格都有内容；M3 `kpiMidInk()` 验 x≈540 一个字都没有（原第三格的位置）；
+      · M4 流水没记金额的学员也不再出现「—」；M5/M6 明细行金额照旧（只去掉合计）；
+      · MM1–MM3 手机端同构。
+    - 护栏两条都验过：① `cells` 里加回「本期课时费」→ M3/M4/M6 红（mid 从 0 跳到 1465）；
+      ② 把 `cellW = CW / 3`（格数变了布局没跟上）→ M2–M6 共 4 项红（右半格 width=0、mid 3647）。
+    - 写这段测试的两个坑：① 预览图会盖住「生成图片」→ 重复生成必须走
+      `page.evaluate(el => el.click())`；② 换学员前先点 `#btnCloseLessonSummary` 关掉上一张弹层。
