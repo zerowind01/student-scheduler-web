@@ -961,11 +961,20 @@
       const hit = byCourse.find((x) => x.name === r.courseName);
       if (hit) hit.n += r.lessons; else byCourse.push({ name: r.courseName, n: r.lessons });
     });
-    const dates = rows.map((r) => r.fullDate).filter(Boolean).sort();
+    // 请假行并进同一张卡后，日期范围必须把请假的日子也算进来 ——
+    // 否则图上出现 07-01 那行、抬头却写「09-02 ~ 09-16」，家长只会觉得图错了。
+    const leaveRows = opts.leaveRows || [];
+    const leaveTotal = Number(opts.leaveTotal) || leaveRows.length;
+    const dates = rows
+      .map((r) => r.fullDate)
+      .concat(leaveRows.map((r) => r.fullDate))
+      .filter(Boolean)
+      .sort();
     const clipped = opts.count > 0 ? false : rows.length >= SUMMARY_MAX_ROWS && allLogs.length > rows.length;
     const scope = opts.count > 0
       ? `最近 ${rows.length} 节`
       : (clipped ? `最近 ${rows.length} 节（共 ${allLogs.length} 节记录）` : `全部 ${rows.length} 节`);
+    const leaveNote = leaveRows.length ? ` · 请假 ${leaveTotal} 次` : '';
     return {
       titleText: course ? `课时总结 · ${course}` : '课时总结',
       lessonCount: sumLessons,
@@ -974,7 +983,8 @@
       remainText: !hasPack ? '—' : (remain < 0 ? `欠 ${-remain} 节` : `${remain} 节`),
       remainOwed: hasPack && remain < 0,
       subjectText: byCourse.map((x) => `${x.name} ${x.n} 节`).join(' · '),
-      rangeText: dates.length ? `${dates[0]} ~ ${dates[dates.length - 1]} · ${scope}` : scope,
+      rangeText: dates.length ? `${dates[0]} ~ ${dates[dates.length - 1]} · ${scope}${leaveNote}` : scope,
+      leaveTotal,
       generatedAt: `生成于 ${formatDate(new Date())}`,
       footText: '如对课时有疑问，请随时联系老师核对',
     };
@@ -990,14 +1000,18 @@
     const LIST_TOP = 640;
     const ROW_H = 96;
     const leaveList = Array.isArray(leaveRows) ? leaveRows : [];
-    // 勾了「加上请假时间记录」才画第二张卡；没勾时高度与老版本完全一致（780+96n）
+    // 勾了「加上请假时间记录」才把请假行并进来；没勾时高度与老版本完全一致（780+96n）
     const withLeave = !!(meta && meta.withLeave);
-    const listH = rows.length ? rows.length * ROW_H : 150;
+    // 上课行与请假行合成**同一张卡的同一条时间轴**：按 日期+时间 倒序（最新在上），
+    // 家长顺着日子往下看就知道哪天上课、哪天请假（Jackson 2026-10-25：请假记录并入上课记录同一张卡片）。
+    const keyOf = (r) => (r.fullDate || '') + (r.clockText || '');
+    const items = rows
+      .map((r) => ({ ...r, kind: 'lesson', sortKey: keyOf(r) }))
+      .concat(withLeave ? leaveList.map((r) => ({ ...r, kind: 'leave', sortKey: keyOf(r) })) : []);
+    items.sort((a, b) => b.sortKey.localeCompare(a.sortKey));
+    const listH = items.length ? items.length * ROW_H : 150;
     const LIST_BOTTOM = LIST_TOP + listH;
-    const LEAVE_TITLE_TOP = LIST_BOTTOM + 96;
-    const LEAVE_TOP = LEAVE_TITLE_TOP + 88;
-    const leaveH = withLeave ? (leaveList.length ? leaveList.length * ROW_H : 150) : 0;
-    const FOOT_TOP = (withLeave ? LEAVE_TOP + leaveH : LIST_BOTTOM) + 44;
+    const FOOT_TOP = LIST_BOTTOM + 44;
     const H = FOOT_TOP + 96;
 
     const canvas = document.createElement('canvas');
@@ -1068,18 +1082,26 @@
     ctx.textAlign = 'left';
 
     // 明细标题 + 科目汇总
+    // 卡里混了请假行就不能再叫「上课明细」，标题与计数都要如实说
+    const leaveTotal = Number(meta.leaveTotal) || leaveList.length;
     ctx.font = summaryFont(34, 700);
     ctx.fillStyle = '#1c1917';
-    ctx.fillText('上课明细', PAD, LIST_TITLE_TOP);
+    ctx.fillText(leaveTotal ? '上课与请假' : '上课明细', PAD, LIST_TITLE_TOP);
     ctx.textAlign = 'right';
     ctx.font = summaryFont(26, 400);
     ctx.fillStyle = '#a8a29e';
-    ctx.fillText(`共 ${rows.length} 条记录`, W - PAD, LIST_TITLE_TOP);
+    ctx.fillText(
+      leaveTotal ? `共 ${items.length} 条 · 含请假 ${leaveTotal} 次` : `共 ${rows.length} 条记录`,
+      W - PAD,
+      LIST_TITLE_TOP
+    );
     ctx.textAlign = 'left';
-    if (meta.subjectText) {
+    // 副标题只留科目汇总：请假次数右上角已经写了，别重复
+    const subTxt = meta.subjectText;
+    if (subTxt) {
       ctx.font = summaryFont(26, 400);
       ctx.fillStyle = '#78716c';
-      ctx.fillText(summaryFit(ctx, meta.subjectText, CW), PAD, LIST_TITLE_TOP + 42);
+      ctx.fillText(summaryFit(ctx, subTxt, CW), PAD, LIST_TITLE_TOP + 42);
     }
 
     // 明细卡
@@ -1090,17 +1112,18 @@
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    if (!rows.length) {
+    if (!items.length) {
       ctx.textAlign = 'center';
       ctx.font = summaryFont(28, 400);
       ctx.fillStyle = '#a8a29e';
-      ctx.fillText('该范围内没有消课记录', W / 2, LIST_TOP + listH / 2 + 10);
+      ctx.fillText('该范围内没有记录', W / 2, LIST_TOP + listH / 2 + 10);
       ctx.textAlign = 'left';
     }
 
     const leftX = PAD + 36;
     const rightX = W - PAD - 36;
-    rows.forEach((r, i) => {
+    items.forEach((r, i) => {
+      const isLeave = r.kind === 'leave';
       const top = LIST_TOP + i * ROW_H;
       if (i > 0) {
         ctx.beginPath();
@@ -1127,22 +1150,28 @@
         ctx.fillText(r.clockText, leftX, midY + 30);
       }
 
+      // 右列给状态文字留更宽的位置（「已排补课」四个字比「1 节」宽得多）
       const midX = leftX + 220;
-      const midW = rightX - 170 - midX;
+      const midW = rightX - (isLeave ? 200 : 170) - midX;
       ctx.font = summaryFont(32, 700);
       ctx.fillStyle = '#1c1917';
       const courseTxt = summaryFit(ctx, r.courseName, midW);
       ctx.fillText(courseTxt, midX, midY + 2);
-      if (r.isMakeup) {
+      // 行内小标：上课行的补课 →「补课」青底；请假行 →「假」暖黄底，扫一眼就知道这行是什么
+      const badge = isLeave
+        ? { text: '假', bg: '#fdf0e2', fg: '#B98235' }
+        : (r.isMakeup ? { text: '补课', bg: '#e8f2f4', fg: '#2E5D68' } : null);
+      if (badge) {
         const tw = ctx.measureText(courseTxt).width;
-        const bw = 76, bh = 34, bx = midX + tw + 12, by = midY - 26;
+        const bw = badge.text.length > 1 ? 76 : 40;
+        const bh = 34, bx = midX + tw + 12, by = midY - 26;
         summaryRoundRect(ctx, bx, by, bw, bh, 8);
-        ctx.fillStyle = '#e8f2f4';
+        ctx.fillStyle = badge.bg;
         ctx.fill();
         ctx.font = summaryFont(22, 700);
-        ctx.fillStyle = '#2E5D68';
+        ctx.fillStyle = badge.fg;
         ctx.textAlign = 'center';
-        ctx.fillText('补课', bx + bw / 2, by + 25);
+        ctx.fillText(badge.text, bx + bw / 2, by + 25);
         ctx.textAlign = 'left';
       }
       if (r.teacherName) {
@@ -1152,90 +1181,23 @@
       }
 
       ctx.textAlign = 'right';
-      ctx.font = summaryFont(32, 700);
-      ctx.fillStyle = '#1c1917';
-      ctx.fillText(`${r.lessons} 节`, rightX, midY + 2);
-      if (r.amount > 0) {
-        ctx.font = summaryFont(24, 400);
-        ctx.fillStyle = '#78716c';
-        ctx.fillText(fmtMoney(r.amount), rightX, midY + 33);
-      }
-      ctx.textAlign = 'left';
-    });
-
-    // ---- 请假记录（勾选才画，与桌面 app.js 同版式）----
-    if (withLeave) {
-      ctx.textAlign = 'left';
-      ctx.font = summaryFont(34, 700);
-      ctx.fillStyle = '#1c1917';
-      ctx.fillText('请假记录', PAD, LEAVE_TITLE_TOP);
-      ctx.textAlign = 'right';
-      ctx.font = summaryFont(26, 400);
-      ctx.fillStyle = '#a8a29e';
-      const leaveTotal = Number(meta.leaveTotal) || leaveList.length;
-      ctx.fillText(`共 ${leaveTotal} 次`, W - PAD, LEAVE_TITLE_TOP);
-      ctx.textAlign = 'left';
-
-      summaryRoundRect(ctx, PAD, LEAVE_TOP, CW, leaveH, 28);
-      ctx.fillStyle = '#ffffff';
-      ctx.fill();
-      ctx.strokeStyle = '#f2ece4';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      if (!leaveList.length) {
-        ctx.textAlign = 'center';
-        ctx.font = summaryFont(28, 400);
-        ctx.fillStyle = '#a8a29e';
-        ctx.fillText('该范围内没有请假记录', W / 2, LEAVE_TOP + leaveH / 2 + 10);
-        ctx.textAlign = 'left';
-      }
-
-      leaveList.forEach((r, i) => {
-        const top = LEAVE_TOP + i * ROW_H;
-        if (i > 0) {
-          ctx.beginPath();
-          ctx.moveTo(leftX, top);
-          ctx.lineTo(rightX, top);
-          ctx.strokeStyle = '#f2ece4';
-          ctx.lineWidth = 1;
-          ctx.stroke();
-        }
-        const midY = top + ROW_H / 2;
-
-        ctx.font = summaryFont(30, 700);
-        ctx.fillStyle = '#1c1917';
-        ctx.fillText(r.dateText, leftX, midY - 2);
-        const dateW = ctx.measureText(r.dateText).width;
-        if (r.weekText) {
-          ctx.font = summaryFont(24, 400);
-          ctx.fillStyle = '#a8a29e';
-          ctx.fillText(r.weekText, leftX + dateW + 10, midY - 2);
-        }
-        if (r.clockText) {
-          ctx.font = summaryFont(24, 400);
-          ctx.fillStyle = '#a8a29e';
-          ctx.fillText(r.clockText, leftX, midY + 30);
-        }
-
-        const midX = leftX + 220;
-        const midW = rightX - 190 - midX;
-        ctx.font = summaryFont(32, 700);
-        ctx.fillStyle = '#1c1917';
-        ctx.fillText(summaryFit(ctx, r.courseName, midW), midX, midY + 2);
-        if (r.teacherName) {
-          ctx.font = summaryFont(24, 400);
-          ctx.fillStyle = '#78716c';
-          ctx.fillText(summaryFit(ctx, r.teacherName, midW), midX, midY + 33);
-        }
-
-        ctx.textAlign = 'right';
+      if (isLeave) {
+        // 请假行没有节数/金额，右列直接给补课状态（已补 / 已排 / 待补 / 不补）
         ctx.font = summaryFont(28, 700);
         ctx.fillStyle = r.stateColor || '#78716c';
         ctx.fillText(r.stateText || '请假', rightX, midY + 10);
-        ctx.textAlign = 'left';
-      });
-    }
+      } else {
+        ctx.font = summaryFont(32, 700);
+        ctx.fillStyle = '#1c1917';
+        ctx.fillText(`${r.lessons} 节`, rightX, midY + 2);
+        if (r.amount > 0) {
+          ctx.font = summaryFont(24, 400);
+          ctx.fillStyle = '#78716c';
+          ctx.fillText(fmtMoney(r.amount), rightX, midY + 33);
+        }
+      }
+      ctx.textAlign = 'left';
+    });
 
     ctx.textAlign = 'center';
     ctx.font = summaryFont(26, 400);
@@ -1325,7 +1287,7 @@
           <input id="mSummaryWithLeave" type="checkbox" class="w-5 h-5 rounded accent-[#111111]" />
           <span class="font-bold text-[11px] text-slate-500">加上请假时间记录</span>
         </label>
-        <div class="text-[10px] text-slate-400 mt-1">勾选后在「上课明细」下面多一张请假清单（日期 / 星期 / 时间 / 课程 / 补课状态），说明哪几天没上课。</div>
+        <div class="text-[10px] text-slate-400 mt-1">勾选后把请假的日子并进同一张明细，按日期一起排（请假行右侧标补课状态：已补 / 已排 / 待补 / 不补）。</div>
       </div>
       <button type="button" id="mSummaryGenerate" class="w-full py-3.5 rounded-2xl lm-btn-fin text-sm">生成图片</button>
       <div id="mSummaryPreview" class="hidden">
@@ -1382,7 +1344,7 @@
       const leaveInfo = withLeave
         ? buildSummaryLeaveRows(student.id, { course, from, to, canonOf })
         : { rows: [], total: 0 };
-      const meta = buildSummaryMeta(student, rows, scoped, { count, from, to, course });
+      const meta = buildSummaryMeta(student, rows, scoped, { count, from, to, course, leaveRows: leaveInfo.rows, leaveTotal: leaveInfo.total });
       meta.withLeave = withLeave;
       meta.leaveTotal = leaveInfo.total;
       pendingCanvas = buildLessonSummaryCanvas(student, rows, meta, leaveInfo.rows);
