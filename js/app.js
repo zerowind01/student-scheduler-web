@@ -928,11 +928,39 @@
       .replace(/>/g, '&gt;');
   }
 
-  function buildSummaryRows(logs, canonOf) {
+  // 流水金额可能是字符串（历史导入 / 手填「¥200」「1,200」）—— 统一解析成数字，别让 Number() 全变 0
+  function summaryMoneyOf(v) {
+    if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+    const s = String(v == null ? '' : v).replace(/[¥￥$元,，\s]/g, '');
+    if (!s) return 0;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  // 课程包单价（按归一 key 匹配，「钢琴」和「钢琴课」算同一门）
+  function summaryUnitPriceOf(student, name) {
+    const k = courseNameKey(name);
+    if (!k || !student || !Array.isArray(student.courses)) return 0;
+    const hit = student.courses.find((c) => c && courseNameKey(c.name) === k && Number(c.unitPrice) > 0);
+    return hit ? Number(hit.unitPrice) : 0;
+  }
+
+  // 单节课的课时费：**流水里真实记下的金额优先**（那是收费当时的单价快照，最准）。
+  // 老数据 / 课程包没填单价时流水金额是 0，图上「本期课时费」就永远显示「—」，
+  // 家长以为这期不收费 —— 这时才按「节数 × 课程包单价」折算兜底（Jackson 2026-10-25）。
+  // ⚠️ 只要有真金额就绝不用折算值，别把实收改成估算。
+  function summaryRowAmount(log, lessons, unitPrice) {
+    const logged = summaryMoneyOf(log && log.paymentAmount);
+    if (logged > 0) return logged;
+    return Math.round((Number(lessons) || 0) * (Number(unitPrice) || 0) * 100) / 100;
+  }
+
+  function buildSummaryRows(logs, canonOf, student) {
     return logs.map((l) => {
       const sch = l.scheduleId ? schedules.find((s) => s.id === l.scheduleId) : null;
       const fullDate = logDateText(l);
       const d = new Date(fullDate + 'T00:00:00');
+      const lessons = Number(l.deductedLessons) || 0;
       return {
         fullDate,
         dateText: fullDate.slice(5) || fullDate,          // 10-09（头部已给出年份范围）
@@ -940,8 +968,8 @@
         clockText: logClock(l),
         courseName: canonOf ? canonOf(l.courseName) : (l.courseName || '课程'),
         teacherName: l.teacherName || '',
-        lessons: Number(l.deductedLessons) || 0,
-        amount: Number(l.paymentAmount) || 0,
+        lessons,
+        amount: summaryRowAmount(l, lessons, summaryUnitPriceOf(student, l.courseName)),
         isMakeup: isMakeupLesson(sch),
       };
     });
@@ -1376,7 +1404,7 @@
         showToast('该范围内没有消课记录', 'circle-info');
         return;
       }
-      const rows = buildSummaryRows(picked, canonOf);
+      const rows = buildSummaryRows(picked, canonOf, student);
       // 请假记录只受「课程 + 日期范围」约束：那个「取多少节」说的是消课条数，别拿来砍请假
       const withLeave = !!(withLeaveBox && withLeaveBox.checked);
       const leaveInfo = withLeave
