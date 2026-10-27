@@ -4123,6 +4123,95 @@
   }
 
   // ==========================================
+  // 拖拽移课（2026-10-27）
+  // ==========================================
+  // 只改 date + startTime，durationMinutes 原样跟着走 —— 拖的是「什么时候上」，不是「上多久」。
+  // 三条硬约束：
+  //   ① 只有「待上课」的课能拖：已消课的日期是财务与统计的依据，请假课牵着补课链路，
+  //      这两者的改期都该走课程菜单（编辑 / 撤销），不能在日历上顺手拖走；
+  //   ② 撞课直接拒绝并说明原因（学员 / 老师 / 课室），与 detectScheduleConflicts 同口径：
+  //      请假课不占用资源，所以不算冲突；时间重叠但人/室不同 → 允许（并排上课是真实场景）；
+  //   ③ 每次拖动先 pushUndo，松手后 5 秒内可撤销。
+  function canDragSchedule(sch) {
+    return !!sch && (sch.status || SCHEDULE_STATUS.SCHEDULED) === SCHEDULE_STATUS.SCHEDULED;
+  }
+
+  // 返回 '' = 可落；否则是给人看的拒绝原因
+  function dragMoveConflictReason(sch, dateStr, startTime) {
+    if (!sch) return '';
+    const dur = Number(sch.durationMinutes) || 60;
+    const start = minutesOfDay(startTime);
+    const end = start + dur;
+    const mine = [sch.teacherId, sch.assistantTeacherId].filter(Boolean);
+    for (let i = 0; i < schedules.length; i++) {
+      const o = schedules[i];
+      if (o.id === sch.id || o.date !== dateStr) continue;
+      if (isLeaveStatus(o)) continue;
+      const os = minutesOfDay(o.startTime);
+      const oe = os + (Number(o.durationMinutes) || 45);
+      if (start >= oe || end <= os) continue;          // 时间不重叠
+      if (sch.studentId && o.studentId === sch.studentId) {
+        return `学员[${sch.studentName}]这个时段已经有课`;
+      }
+      const theirs = [o.teacherId, o.assistantTeacherId].filter(Boolean);
+      const hitT = mine.find((id) => theirs.indexOf(id) >= 0);
+      if (hitT) {
+        const tName = hitT === sch.teacherId ? sch.teacherName : sch.assistantTeacherName;
+        return `老师[${tName || o.teacherName || '同一老师'}]这个时段已经在别处排课`;
+      }
+      if (sch.room && o.room && sch.room.trim() === o.room.trim()) {
+        return `课室[${sch.room}]这个时段已被占用`;
+      }
+    }
+    return '';
+  }
+
+  function moveScheduleByDrag(sch, dateStr, startTime) {
+    if (!sch) return false;
+    // ⚠️ 传进来的很可能是 layoutOverlapEvents 的**浅拷贝**（dragstart 里存的就是那张卡片上的对象），
+    //    直接改拷贝 = 白拖：界面 toast 说「已调整」，localStorage 里一个字都没变。
+    //    旧实现就栽在这里，所以「拖拽移课」一直等于没生效。必须按 id 回真实数组里那份。
+    const real = schedules.find((s) => s.id === sch.id);
+    if (!real || !canDragSchedule(real)) return false;
+    // 原地松手（日期和开始时间都没变）→ 不写数据、不弹 toast、不占撤销栈
+    if (real.date === dateStr && real.startTime === startTime) return false;
+    const reason = dragMoveConflictReason(real, dateStr, startTime);
+    if (reason) {
+      showToast(`拖不过去：${reason}`, 'circle-exclamation');
+      return false;
+    }
+    const from = `${real.date} ${real.startTime}`;
+    pushUndo(`拖拽移课 ${real.studentName}`, real.id);
+    real.date = dateStr;
+    real.startTime = startTime;
+    saveData();
+    renderCalendarGrid();
+    updateStats();
+    offerUndo(`已把 [${real.studentName}] 的课从 ${from} 移到 ${dateStr} ${startTime}`, 'calendar-check', '拖拽移课');
+    if (window.uiAnim) window.uiAnim.flashSchedule(real.id);
+    return true;
+  }
+
+  // 拖拽落点 → 15 分钟吸附后的开始时间（预览与落库共用这一套换算，别再各写一份）
+  // 上限掐在 20:45：日历只画到 21:00，再晚连课时标签都放不下。
+  // 吸附用四舍五入（就近那一档），不是向下取整：832/780 除不尽，落在 10:00 线上偏下 1px
+  // 就会被 floor 判成 09:45，用户会觉得「明明拖到了 10 点却掉到上一格」。
+  function dragSnapAt(dayColumn, clientY) {
+    const rect = dayColumn.getBoundingClientRect();
+    const offsetY = Math.max(0, Math.min(832, clientY - rect.top));
+    const totalMinutes = Math.round((offsetY / 832) * (13 * 60));
+    const snapped = Math.min(Math.round(totalMinutes / 15) * 15, 12 * 60 + 45);
+    const hour = 8 + Math.floor(snapped / 60);
+    const min = snapped % 60;
+    const pad = (n) => String(n).padStart(2, '0');
+    return {
+      roundedMinutes: snapped,
+      topPx: (snapped / (13 * 60)) * 832,
+      startTime: `${pad(hour)}:${pad(min)}`,
+    };
+  }
+
+  // ==========================================
   // 7. 右侧 7 天日历网格 & 拖放引擎渲染
   // ==========================================
   function renderCalendarGrid() {
@@ -4143,18 +4232,15 @@
 
       dayColumn.addEventListener('dragover', (e) => {
         e.preventDefault();
-        e.dataTransfer.dropEffect = 'copy';
+        // 拖排课卡 = 移动，拖学员卡 = 新建 —— 光标形状要跟语义一致（旧版一律 copy，移动时是错的）
+        e.dataTransfer.dropEffect = draggedSchedule ? 'move' : 'copy';
         dayColumn.classList.add('drag-over');
 
-        const rect = dayColumn.getBoundingClientRect();
-        const offsetY = Math.max(0, Math.min(832, e.clientY - rect.top));
+        const snap = dragSnapAt(dayColumn, e.clientY);
 
-        const totalMinutes = Math.floor((offsetY / 832) * (13 * 60));
-        const roundedMinutes = Math.floor(totalMinutes / 15) * 15;
-
-        const hour = 8 + Math.floor(roundedMinutes / 60);
-        const min = roundedMinutes % 60;
-        const timeStr = `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+        // 预览高度 = 这节课的真实时长（旧版一律按 60 分钟画，90 分钟的课预览只有一半）
+        const dur = draggedSchedule ? (Number(draggedSchedule.durationMinutes) || 60) : 60;
+        const blocked = draggedSchedule ? dragMoveConflictReason(draggedSchedule, dateStr, snap.startTime) : '';
 
         let previewSlot = dayColumn.querySelector('.drag-preview-slot');
         if (!previewSlot) {
@@ -4162,14 +4248,19 @@
           previewSlot.className = 'drag-preview-slot';
           dayColumn.appendChild(previewSlot);
         }
+        previewSlot.classList.toggle('is-blocked', !!blocked);
+        previewSlot.style.top = `${snap.topPx}px`;
+        previewSlot.style.height = `${(dur / (13 * 60)) * 832}px`;
 
-        const topPx = (roundedMinutes / (13 * 60)) * 832;
-        const defaultHeightPx = (60 / (13 * 60)) * 832;
-        previewSlot.style.top = `${topPx}px`;
-        previewSlot.style.height = `${defaultHeightPx}px`;
-
-        const name = draggedStudent ? draggedStudent.name : draggedSchedule ? draggedSchedule.studentName : '放开排课';
-        previewSlot.innerHTML = `<i class="fa-solid fa-clock mr-1"></i> ${timeStr} - ${name}`;
+        if (blocked) {
+          // 撞课不让松手：预览直接说清是谁跟谁撞，别等松手才弹一句含糊的 toast
+          previewSlot.innerHTML = `<span class="px-1 text-center leading-tight"><i class="fa-solid fa-triangle-exclamation mr-1"></i>${blocked}</span>`;
+        } else {
+          const endMins = snap.roundedMinutes + dur;
+          const endTime = `${String(8 + Math.floor(endMins / 60)).padStart(2, '0')}:${String(endMins % 60).padStart(2, '0')}`;
+          const name = draggedStudent ? draggedStudent.name : draggedSchedule ? draggedSchedule.studentName : '放开排课';
+          previewSlot.innerHTML = `<i class="fa-solid fa-clock mr-1"></i> ${snap.startTime}–${endTime} ${name}`;
+        }
       });
 
       dayColumn.addEventListener('dragleave', (e) => {
@@ -4184,24 +4275,13 @@
         dayColumn.classList.remove('drag-over');
         removeDragPreviewSlot(dayColumn);
 
-        const rect = dayColumn.getBoundingClientRect();
-        const offsetY = Math.max(0, Math.min(832, e.clientY - rect.top));
-        const totalMinutes = Math.floor((offsetY / 832) * (13 * 60));
-        const roundedMinutes = Math.floor(totalMinutes / 15) * 15;
-
-        const hour = Math.min(20, 8 + Math.floor(roundedMinutes / 60));
-        const min = roundedMinutes % 60;
-        const startTimeStr = `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+        const snap = dragSnapAt(dayColumn, e.clientY);
 
         if (draggedStudent) {
-          openScheduleModalForNew(draggedStudent, dateStr, startTimeStr);
+          openScheduleModalForNew(draggedStudent, dateStr, snap.startTime);
         } else if (draggedSchedule) {
-          draggedSchedule.date = dateStr;
-          draggedSchedule.startTime = startTimeStr;
-          saveData();
-          renderCalendarGrid();
-          updateStats();
-          showToast(`已调整 [${draggedSchedule.studentName}] 的课程至 ${dateStr} ${startTimeStr}`, 'calendar-check');
+          // 移动：冲突 / 不可拖 / 原地松手都在 moveScheduleByDrag 里判，这里只负责收尾
+          moveScheduleByDrag(draggedSchedule, dateStr, snap.startTime);
           draggedSchedule = null;
         }
       });
@@ -4282,6 +4362,8 @@
     card.className = `schedule-event-card ${themeClass} ${hasConflict ? 'has-conflict' : ''}`;
     card.setAttribute('draggable', 'true');
     card.setAttribute('data-schedule-id', schedule.id);
+    // 能不能拖出去（改期）—— 已消课/请假的不行，测试靠这个属性断言，别只看 cursor
+    card.setAttribute('data-draggable', canDragSchedule(schedule) ? '1' : '0');
 
     const [h, m] = schedule.startTime.split(':').map(Number);
     const startMins = (h - 8) * 60 + m;
@@ -4413,6 +4495,13 @@
 
     card.addEventListener('dragstart', (e) => {
       e.stopPropagation();
+      // 已消课 / 请假的课不许拖：改期会让「哪天上的课」和财务流水对不上，
+      // 请假还牵着补课链路。挡在源头并说清该怎么办，好过拖完再回滚。
+      if (!canDragSchedule(schedule)) {
+        e.preventDefault();
+        showToast('只有「待上课」的课能拖动改期；已消课 / 请假的课请在课程菜单里处理', 'circle-info');
+        return;
+      }
       draggedSchedule = schedule;
       draggedStudent = null;
       card.style.opacity = '0.4';

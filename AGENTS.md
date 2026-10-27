@@ -884,3 +884,36 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
     - 定位充值入口的位置：桌面 `#studentListContainer .student-card` 里那个**只有图标**的
       `.btn-recharge-student`；手机是 `.btn-detail-mobile-student` → `#mDetailRechargeBtn`
       （手机学员卡 class 是 `lm-card`，不是 `student-card`）。
+
+59. **周视图拖拽移课：拖的是「什么时候上」，不是「上多久」**（2026-10-27，Jackson：「课表日历增加拖拽移课」，
+    补充「电脑端」）
+    - ⚠️ **核心坑：拖拽代码早就有，但一直是「假成功」**。`renderCalendarGrid` 里课卡来自
+      `layoutOverlapEvents()`，那个函数 `{...s}` 做了**浅拷贝**，`dragstart` 存进 `draggedSchedule`
+      的就是拷贝 → 旧 drop 里 `draggedSchedule.date = ...` 改的是拷贝，localStorage 一个字都没变，
+      toast 却照样说「已调整」。所以 `moveScheduleByDrag()` 第一步必须
+      `schedules.find((s) => s.id === sch.id)` **回真实数组里那份**再改。
+      以后凡是「从渲染结果反推要改哪条数据」的地方，都按 id 回查，别改传进来的对象。
+    - 口径：
+      · 只改 `date` + `startTime`，`durationMinutes` 原样跟着走（拖不改变课时长，也就不用碰 `endTime`——本项目课表只存开始时间 + 时长）；
+      · **只有 `status === 'scheduled'` 能拖**：已消课的日期是财务与统计的依据，请假课牵着补课链路，
+        两者的改期走课程菜单。卡片上有 `data-draggable="1|0"` 给测试断言，`dragstart` 里
+        `preventDefault()` + 说明原因（静默拖不动会让人以为坏了）；
+      · 撞课三维（学员 / 任课或陪练老师 / 课室），与 `detectScheduleConflicts` 同口径 —— **请假课不占资源，不算冲突**；
+        时间重叠但人/室都不同 → 允许并存（并排上课是真实场景）；
+      · 吸附 15 分钟，**用就近四舍五入而不是向下取整**：`832/780` 除不尽，落在 10:00 线上偏下 1px
+        会被 floor 判成 09:45（本机实测过）。上限 20:45（日历只画到 21:00）；
+      · 每次成功先 `pushUndo` + `offerUndo`（5 秒撤销）；原地松手（日期和开始时间都没变）**什么都不做**，
+        不写数据、不弹 toast、不占撤销栈；
+      · 拖排课卡 = move、拖学员卡到格子 = 新建，`dropEffect` 要分开设（旧版一律 `copy`，移动时光标是错的）。
+    - 预览 `.drag-preview-slot`：高度 = 该课真实时长（旧版固定 60 分钟，90 分钟的课只画一半）；
+      撞课位置加 `.is-blocked` 变红并**把原因写在格子里**，不用等松手才弹 toast。
+    - 函数清单（都在 `renderCalendarGrid` 之前）：`canDragSchedule()` / `dragMoveConflictReason()` /
+      `dragSnapAt()` / `moveScheduleByDrag()`。预览与落库共用 `dragSnapAt()` 一套换算，别各写一份。
+    - 回归 `tmp/drag-move-check.mjs` **35 项**（本地与线上都 35/35），覆盖 A 可拖性 / B 真写库+撤销 /
+      C1–C7 三种撞课 / D 请假不占资源 / E 已消课拖不动 / F 预览高度与标红 / G 原地松手·吸附·上限 / H 不抢 click。
+      护栏两条都验过：① 退回浅拷贝（`const real = sch`）→ 6 红（B2/B4/B5/D1/G3/G4）；
+      ② 关掉冲突检测（`const reason = ''`）→ 9 红（C1–C7 全红）。
+    - 测试里模拟 HTML5 拖拽：`new DataTransfer()` + 对课卡/列依次 `dispatchEvent(new DragEvent(...))`，
+      `dragover`/`drop` 都要带 `clientY: rect.top + 目标像素`。⚠️ `DragEvent` 的 `clientY` 会被取整到像素，
+      `rect.top` 带小数时落点会偏 1px 以内 —— 已由「就近吸附」兜住，别指望测出亚像素精度。
+    - 手机端**不做**（Jackson 明确只要电脑端）；手机日历的手势是左右滑动翻页，再塞拖拽会打架。
