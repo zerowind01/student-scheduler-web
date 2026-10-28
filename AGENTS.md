@@ -917,3 +917,33 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       `dragover`/`drop` 都要带 `clientY: rect.top + 目标像素`。⚠️ `DragEvent` 的 `clientY` 会被取整到像素，
       `rect.top` 带小数时落点会偏 1px 以内 —— 已由「就近吸附」兜住，别指望测出亚像素精度。
     - 手机端**不做**（Jackson 明确只要电脑端）；手机日历的手势是左右滑动翻页，再塞拖拽会打架。
+
+60. **充值记录：另开 `rechargeLogs`，绝不塞进 checkInLogs**（2026-10-28，Jackson：「增加充值记录」，
+    追问后定：学员详情 + 财务页都要，且能撤销）
+    - 数据层：新集合 `rechargeLogs`，localStorage 键 `edu_scheduler_recharge_logs_v2`。
+      **故意不复用 checkInLogs** —— 那边是「课消流水」，财务页拿它算本月课消节数 / 课消价值 / 环比；
+      充值属于**预收款**（课还没上），混进去会让 KPI 凭空变大。退款能进流水是因为它本身就是负向课消
+      （`deductedLessons:0` + 负金额），充值没有这个对称性。
+    - 字段：`id / studentId / studentName / courseName / lessons / unitPrice / amount / leftAfter /
+      debtRepaid / checkInTime(UTC ISO) / date(本地 YYYY-MM-DD)`。
+      金额 = `lessons × effectivePrice`，`effectivePrice = 弹层单价>0 ? 单价 : 课程包既有单价`；
+      两边都没单价 → 记 0、界面显示「—」（不编数字）。`debtRepaid` 是这次顺带清掉的欠课节数。
+    - ⚠️ 同步三处都要带（push payload / pullFromCloudSync / BroadcastChannel），且**远端缺这个键时必须保留本地**：
+      `if (Array.isArray(remoteData.rechargeLogs)) ...`。别照抄 checkInLogs 的 `|| []` ——
+      老快照（没有该字段）一拉就会把充值记录清空。
+    - ⚠️ `pushUndo` 快照必须含 `rechargeLogs`。漏了的话「撤销充值」后余额回去了、记录却还在。
+    - 撤销 `revertRechargeLog(logId)`：**扣回节数 → `syncDebtForCourse` 重算欠课 → 删记录** →
+      `saveData/refreshView/offerUndo`。允许扣成负数（课已经上了，撤销后本来就该欠着）。
+      禁止「只删记录、不退节数」——余额与充值历史会对不上。撤销本身还能再被 Toast 的「撤销」回滚。
+    - 展示位置：
+      · 学员详情「充值记录」块（最近 6 条 + 累计笔数/节数/金额，行上带「撤销」），放在欠课账之后、消课记录之前；
+      · 财务页右栏「本月充值」卡：大字金额 + `N 笔 · M 节` + 最近 5 笔，明确标注「预收，不计入课消」，
+        底下「全部充值记录」开弹层（全校倒序 + 撤销）；老师视角按 `teacherRelatedCourse` 过滤；
+      · 手机端同构：详情块 + 财务页卡片（卡片直接列本月，不另开弹层）。
+    - 「本月」用记录的**本地 `date`** 判断，别用 `checkInTime` 前缀（UTC，深夜充值会跨到前一天）。
+    - 升级前的充值没有记录（当时压根没存），界面如实写「暂无充值记录（本次更新后的充值才会记流水）」。
+    - ⚠️ 测试作用域坑：`tmp/recharge-debt-check.mjs` 的 D15 原本断言「财务页整页文本里没有张三」，
+      而新增的「本月充值」卡会列出张三 → 改成只读 `#financeDebtCard`。**以后断言财务页别用整页全文匹配**。
+    - 回归 `tmp/recharge-log-check.mjs` **49 项**（本地与线上都 49/49）；护栏两条：
+      ① 不调 `recordRechargeLog` → 20 红；② 快照漏 `rechargeLogs` → 2 红（D6/E2）。
+    - 版本 app.js?v=70 / mobile.js?v=84 / sw v132（样式没动）。

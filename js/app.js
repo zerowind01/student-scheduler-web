@@ -15,6 +15,7 @@
   const STORAGE_KEY_COURSE_TYPES = 'edu_scheduler_course_types_v2';
   const STORAGE_KEY_CHECKIN_LOGS = 'edu_scheduler_checkin_logs_v2';
   const STORAGE_KEY_DEBTS = 'edu_scheduler_debts_v2';
+  const STORAGE_KEY_RECHARGE_LOGS = 'edu_scheduler_recharge_logs_v2';
 
   // 学员主题色：2026-10 定稿色卡六色（键名是数据层约定不能改，渲染色已全端换新）
   const COLOR_THEMES = ['amber', 'emerald', 'sky', 'purple', 'rose', 'mint'];
@@ -29,6 +30,7 @@
   let courseTypes = [];   // 课程类型（如 钢琴/美术/乐理）
   let checkInLogs = [];   // 消课流水（财务核心）
   let debts = [];         // 学员欠课账 { id, studentId, courseName, amount(节) }
+  let rechargeLogs = [];  // 充值流水（预收款记录，**不进 checkInLogs**，见 purchaseCoursePack 上方注释）
   let selectedTeacherFilter = 'all'; // 课表页筛选老师：all 或 teacherId
   // 财务页的「查看视角」：all = 全校，否则是 teacherId。
   // **故意不复用 selectedTeacherFilter** —— 顶栏那个筛选器只在课表页可见（switchPage 里 mainTopbar 只在
@@ -662,6 +664,10 @@
       .filter((s) => s.studentId === student.id && s.status === SCHEDULE_STATUS.STUDENT_LEAVE)
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
       .slice(0, 10);
+    // 充值记录（2026-10-28）：只读 rechargeLogs，不参与消课/退款口径
+    const myRecharges = rechargeLogsOf(student.id);
+    const rechargeTotals = rechargeTotalsOf(myRecharges);
+    const rechargeShown = myRecharges.slice(0, 6);
 
     const totalLessons = student.courses.reduce((acc, c) => acc + c.remainingLessons, 0);
     const totalOwed = studentDebts.reduce((acc, d) => acc + d.amount, 0);
@@ -725,6 +731,32 @@
           </div>`).join('')}
         </div>
       </div>` : ''}
+
+      <div data-recharge-section>
+        <div class="flex items-center justify-between mb-1.5">
+          <div class="font-bold text-[11px] lm-t2 uppercase tracking-wider"><i class="fa-solid fa-circle-plus" style="color:#059669;"></i> 充值记录</div>
+          ${myRecharges.length ? `<div class="text-[10px] lm-t3">累计 ${rechargeTotals.count} 笔 · <span class="font-black lm-t1">${rechargeTotals.lessons} 节</span> · <span class="font-black lm-t1">${fmtMoney(rechargeTotals.amount)}</span></div>` : ''}
+        </div>
+        ${myRecharges.length === 0 ? '<div class="text-[11px] lm-t3 py-3 text-center lm-soft rounded-xl">暂无充值记录（本次更新后的充值才会记流水）</div>' : `
+        <div class="space-y-1">
+          ${rechargeShown.map((l) => `
+          <div class="flex items-center justify-between lm-soft px-3 py-2 rounded-lg text-[11px]" data-recharge-log="${l.id}">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="font-bold lm-t1">${l.courseName}</span>
+                <span class="lm-t2">充 ${l.lessons} 节${l.unitPrice > 0 ? ` × ¥${l.unitPrice}` : ''}</span>
+                ${l.debtRepaid > 0 ? `<span class="text-[9px] font-bold px-1.5 py-0.5 rounded" style="background:#e8f2f4;color:#2E5D68;">抵欠课 ${l.debtRepaid} 节</span>` : ''}
+              </div>
+              <div class="lm-t3 text-[10px] mt-0.5">${logDateText(l)}${logClock(l) ? ' ' + logClock(l) : ''} · 充后余 ${l.leftAfter} 节</div>
+            </div>
+            <div class="shrink-0 ml-2 flex items-center gap-2">
+              <span class="font-black" style="color:#059669;">${l.amount > 0 ? fmtMoney(l.amount) : '—'}</span>
+              <button type="button" class="btn-revert-recharge text-[10px] font-bold lm-t3 hover:text-rose-600 transition" data-revert-recharge="${l.id}" title="撤销这笔充值（扣回节数并删除记录）">撤销</button>
+            </div>
+          </div>`).join('')}
+        </div>
+        ${myRecharges.length > rechargeShown.length ? `<div class="text-[10px] lm-t3 pt-1">仅显示最近 ${rechargeShown.length} 次，共 ${myRecharges.length} 次</div>` : ''}`}
+      </div>
 
       <div>
         <div class="flex items-center justify-between mb-1.5">
@@ -800,6 +832,18 @@
         </div>
       </div>` : ''}
     `;
+
+    // 撤销充值：扣回节数 + 重算欠课 + 删掉这条记录（记录与余额必须同步回滚）
+    body.querySelectorAll('[data-revert-recharge]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.getAttribute('data-revert-recharge');
+        const log = rechargeLogs.find((l) => l.id === id);
+        if (!log) return;
+        if (!confirm(`撤销这笔充值？\n\n${student.name} · ${log.courseName} · ${log.lessons} 节\n\n会从这个课程包扣回 ${log.lessons} 节（已上的课不退，余额可能变成欠课），并删除这条记录。`)) return;
+        if (revertRechargeLog(id)) renderStudentDetail(student.id);
+      });
+    });
 
     // 退款入口：与「充值」同层（详情页是退款唯一入口，不再另开第二个）
     const refundBtn = document.getElementById('detailRefundBtn');
@@ -1570,6 +1614,7 @@
     const rawCourseTypes = localStorage.getItem(STORAGE_KEY_COURSE_TYPES);
     const rawCheckInLogs = localStorage.getItem(STORAGE_KEY_CHECKIN_LOGS);
     const rawDebts = localStorage.getItem(STORAGE_KEY_DEBTS);
+    const rawRechargeLogs = localStorage.getItem(STORAGE_KEY_RECHARGE_LOGS);
 
     if (rawTeachers !== null) {
       try {
@@ -1618,6 +1663,12 @@
       try { debts = JSON.parse(rawDebts).map(normalizeDebt); } catch (e) { debts = []; }
     } else {
       debts = [];
+    }
+    // 充值流水（2026-10-28 新增；老数据没有这条键 → 空数组，界面显示「暂无充值记录」）
+    if (rawRechargeLogs !== null) {
+      try { rechargeLogs = JSON.parse(rawRechargeLogs).map(normalizeRechargeLog).filter(Boolean); } catch (e) { rechargeLogs = []; }
+    } else {
+      rechargeLogs = [];
     }
 
     if (rawSchedules !== null) {
@@ -1679,6 +1730,7 @@
         courseTypes,
         checkInLogs,
         debts,
+        rechargeLogs,
       };
 
       localStorage.setItem('edu_scheduler_last_sync_time', String(now));
@@ -1735,6 +1787,8 @@
             courseTypes = remoteData.courseTypes || courseTypes;
             checkInLogs = remoteData.checkInLogs || [];
             debts = (remoteData.debts || []).map(normalizeDebt);
+            // 老快照没有充值记录 → 保留本地那份，别被「缺少字段」当成「一条都没有」冲掉
+            if (Array.isArray(remoteData.rechargeLogs)) rechargeLogs = remoteData.rechargeLogs.map(normalizeRechargeLog).filter(Boolean);
 
             // 云端拿回来的仍可能是旧口径数据 → 每次覆盖后都校准一次（幂等）
             expirePauses();
@@ -1775,6 +1829,7 @@
           courseTypes = event.data.courseTypes || courseTypes;
           checkInLogs = event.data.checkInLogs || [];
           debts = (event.data.debts || []).map(normalizeDebt);
+          if (Array.isArray(event.data.rechargeLogs)) rechargeLogs = event.data.rechargeLogs.map(normalizeRechargeLog).filter(Boolean);
           saveDataLocalOnly();
           renderTeacherOptions();
           refreshView();
@@ -1847,6 +1902,7 @@
     localStorage.setItem(STORAGE_KEY_COURSE_TYPES, JSON.stringify(courseTypes));
     localStorage.setItem(STORAGE_KEY_CHECKIN_LOGS, JSON.stringify(checkInLogs));
     localStorage.setItem(STORAGE_KEY_DEBTS, JSON.stringify(debts));
+    localStorage.setItem(STORAGE_KEY_RECHARGE_LOGS, JSON.stringify(rechargeLogs));
   }
 
   function addDays(date, days) {
@@ -2148,6 +2204,9 @@
     normalizeStudent(student);
     migrateStudentCourses(student);
 
+    // 充值可撤销（Toast 的「撤销」按钮）→ 快照必须在写库之前打
+    pushUndo(`充值 ${student.name}「${courseName}」`, '');
+
     let remark = '';
     const debtBefore = debts.find((x) => x.studentId === studentId && x.courseName === courseName && x.amount > 0);
     const owedBefore = debtBefore ? debtBefore.amount : 0;
@@ -2174,9 +2233,101 @@
     const repaid = Math.max(0, owedBefore - (debtAfter ? debtAfter.amount : 0));
     if (repaid > 0) remark = ` (自动抵扣欠课 ${repaid} 节)`;
 
+    // 金额按「成交单价」记：弹层里没填单价时沿用课程包既有单价（别记成 0 元白送）
+    const effectivePrice = unitPrice > 0
+      ? unitPrice
+      : (Number(existing && existing.unitPrice) || 0);
+    recordRechargeLog(student, courseName, lessons, effectivePrice, leftAfter, repaid);
+
     saveData();
     refreshView();
-    showToast(`💳 ${student.name} 充值「${courseName}」${lessons} 节${remark}`, 'circle-check');
+    offerUndo(`💳 ${student.name} 充值「${courseName}」${lessons} 节${remark} · 余 ${leftAfter} 节`, 'circle-check', `充值 ${courseName}`);
+  }
+
+  // ==========================================
+  // 充值流水（2026-10-28）
+  // ==========================================
+  // 为什么**单开一个集合**、不塞进 checkInLogs：
+  //   checkInLogs 是「课消流水」，财务页拿它算本月课消节数 / 课消价值 / 环比。
+  //   充值不是课消（钱是预收的，课还没上），混进去会让 KPI 凭空变大、把「收入」算错。
+  //   退款能进 checkInLogs 是因为它本身就是负向课消（deductedLessons=0、金额为负）。
+  // 这里只记「这次充了多少、什么单价、抵掉多少欠课、充完余额多少」，一行就是一次真实收款，
+  // 不参与任何既有账目计算；学员详情与财务页读它，撤销时按它把节数扣回去。
+  function normalizeRechargeLog(l) {
+    if (!l || typeof l !== 'object') return null;
+    const t = String(l.checkInTime || '');
+    return {
+      id: l.id || ('rcg_' + Math.random().toString(36).slice(2, 10)),
+      studentId: l.studentId || '',
+      studentName: l.studentName || '',
+      courseName: l.courseName || '',
+      lessons: Number(l.lessons) || 0,
+      unitPrice: Number(l.unitPrice) || 0,
+      amount: Number(l.amount) || 0,
+      leftAfter: Number(l.leftAfter) || 0,
+      debtRepaid: Number(l.debtRepaid) || 0,
+      checkInTime: t,
+      date: l.date || t.slice(0, 10),
+    };
+  }
+
+  function recordRechargeLog(student, courseName, lessons, unitPrice, leftAfter, debtRepaid) {
+    const now = new Date();
+    const log = {
+      id: 'rcg_' + now.getTime() + '_' + Math.random().toString(36).substr(2, 4),
+      studentId: student.id,
+      studentName: student.name,
+      courseName,
+      lessons,
+      unitPrice,
+      amount: Math.round(lessons * unitPrice * 100) / 100,
+      leftAfter,
+      debtRepaid,
+      checkInTime: now.toISOString(),
+      date: formatDate(now),
+    };
+    rechargeLogs.push(log);
+    return log;
+  }
+
+  // 某学员的充值记录（新的在前）
+  function rechargeLogsOf(studentId) {
+    return rechargeLogs
+      .filter((l) => l && l.studentId === studentId)
+      .slice()
+      .sort((a, b) => (b.checkInTime || '').localeCompare(a.checkInTime || ''));
+  }
+
+  function rechargeTotalsOf(list) {
+    return (list || []).reduce((acc, l) => {
+      acc.count += 1;
+      acc.lessons += Number(l.lessons) || 0;
+      acc.amount += Number(l.amount) || 0;
+      return acc;
+    }, { count: 0, lessons: 0, amount: 0 });
+  }
+
+  // 撤销一笔充值：把节数从课程包扣回去、重算欠课、删掉这条记录。
+  // 允许把余额扣成负数（= 又变回欠课）：课要是已经上了，撤销后本来就该欠着。
+  // **不许**「只删记录、不退节数」——那样账面余额与充值历史会对不上。
+  function revertRechargeLog(logId) {
+    const log = rechargeLogs.find((l) => l.id === logId);
+    if (!log) return false;
+    const student = students.find((st) => st.id === log.studentId);
+    if (!student) { showToast('该学员已不存在，无法撤销这笔充值', 'circle-info'); return false; }
+    normalizeStudent(student);
+    migrateStudentCourses(student);
+    const course = (student.courses || []).find((c) => c.name === log.courseName);
+    if (!course) { showToast(`「${log.courseName}」课程包已不存在，无法撤销`, 'circle-info'); return false; }
+
+    pushUndo(`撤销充值 ${student.name}`, '');
+    course.remainingLessons = (Number(course.remainingLessons) || 0) - (Number(log.lessons) || 0);
+    syncDebtForCourse(student.id, log.courseName, course.remainingLessons);
+    rechargeLogs = rechargeLogs.filter((l) => l.id !== logId);
+    saveData();
+    refreshView();
+    offerUndo(`已撤销 ${student.name}「${log.courseName}」${log.lessons} 节的充值 · 余 ${course.remainingLessons} 节`, 'rotate-left', '撤销充值');
+    return true;
   }
 
   // ==========================================
@@ -3634,6 +3785,22 @@
     // 续费预警（余额 ≤2 节；欠课负数归右栏「欠课名单」，不在这里重复出现）
     const lowRows = lowLessonRows(relStudents, myCoursesOf);
 
+    // 本月充值（预收）：单独一块，不混进上面的「本月课消 / 课消价值」KPI
+    // 日期用记录里的本地 date 字段（checkInTime 是 UTC，深夜充值会跨到前一天）
+    let monthRecharges = rechargeLogs.filter((l) => (l.date || (l.checkInTime || '').slice(0, 10)).startsWith(monthPrefix));
+    if (scoped) {
+      // 老师视角：只算「我的课程」的充值（课程包归属看课程名，与存量/续费同一套判定）
+      monthRecharges = monthRecharges.filter((l) => {
+        const st = relStudents.find((s) => s.id === l.studentId);
+        return !!st && teacherRelatedCourse(st, l.courseName, tId);
+      });
+    }
+    const rechargeTotals = rechargeTotalsOf(monthRecharges);
+    const rechargeRecent = monthRecharges
+      .slice()
+      .sort((a, b) => (b.checkInTime || '').localeCompare(a.checkInTime || ''))
+      .slice(0, 5);
+
     // 环比（与上月整月比）：只给能由消课流水直接推出的两项
     // 「待消存量 / 欠课学员」没有历史快照（充值不进流水、欠课账只存当前值），硬算会出假数，故不放徽章
     let pLogs = prevMonthLogs();
@@ -3708,8 +3875,28 @@
           </div>`}
         </div>
 
-        <!-- 右栏：续费预警 + 欠课名单 + 课时存量价值 -->
+        <!-- 右栏：本月充值 + 续费预警 + 欠课名单 + 课时存量价值 -->
         <div class="space-y-4">
+          <div class="lm-stat-card rounded-2xl p-4" id="financeRechargeCard">
+            <div class="font-bold text-xs lm-t1 mb-2 flex items-center gap-1.5">
+              <i class="fa-solid fa-circle-plus" style="color:#059669;"></i> 本月充值
+              <span class="text-[10px] font-bold lm-t3">（预收，不计入课消）${scoped ? `· ${vLabel}` : ''}</span>
+            </div>
+            <div class="flex items-baseline gap-2">
+              <span class="text-2xl font-black" style="color:#059669;">${fmtMoney(rechargeTotals.amount)}</span>
+              <span class="text-[10px] lm-t3">${rechargeTotals.count} 笔 · ${rechargeTotals.lessons} 节</span>
+            </div>
+            ${rechargeRecent.length === 0 ? '<div class="text-[11px] lm-t3 py-2">本月暂无充值</div>' : `
+            <div class="space-y-1 mt-2.5">
+              ${rechargeRecent.map((l) => `
+              <div class="flex items-center justify-between text-[11px] lm-soft px-2.5 py-1.5 rounded-lg" data-finance-recharge="${l.id}">
+                <span class="font-bold lm-t1 truncate">${l.studentName} <span class="lm-t3 font-medium">· ${l.courseName}</span></span>
+                <span class="font-bold shrink-0 ml-2" style="color:#059669;">${l.lessons} 节${l.amount > 0 ? ' · ' + fmtMoney(l.amount) : ''}</span>
+              </div>`).join('')}
+            </div>`}
+            <button type="button" id="financeRechargeAll" class="w-full mt-2 py-1.5 rounded-lg text-[11px] font-bold lm-t2 transition hover:bg-[#fff7ef]">全部充值记录</button>
+          </div>
+
           <div class="lm-stat-card rounded-2xl p-4">
             <div class="font-bold text-xs lm-t1 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-bell" style="color:#fe4c02;"></i> 续费预警 <span class="text-[10px] font-bold lm-t3">（剩余 ≤2 节${scoped ? ` · ${vLabel}` : ''}）</span></div>
             ${lowRows.length === 0 ? '<div class="text-[11px] lm-t3 py-4 text-center">暂无需要续费的学员 👍</div>' : `
@@ -3723,7 +3910,7 @@
             </div>`}
           </div>
 
-          <div class="lm-stat-card rounded-2xl p-4">
+          <div class="lm-stat-card rounded-2xl p-4" id="financeDebtCard">
             <div class="font-bold text-xs lm-t1 mb-2 flex items-center gap-1.5"><i class="fa-solid fa-triangle-exclamation" style="color:var(--lm-pink);"></i> 欠课名单${scoped ? `<span class="text-[10px] font-bold lm-t3">· ${vLabel}</span>` : ''}</div>
             ${debtors.length === 0 ? '<div class="text-[11px] lm-t3 py-4 text-center">没有欠课学员，太棒了 🎉</div>' : `
             <div class="space-y-1.5">
@@ -3766,6 +3953,78 @@
       el.addEventListener('click', () => {
         const st = students.find((s) => s.id === el.getAttribute('data-renew-student'));
         if (st) openRechargeModal(st, el.getAttribute('data-renew-course'));
+      });
+    });
+
+    // 本月充值：点行直达学员详情（撤销入口在详情里，账单和余额放一起看）
+    container.querySelectorAll('[data-finance-recharge]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const log = rechargeLogs.find((l) => l.id === el.getAttribute('data-finance-recharge'));
+        if (log) openStudentDetail(log.studentId);
+      });
+    });
+    const rechargeAllBtn = document.getElementById('financeRechargeAll');
+    if (rechargeAllBtn) rechargeAllBtn.addEventListener('click', () => openRechargeHistoryModal());
+  }
+
+  // 全部充值记录（桌面弹层）：按时间倒序，带撤销。撤销后重开一次，列表与合计当场刷新。
+  function openRechargeHistoryModal() {
+    const old = document.getElementById('rechargeHistoryModal');
+    if (old) old.remove();
+
+    const list = rechargeLogs
+      .slice()
+      .sort((a, b) => (b.checkInTime || '').localeCompare(a.checkInTime || ''));
+    const totals = rechargeTotalsOf(list);
+
+    const modal = document.createElement('div');
+    modal.id = 'rechargeHistoryModal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.className = 'fixed inset-0 lm-scrim backdrop-blur-xs z-50 flex items-center justify-center p-4';
+    modal.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[80vh]" onclick="event.stopPropagation()">
+        <div class="flex items-center justify-between px-5 pt-4 pb-3 border-b lm-hairline shrink-0">
+          <div class="font-bold text-sm lm-t1"><i class="fa-solid fa-circle-plus" style="color:#059669;"></i> 充值记录</div>
+          <div class="flex items-center gap-3">
+            <div class="text-[10px] lm-t3">${totals.count} 笔 · <span class="font-black lm-t1">${totals.lessons} 节</span> · <span class="font-black lm-t1">${fmtMoney(totals.amount)}</span></div>
+            <button type="button" id="rechargeHistoryClose" class="text-[#a8a29e] hover:text-[#111111] transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+          </div>
+        </div>
+        ${list.length === 0 ? '<div class="text-[12px] lm-t3 py-10 text-center">还没有充值记录</div>' : `
+        <div class="overflow-y-auto custom-scrollbar px-3 py-2 space-y-1">
+          ${list.map((l) => `
+          <div class="flex items-center justify-between lm-soft px-3 py-2 rounded-lg text-[11px]" data-recharge-log="${l.id}">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="font-bold lm-t1">${l.studentName}</span>
+                <span class="lm-t2">${l.courseName}</span>
+                <span class="lm-t2">充 ${l.lessons} 节${l.unitPrice > 0 ? ` × ¥${l.unitPrice}` : ''}</span>
+                ${l.debtRepaid > 0 ? `<span class="text-[9px] font-bold px-1.5 py-0.5 rounded" style="background:#e8f2f4;color:#2E5D68;">抵欠课 ${l.debtRepaid} 节</span>` : ''}
+              </div>
+              <div class="lm-t3 text-[10px] mt-0.5">${logDateText(l)}${logClock(l) ? ' ' + logClock(l) : ''} · 充后余 ${l.leftAfter} 节</div>
+            </div>
+            <div class="shrink-0 ml-2 flex items-center gap-2">
+              <span class="font-black" style="color:#059669;">${l.amount > 0 ? fmtMoney(l.amount) : '—'}</span>
+              <button type="button" class="text-[10px] font-bold lm-t3 hover:text-rose-600 transition" data-revert-recharge="${l.id}">撤销</button>
+            </div>
+          </div>`).join('')}
+        </div>`}
+      </div>
+    `;
+
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+    modal.querySelector('#rechargeHistoryClose').addEventListener('click', () => modal.remove());
+    modal.querySelectorAll('[data-revert-recharge]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const log = rechargeLogs.find((l) => l.id === btn.getAttribute('data-revert-recharge'));
+        if (!log) return;
+        if (!confirm(`撤销这笔充值？\n\n${log.studentName} · ${log.courseName} · ${log.lessons} 节\n\n会从这个课程包扣回 ${log.lessons} 节（已上的课不退，余额可能变成欠课），并删除这条记录。`)) return;
+        if (revertRechargeLog(log.id)) {
+          modal.remove();
+          openRechargeHistoryModal();
+        }
       });
     });
   }
@@ -7253,7 +7512,7 @@
   // ==========================================
   // ==========================================
   // 撤销（Undo）：操作前整体快照，Toast 内 5 秒窗口一键回滚
-  // 快照必须覆盖 4 个会被写入的集合 —— 漏掉 checkInLogs / debts
+  // 快照必须覆盖**所有会被写入的集合** —— 漏掉 checkInLogs / debts / rechargeLogs
   // 会让回滚留下脏流水（财务对不上），这是本项目的高危点。
   // ==========================================
   let undoState = null;
@@ -7265,6 +7524,7 @@
       schedules: JSON.parse(JSON.stringify(schedules)),
       checkInLogs: JSON.parse(JSON.stringify(checkInLogs)),
       debts: JSON.parse(JSON.stringify(debts)),
+      rechargeLogs: JSON.parse(JSON.stringify(rechargeLogs)),
       label: label || '上一次操作',
       flashId: flashId || '',
     };
@@ -7283,6 +7543,7 @@
     schedules = undoState.schedules;
     checkInLogs = undoState.checkInLogs;
     debts = undoState.debts;
+    if (undoState.rechargeLogs) rechargeLogs = undoState.rechargeLogs;
     clearUndo();
     saveData();
     refreshView();
@@ -7608,7 +7869,7 @@
   }
 
   function exportScheduleData() {
-    const jsonText = JSON.stringify({ students, schedules, teachers, courseTypes, checkInLogs, debts }, null, 2);
+    const jsonText = JSON.stringify({ students, schedules, teachers, courseTypes, checkInLogs, debts, rechargeLogs }, null, 2);
 
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(jsonText).then(() => {
