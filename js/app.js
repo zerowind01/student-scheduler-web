@@ -187,6 +187,21 @@
     return `${year}-${month}-${day}`;
   }
 
+  // 消课流水归属的「上课日期」（本地 YYYY-MM-DD）：优先用记录自带的本地 date，
+  // 老数据没有 date 时把 UTC 的 checkInTime 换算回本地再取日期。
+  // ⚠️ 绝不能拿 checkInTime 前 10 位当月/当日 —— 那是 UTC，比本地早 8 小时：
+  //   · 本地 11-01 07:30 点的消课，UTC 是 10-31 23:30 → 会被算进上个月；
+  //   · 今天补登昨天/前天的课，会整笔混进这个月（2026-11-01 现场：今日 8 节、本月 10 节）。
+  function logLocalDate(l) {
+    if (!l) return '';
+    if (l.date) return l.date;
+    const t = l.checkInTime;
+    if (!t) return '';
+    const d = new Date(t);
+    if (isNaN(d.getTime())) return String(t).slice(0, 10);
+    return formatDate(d);
+  }
+
   function normalizeStudent(st) {
     // 名单导入的学员（只有姓名 + 加入时间、还没买课）：没有课程包是正常状态，
     // 补一个「基础课程 10 节」等于凭空造存量。这个标记只由历史导入设置。
@@ -2532,13 +2547,21 @@
       if (calendarViewMode === 'month') {
         setCalendarViewMode('week');
       } else {
-        currentMonth = new Date(currentWeekStart);
+        // ⚠️ 别直接 `new Date(currentWeekStart)`：周游标的周一落在上个月时（月初且今天不是周一），
+        // 月视图会跳到上个月 —— 2026-11-01（周日）就是这样显示成 10 月的。
+        // 今天就在这周里时以今天为准，否则才看周一。
+        const t = new Date();
+        t.setHours(0, 0, 0, 0);
+        const inThisWeek = t >= currentWeekStart && t < addDays(currentWeekStart, 7);
+        currentMonth = new Date(inThisWeek ? t : currentWeekStart);
         setCalendarViewMode('month');
       }
     });
     safeBind('btnMonthPrev', 'click', () => { currentMonth.setMonth(currentMonth.getMonth() - 1); renderMonthView({ dayListIn: true }); });
     safeBind('btnMonthNext', 'click', () => { currentMonth.setMonth(currentMonth.getMonth() + 1); renderMonthView({ dayListIn: true }); });
-    safeBind('btnMonthToday', 'click', () => { currentMonth = new Date(); monthSelectedDate = formatDate(getToday()); renderMonthView({ dayListIn: true }); });
+    // ⚠️ 原来这里写的是 getToday()，但 app.js 里从没定义过这个函数（那是 mobile.js 的）
+    // → 点「今天」直接 ReferenceError。改成 new Date()。
+    safeBind('btnMonthToday', 'click', () => { currentMonth = new Date(); monthSelectedDate = formatDate(new Date()); renderMonthView({ dayListIn: true }); });
 
     // 月视图格子：事件行 → 该课操作菜单（对齐 Google 点事件）；点格子空白 → 切换选中日（右栏跟着走）
     // 事件委托只绑一次（网格 innerHTML 每次渲染都会重建，绑在网格本体上才不会丢）
@@ -3103,7 +3126,7 @@
     let weekTotal = 0;
     for (let i = 0; i < 7; i++) {
       const dstr = formatDate(addDays(start, i));
-      const n = checkInLogs.filter((l) => l.date === dstr).reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
+      const n = checkInLogs.filter((l) => logLocalDate(l) === dstr).reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
       counts.push(n);
       weekTotal += n;
     }
@@ -3139,7 +3162,8 @@
     const todayLessonCount = todaySchedules.length - todayLeave;
     const todayLeaveTag = todayLeave ? ` · 请假 ${todayLeave}` : '';
     const monthPrefix = todayStr.slice(0, 7);
-    const monthLogs = checkInLogs.filter((l) => (l.checkInTime || '').startsWith(monthPrefix));
+    // 按「上课日期」归月，不按点消课的时间戳（补登昨天的课不该顶到这个月）
+    const monthLogs = checkInLogs.filter((l) => logLocalDate(l).startsWith(monthPrefix));
     const monthLessons = monthLogs.reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
     const monthValue = monthLogs.reduce((acc, l) => acc + (l.paymentAmount || 0), 0);
     const debtors = activeDebtors();
@@ -3759,7 +3783,7 @@
     // 老师视角：只统计该老师授课的消课记录（全校视角看全部）。
     // 退款**不摊分到老师**：一笔退款不对应某一节课，走 teacherRelatedLog 的兜底分支（`!sch`）
     // 会让每个老师都被同一笔退款重复扣一次 —— 与手机端 renderMobileFinance 完全一致。
-    let scopedLogs = checkInLogs.filter((l) => (l.checkInTime || '').startsWith(monthPrefix));
+    let scopedLogs = checkInLogs.filter((l) => logLocalDate(l).startsWith(monthPrefix));
     if (scoped) scopedLogs = scopedLogs.filter((l) => !isRefundLog(l) && teacherRelatedLog(l, tId));
     const monthLogs = scopedLogs.slice().sort((a, b) => (b.checkInTime || '').localeCompare(a.checkInTime || ''));
 
@@ -7620,7 +7644,7 @@
     const now = new Date();
     const pm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const pfx = `${pm.getFullYear()}-${String(pm.getMonth() + 1).padStart(2, '0')}`;
-    return checkInLogs.filter((l) => (l.checkInTime || '').startsWith(pfx));
+    return checkInLogs.filter((l) => logLocalDate(l).startsWith(pfx));
   }
   const sumLessons = (logs) => logs.reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
   const sumValue = (logs) => logs.reduce((acc, l) => acc + (l.paymentAmount || 0), 0);
@@ -7634,7 +7658,7 @@
 
     const now = new Date();
     const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const monthLogs = checkInLogs.filter((l) => (l.checkInTime || '').startsWith(monthPrefix));
+    const monthLogs = checkInLogs.filter((l) => logLocalDate(l).startsWith(monthPrefix));
 
     const monthLessons = monthLogs.reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
     const monthValue = monthLogs.reduce((acc, l) => acc + (l.paymentAmount || 0), 0);

@@ -161,6 +161,21 @@
     return `${year}-${month}-${day}`;
   }
 
+  // 消课流水归属的「上课日期」（本地 YYYY-MM-DD）：优先用记录自带的本地 date，
+  // 老数据没有 date 时把 UTC 的 checkInTime 换算回本地再取日期。
+  // ⚠️ 绝不能拿 checkInTime 前 10 位当月/当日 —— UTC 比本地早 8 小时：
+  //   本地 11-01 07:30 点的消课，UTC 是 10-31 23:30 → 会被算进上个月；
+  //   今天补登昨天/前天的课，会整笔混进这个月（与电脑端 logLocalDate 同口径）。
+  function logLocalDate(l) {
+    if (!l) return '';
+    if (l.date) return l.date;
+    const t = l.checkInTime;
+    if (!t) return '';
+    const d = new Date(t);
+    if (isNaN(d.getTime())) return String(t).slice(0, 10);
+    return formatDate(d);
+  }
+
   function addDays(date, days) {
     const result = new Date(date);
     result.setDate(result.getDate() + days);
@@ -6949,7 +6964,7 @@
     const now = new Date();
     const pm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const pfx = `${pm.getFullYear()}-${String(pm.getMonth() + 1).padStart(2, '0')}`;
-    return checkInLogs.filter((l) => (l.checkInTime || '').startsWith(pfx));
+    return checkInLogs.filter((l) => logLocalDate(l).startsWith(pfx));
   }
 
   function renderMobileFinance() {
@@ -6962,7 +6977,7 @@
     // 老师视角：只统计自己课程的消课记录（管理员看全部）
     // 退款是机构层面的账（一笔退款不对应某一节课），若走 logRelatedToTeacher 的兜底分支，
     // 每个老师都会被同一笔退款重复扣一次 —— 故老师视角直接不摊分退款。
-    let scopedLogs = checkInLogs.filter((l) => (l.checkInTime || '').startsWith(monthPrefix));
+    let scopedLogs = checkInLogs.filter((l) => logLocalDate(l).startsWith(monthPrefix));
     if (isTeacherView()) scopedLogs = scopedLogs.filter((l) => !isRefundLog(l) && logRelatedToTeacher(l));
     const monthLogs = scopedLogs.slice().sort((a, b) => (b.checkInTime || '').localeCompare(a.checkInTime || ''));
 

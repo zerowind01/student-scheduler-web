@@ -947,3 +947,27 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
     - 回归 `tmp/recharge-log-check.mjs` **49 项**（本地与线上都 49/49）；护栏两条：
       ① 不调 `recordRechargeLog` → 20 红；② 快照漏 `rechargeLogs` → 2 红（D6/E2）。
     - 版本 app.js?v=70 / mobile.js?v=84 / sw v132（样式没动）。
+
+61. **「本月课消」按上课日期归月，不按点消课的时间戳**（2026-11-01，Jackson 拿看板截图问：
+    「今天是1号，怎么今日消课8节，月消课有10节？」）
+    - 根因两层，**同一个函数**：`checkInTime` 是「点消课那一刻」的 **UTC** ISO，旧口径一律
+      `checkInTime.startsWith('YYYY-MM')`：
+      · ① **补登**：今天点掉昨天/前天的课，流水整笔顶进本月（现场那 2 节就是这么来的）；
+      · ② **时区**：本地 1 号 07:30 点的课，UTC 是上月最后一天 23:30 → 反被踢出本月。
+      而「今日课程」那格数的是 `schedules` 里今天的课，两边根本不是一套账 → 1 号必然对不上。
+    - 修法：统一走 `logLocalDate(l)`（app.js / mobile.js 各一份，**逐字一致**）：
+      `l.date`（记录自带的本地日期，`recordCheckInLog` 写的就是 `schedule.date`）
+      → 缺了才把 `checkInTime` 换算回本地再取日期 → 都没有返回 ''。
+      **禁止**再出现 `checkInTime.slice(0,7)` / `.startsWith(monthPrefix)` 这类写法。
+    - 改动点 6 处：看板「本月课消 + 本月收入」、看板上周柱状图（本来就是 `l.date`，改成走同一助手）、
+      财务页本月流水 / 上月环比 `prevMonthLogs()`、财务看板 `updateFinancePanel`、手机财务页 / 手机 `prevMonthLogs()`。
+    - 口径收益：补登不改月份、1 号早上也不丢课；「本月课消」与「今日课程-已消」在 1 号自然相等。
+    - ⚠️ 顺手修掉两个月视图的旧坑（今天恰好暴露，month-gcal 5 红）：
+      · `btnMonthView` 用 `new Date(currentWeekStart)` 取月 → 周游标的周一在上个月时（月初 + 今天不是周一）
+        **月视图显示上月**。2026-11-01 是周日、周一是 10-26，点开看到的是 10 月。
+        改成「今天在这周里就用今天，否则用周一」；
+      · `btnMonthToday` 里写的 `getToday()` 在 app.js 里**从未定义**（那是 mobile.js 的函数）→ 点「今天」直接崩，改 `new Date()`。
+    - 回归 `tmp/month-kpi-check.mjs` **16 项**（本地与线上都 16/16）：A 补登不进本月（看板 + 财务页 + 柱状图）、
+      B 无 `date` 字段的老流水按本地时间归月、C 手机端同构。
+      护栏两条：① 退回 `checkInTime` 前缀 → 9 红（A5–A9 / B1–B2 / C1–C2）；② 忽略 `l.date` 只换算时间戳 → 7 红。
+    - 版本 app.js?v=71 / mobile.js?v=85 / sw v133。
