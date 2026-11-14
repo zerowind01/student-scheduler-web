@@ -5509,6 +5509,7 @@
         let cursor = new Date(base);
         let created = 0;
         let skipped = 0;
+        let lastDate = date;
         while (created < 52) {
           cursor.setDate(cursor.getDate() + stepDays);
           if (cursor > end) break;
@@ -5521,8 +5522,10 @@
           }
           schedules.push(makeSchedule('sch_' + Date.now() + '_' + created, dStr));
           created++;
+          lastDate = dStr;
         }
-        let msg = `已排 ${created + 1} 节课（含首次）`;
+        // 提示里必须写清「按什么规则」「每几天」「排到哪天」—— 光报节数看不出是每周还是隔周
+        let msg = `已按「${stepDays === 14 ? '隔周' : '每周'}」排 ${created + 1} 节：${date} → ${lastDate}（每 ${stepDays} 天）`;
         if (skipped > 0) msg += `，${skipped} 节因时段冲突被跳过`;
         showToast(`📅 ${msg}`, 'circle-check');
       } else {
