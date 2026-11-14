@@ -1019,16 +1019,48 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
     - ⚠️ 用结束时间 `startTime + durationMinutes`（缺省 45）而不是开始时间：
       正在上的那节不该被催成「未处理」。与今日时间轴的「待上」（`todayPending` = 今天所有 scheduled）
       刻意不重叠 —— 一个问「还有多少没上」，一个问「上完了还没点」。
-    - 顺序：`date + startTime` **升序**（最老的排最前），渲染时 `slice(-8).reverse()` 只铺最近 8 行
-      （`PENDING_SHOW_MAX = 8`），超出的补一行「另外还有 N 节更早的没处理」；积多时卡片不撑满屏。
+    - 顺序：`date + startTime` **升序**（最老的排最前），二级页渲染时 `slice().reverse()`（新的在上）。
+      ~~只铺 8 行 + 「另外还有 N 节」~~ 已于第 65 条废弃：首页不再铺明细，二级页全部铺开。
     - 交互：行内「消课」= `executeCheckIn`（带三态动画，`skipRefresh` + `refreshView` 与今日时间轴同一套）；
       点整行 = 打开课程菜单（`openScheduleActionMenu` / `openMobileScheduleActionMenu`），
       请假 / 改期 / 删除都在里面。**只给消课一个按钮等于把「学生其实请假了」的路堵死**。
-    - 桌面是常驻卡（空态「没有待处理的消课」），位置在今日时间轴那行之后、待补课卡之前；
-      手机在 `#mobileHomeToday` 与 `#mobileHomeMakeup` 之间（`#mobileHomeUnprocessed`），老师视角走 `inScope`。
-    - 回归 `tmp/pending-card-check.mjs` **24 项**：A 桌面取数（含「正在上」不算）、行内消课落库、
-      B 点行开菜单、C 手机同构、D 积压 15 节只铺 8 行。
+    - 桌面是常驻入口卡（位置：今日时间轴那行之后、待补课卡之前），手机是数据看板第一格
+      （`#homeCardPending`，取代了原来的「今天待消课」）；明细都在二级页，见第 65 条。
+    - 回归 `tmp/pending-card-check.mjs`（项数见第 65 条）：A 桌面取数（含「正在上」不算）、行内消课落库、
+      B 点行开菜单、C 手机同构、D 积压场景。
       护栏：① 改用开始时间判 → 6 红（A2/A7/A8/A9/A10/A11，会把正在上的「15:03 声乐·赵同学」催出来）；
       ② 排除往日 → 6 红（A2/A4/A8/A9/A10/D1）；③ 不判 status → 5 红（已消课/请假混进列表）；
       ④ 手机端改用开始时间 → 2 红（C1/C4）。
     - 版本 app.js?v=74 / mobile.js?v=88 / sw v136。
+
+65. **「待处理课时」做成底部二级页面**（2026-11-14，Jackson：「把未处理页面做成一个二级页面，把今天待消课
+    小卡片替换成待处理课时，点击这个小卡片后从底部滑出二级页面」）
+    - 首页只留**一个入口**，明细全部挪进抽屉：
+      · 电脑 `#dashPendingCard`：整宽入口卡（今日时间轴之后 / 待补课之前），标题「待处理课时」+
+        右侧大数字 + 「节 · 待处理」+ `>` 箭头；副行「最早 MM/DD · 点击查看全部」/「全部处理完了 · 点开可回顾」。
+        图标背景有 4 节时暖黄（`#FDF3E3`/`#B98235`），空态转青（`#e8f2f4`/`#2E5D68`）并换 `fa-circle-check`。
+      · 手机 `#homeCardPending`：数据看板**第一格**（原来那格叫「今天待消课」）。口径不同 ——
+        今天待消课只看今天且含还没上的课；待处理课时是「该处理的」（含往日漏掉的），
+        今日没上的课在下面「今日课程」列表里看得到，信息不丢。首页**不再有** `#mobileHomeUnprocessed`。
+    - 抽屉 `#modalPending`（电脑，`max-w-3xl` 贴底）/ `#modalMobilePending`（手机）：
+      外壳盖 `hidden`，用 `showModal/hideModal`；面板带 `.lm-sheet.modal-box` → 复用 styles.css 的
+      `translateY(100%)→0` 上滑（240ms）与 `.lm-modal-closing` 下滑（200ms），**不再叠 GSAP**。
+      容器必须 `flex items-end` + 面板 `border-radius:24px 24px 0 0`（电脑端不引 mobile-theme.css，
+      `.lm-sheet` 只给动效，圆角/阴影得自己写内联或 Tailwind）。
+    - 渲染函数 `renderPendingSheet()` / `renderMobilePendingSheet()`：**不截断**（进来就是看全部），
+      副标题「共 N 节 · 状态还是「待上课」，上课时间已过 · 最早 MM/DD」，空态给「没有待处理的消课」。
+      行内「处理」= 课程菜单、「消课」= `executeCheckIn`（`skipRefresh` + 三态动画），点整行也开菜单。
+    - ⚠️ 三个踩过的坑：
+      ① 手机端**没有 `refreshView()`**（那是电脑端的），重渲染走 `refreshMobileAll()`；写错会让
+         onDone 抛 ReferenceError、绿勾后列表不刷新（实测红 F10）。
+      ② `inScope` 是 `renderMobileHome` 的**局部 const**，二级页渲染函数里访问不到 →
+         自己在 `renderMobilePendingSheet` 里按同一口径重建 scopeFn（`isTeacherView()` + `schRelatedToTeacher`）。
+      ③ 抽屉内容要在主视图重渲染时跟着刷，别停在旧数据：电脑在 `renderDashboard` 末尾
+         `if (isPendingSheetOpen() && !dashBusy) renderPendingSheet()`（busy 时跳过，别打断绿勾动画）；
+         手机在 `renderMobileHome` 末尾同构。
+    - 回归 `tmp/pending-card-check.mjs` **47 项**：A 入口卡（标题/数字/首页不铺明细）、
+      B 点开抽屉（贴底、宽度、行数、口径）、C 抽屉内消课落库 + 列表同步 + 点行开菜单 + ✕ 关闭、
+      D 积压 15 节（小卡给数字、抽屉 15 行不截断）、E 空态、F 手机同构（含「今天待消课」已被替换）。
+      护栏：① 抽屉改 `items-center` → 1 红（B9）；② 抽屉截 8 行 → 1 红（D4）；
+      ③ 不跟着刷抽屉 → 1 红（C2）。
+    - 版本 app.js?v=75 / mobile.js?v=89 / sw v137 / tailwind 重建。

@@ -36,7 +36,7 @@
        改完 class 要重新生成：tools\build-tailwind.cmd
        ⚠ 必须留在 </head> 之前（即所有自有样式之后），复刻 Play CDN 把 <style>
        append 到 head 末尾的层叠顺序；挪到前面会翻转优先级。 -->
-  <link rel="stylesheet" href="css/tailwind.css?v=10">
+  <link rel="stylesheet" href="css/tailwind.css?v=11">
 </head>
 <body class="text-[#111111] font-sans h-screen flex flex-col overflow-hidden select-none" style="background: var(--surface-page);">
 
@@ -166,14 +166,24 @@
             </div>
           </div>
         </div>
-        <!-- 未处理的消课：上课时间已过完、状态还挂在「待上」的课（常态卡片，空态给提示） -->
-        <div id="dashPendingCard" class="bg-white border border-[#efe9e0] rounded-2xl overflow-hidden">
-          <div class="px-5 pt-4 pb-3 flex items-center justify-between flex-wrap gap-2">
-            <div class="text-[15px] font-black text-[#111111] flex items-center gap-2"><i class="fa-solid fa-circle-exclamation" style="color:#B98235"></i> 未处理的消课</div>
-            <span id="dashPendingCardBadge" class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-[#faf8f3] text-[#44403c]"></span>
+        <!-- 待处理课时（上课时间已过完、状态还挂在「待上」的课）：只留一张入口小卡，
+             完整清单在点击后从底部滑出的二级页面（#modalPending）里，首页不再被积压顶长 -->
+        <button id="dashPendingCard" type="button" class="w-full text-left bg-white border border-[#efe9e0] rounded-2xl px-5 py-4 flex items-center justify-between gap-4 hover:border-[#e0d8cb] transition group">
+          <div class="flex items-center gap-3.5 min-w-0">
+            <span id="dashPendingCardIcon" class="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0" style="background:#FDF3E3;color:#B98235"><i class="fa-solid fa-circle-exclamation"></i></span>
+            <div class="min-w-0">
+              <div class="text-[15px] font-black text-[#111111]">待处理课时</div>
+              <div id="dashPendingCardHint" class="text-[11px] font-semibold text-[#a8a29e] mt-0.5 truncate">上完还没点消课的课</div>
+            </div>
           </div>
-          <div id="dashPendingCardList"><!-- 动态渲染 --></div>
-        </div>
+          <div class="flex items-center gap-3 shrink-0">
+            <div class="text-right">
+              <div id="dashPendingCardCount" class="text-2xl font-black text-[#111111] leading-none">0</div>
+              <div class="text-[10px] font-bold text-[#a8a29e] mt-1">节 · 待处理</div>
+            </div>
+            <i class="fa-solid fa-chevron-right text-[#d6d3d1] text-[13px] group-hover:text-[#78716c] transition"></i>
+          </div>
+        </button>
         <!-- 待补课（近 7 天请假未补）：清单空时整卡隐藏 -->
         <div id="dashMakeupCard" class="hidden bg-white border border-[#efe9e0] rounded-2xl overflow-hidden">
           <div class="px-5 pt-4 pb-3 flex items-center justify-between flex-wrap gap-2">
@@ -465,6 +475,22 @@
       <i class="fa-solid fa-gear text-sm text-[#57534e]"></i>
       <span>设置</span>
     </button>
+  </div>
+
+  <!-- 待处理课时（二级页面）：从屏幕下沿滑出，点首页小卡进入。
+       列表内容由 renderPendingSheet() 渲染；样式与手机端同构（styles.css 的 .lm-sheet 负责上滑） -->
+  <div id="modalPending" role="dialog" aria-modal="true" aria-labelledby="modalPendingTitle" class="fixed inset-0 bg-[#1c1917]/40 backdrop-blur-xs flex items-end justify-center z-50 hidden transition-opacity">
+    <div class="lm-sheet modal-box bg-white w-full max-w-3xl max-h-[82vh] flex flex-col overflow-hidden" style="border-radius:24px 24px 0 0;box-shadow:0 -20px 60px rgba(17,17,17,0.18)">
+      <div class="px-6 pt-5 pb-4 flex items-start justify-between gap-3 border-b border-[#f2ece4] shrink-0">
+        <div class="min-w-0">
+          <h3 id="modalPendingTitle" class="text-base font-black text-[#111111] flex items-center gap-2"><i class="fa-solid fa-circle-exclamation" style="color:#B98235"></i> 待处理课时</h3>
+          <div id="modalPendingSub" class="text-[11px] font-semibold text-[#a8a29e] mt-1"></div>
+        </div>
+        <button id="btnClosePending" aria-label="关闭" class="text-[#a8a29e] hover:text-[#111111] transition shrink-0"><i class="fa-solid fa-xmark text-xl"></i></button>
+      </div>
+      <div id="modalPendingList" class="flex-1 overflow-y-auto custom-scrollbar"><!-- 动态渲染 --></div>
+      <div class="px-6 py-3 border-t border-[#f2ece4] text-[11px] font-semibold text-[#a8a29e] shrink-0">点整行可记请假 / 改期 / 删除；右侧「消课」直接扣课时并记一笔流水</div>
+    </div>
   </div>
 
   <!-- 手机端菜单 弹窗 Sheet -->
@@ -1229,7 +1255,7 @@
   </div>
 
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=74"></script>
+  <script src="js/app.js?v=75"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

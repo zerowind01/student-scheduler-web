@@ -3220,8 +3220,6 @@
   // 今日行上的「排补课」只覆盖今天 —— 三天前请的假没补上，首页就再也看不见了，
   // 时间一长就变成没人记得的死账。所以首页/看板另开一块，把口子放到整周。
   const MAKEUP_WINDOW_DAYS = 7;
-  // 首页「未处理的消课」最多铺几行（积压多了只给最新 8 节 + 一行「还有 N 节」），与电脑端同值
-  const PENDING_SHOW_MAX = 8;
 
   // 近 7 天待补清单：请假 + 需补 + 未核销，按「日期+时间」升序（早请假的排前面，先补最容易烂的那节）。
   // scopeFn 用于老师视角过滤（手机端传 inScope，电脑端传 null = 全量）。
@@ -3263,6 +3261,93 @@
       .sort((a, b) => ((a.date || '') + (a.startTime || '')).localeCompare((b.date || '') + (b.startTime || '')));
   }
 
+  // 待处理课时的二级页（底部抽屉）：打开 / 关闭 / 列表渲染。与电脑端同构。
+  // 动效交给 CSS（showModal 移除 .hidden → .lm-sheet 上滑；hideModal 加 .lm-modal-closing → 下滑）。
+  function isMobilePendingSheetOpen() {
+    const el = document.getElementById('modalMobilePending');
+    return !!el && !el.classList.contains('hidden');
+  }
+
+  function openMobilePendingSheet() {
+    renderMobilePendingSheet();
+    showModal('modalMobilePending');
+  }
+
+  // ⚠️ 二级页**不截断**（首页小卡只给数量）：进来就是要看全部的。
+  // 新的在上（与首页同序）：刚上完的那节最可能是要补点的。
+  function renderMobilePendingSheet() {
+    const listEl = document.getElementById('mobilePendingList');
+    if (!listEl) return;
+    const todayStr = formatDate(new Date());
+    // ⚠️ 不能直接用 renderMobileHome 里的 inScope（那是那个函数的局部 const）：
+    //    这里按同一口径自己造一份，老师登录时只列自己的课。
+    const scopeFn = (s) => !isTeacherView() || schRelatedToTeacher(s, teacherSession.teacherId, teacherSession.name);
+    const list = unprocessedSchedules(scopeFn);
+    const subEl = document.getElementById('mobilePendingSub');
+    if (subEl) {
+      if (!list.length) {
+        subEl.textContent = '全部处理完了 · 没有上完还没点消课的课';
+      } else {
+        const oldest = String(list[0].date || '').slice(0, 10);
+        subEl.textContent = `共 ${list.length} 节 · 状态还是「待上课」，上课时间已过`
+          + (oldest && oldest !== todayStr ? ` · 最早 ${oldest.slice(5).replace('-', '/')}` : '');
+      }
+    }
+    if (!list.length) {
+      listEl.innerHTML = `<div class="lm-card px-5 py-10 text-[12px] text-[#9c9fa5] text-center">没有待处理的消课</div>`;
+      return;
+    }
+    listEl.innerHTML = list.slice().reverse().map((s) => {
+      // date 正常是 'YYYY-MM-DD'；万一被写成完整 ISO（脏数据/老快照）也别把 'T07:41Z' 切到界面上
+      const dayStr = String(s.date || '').slice(0, 10);
+      const age = makeupAgeLabel(dayStr);
+      const dayLabel = dayStr === todayStr ? '今天' : dayStr.slice(5).replace('-', '/');
+      return `
+      <div class="lm-card px-4 py-3.5 flex items-center gap-3" data-pend-row="${s.id}">
+        <div class="text-center shrink-0 min-w-[50px]">
+          <div class="font-bold text-[14px] text-[#111111]">${dayLabel}</div>
+          <div class="text-[10.5px] text-[#9c9fa5] mt-0.5">${s.startTime || '--'}</div>
+        </div>
+        <div class="flex-1 min-w-0" style="border-left:1px solid #f0ebe2;padding-left:12px">
+          <div class="font-bold text-[14px] text-[#111111] truncate">${s.studentName || ''} <span class="text-[#9c9fa5] font-medium">· ${s.subject || ''}</span></div>
+          <div class="text-[11.5px] truncate mt-0.5" style="color:#7C4A03;font-weight:600">上完没点消课${age.days >= 3 ? ` · 已拖 ${age.days} 天` : ''}</div>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <button class="lm-mini-btn" data-pend-menu="${s.id}">处理</button>
+          <button class="lm-checkin-btn" style="background:#111111;color:#fff" data-pend-checkin="${s.id}">
+            <span class="lm-cb-label">消课</span>
+            <span class="lm-cb-spinner" aria-hidden="true"></span>
+            <svg class="lm-cb-check" viewBox="0 0 24 24" aria-hidden="true"><path pathLength="100" d="M4.5 12.6 L9.7 17.8 L19.5 6.6"/></svg>
+          </button>
+        </div>
+      </div>`;
+    }).join('');
+
+    listEl.onclick = (e) => {
+      const menuBtn = e.target.closest('[data-pend-menu]');
+      if (menuBtn) {
+        const sch = schedules.find((x) => x.id === menuBtn.getAttribute('data-pend-menu'));
+        if (sch && typeof openMobileScheduleActionMenu === 'function') openMobileScheduleActionMenu(sch);
+        return;
+      }
+      const ckBtn = e.target.closest('[data-pend-checkin]');
+      if (ckBtn) {
+        const sch = schedules.find((x) => x.id === ckBtn.getAttribute('data-pend-checkin'));
+        if (!sch) return;
+        if (!window.uiAnim || !window.uiAnim.runAsyncButton) { executeCheckIn(sch.id); return; }
+        // skipRefresh：绿勾动画播完再重渲染；onDone 的 refreshMobileAll 会重渲染首页
+        // → 首页里的「抽屉开着就跟着刷」逻辑会连带刷新这张抽屉（手机端没有 refreshView）
+        window.uiAnim.runAsyncButton(ckBtn, () => executeCheckIn(sch.id, '', { skipRefresh: true }), () => refreshMobileAll());
+        return;
+      }
+      // 点卡片正文 = 打开课程菜单（记请假 / 改期 / 删除都在里面）
+      const row = e.target.closest('[data-pend-row]');
+      if (row) {
+        const sch = schedules.find((x) => x.id === row.getAttribute('data-pend-row'));
+        if (sch && typeof openMobileScheduleActionMenu === 'function') openMobileScheduleActionMenu(sch);
+      }
+    };
+  }
   // 「这假请了几天了」——今天请的=0。给拖久的待补课加一点着急感（前端只负责显示，不参与判定）。
   function makeupDaysAgo(dateStr) {
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -4590,6 +4675,15 @@
       openMobileScheduleModalForNew();
     });
 
+    // 待处理课时二级页：✕ 关闭 + 点遮罩空白处关闭（与全站抽屉一致）
+    safeBind('btnCloseMobilePending', 'click', () => hideModal('modalMobilePending'));
+    const mobilePendModalEl = document.getElementById('modalMobilePending');
+    if (mobilePendModalEl) {
+      mobilePendModalEl.addEventListener('click', (e) => {
+        if (e.target === mobilePendModalEl) hideModal('modalMobilePending');
+      });
+    }
+
     // ============ 手机端 新增/编辑学员 ============
     safeBind('btnCloseMobileStudent', 'click', closeMobileStudentModal);
     safeBind('btnCancelMobileStudent', 'click', closeMobileStudentModal);
@@ -5258,9 +5352,14 @@
     // ---- 看板卡 ----
     const todayAll = schedules.filter((s) => s.date === todayStr && inScope(s));
     const tomorrowAll = schedules.filter((s) => s.date === tomorrowStr && inScope(s));
-    const todayPending = todayAll.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).length;
     const tomorrowPending = tomorrowAll.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).length;
     const todayDone = todayAll.filter((s) => s.status === SCHEDULE_STATUS.COMPLETED).length;
+    // 待处理课时（与二级页 #modalMobilePending 同一份取数）：这一格既是数字也是入口。
+    // 它取代了原来的「今天待消课」——那个口径只看今天、且把还没上的课也算进去；
+    // 「该处理的」才是要行动的，今日还没上的课在下面「今日课程」列表里看得到，信息不丢。
+    const pendListHome = unprocessedSchedules(inScope);
+    const pendCountHome = pendListHome.length;
+    const pendOldestHome = pendCountHome ? String(pendListHome[0].date || '').slice(0, 10) : '';
     // 本周剩余待上课数（周一~周日，老师视角含范围过滤）
     const weekLeft = schedules.filter((s) => inScope(s) && s.date >= wkStart && s.date <= wkEnd && s.status === SCHEDULE_STATUS.SCHEDULED).length;
     const weekDoneCnt = schedules.filter((s) => inScope(s) && s.date >= wkStart && s.date <= wkEnd && s.status === SCHEDULE_STATUS.COMPLETED).length;
@@ -5292,11 +5391,11 @@
 
     cards.innerHTML = `
       <div class="grid grid-cols-2 gap-3">
-        <div class="lm-card px-4 py-4">
-          <div class="text-[11px] font-medium text-[#9c9fa5] flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full" style="background:#111"></span> 今天待消课</div>
-          <div class="lm-stat-v mt-1"><span data-roll="todayPending">${homeNumText('todayPending', todayPending)}</span><span class="text-xs font-medium text-[#626260]"> 节</span></div>
-          <div class="text-[11px] text-[#9c9fa5] mt-0.5">${todayPending ? '下一节 ' + (todayAll.filter((s) => s.status === SCHEDULE_STATUS.SCHEDULED).sort((a, b) => a.startTime.localeCompare(b.startTime))[0]?.startTime || '') : '全部完成 🎉'}</div>
-        </div>
+        <button id="homeCardPending" class="lm-card px-4 py-4 text-left active:opacity-80">
+          <div class="text-[11px] font-medium text-[#9c9fa5] flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full" style="background:#B98235"></span> 待处理课时</div>
+          <div class="lm-stat-v mt-1"><span data-roll="pendCount">${homeNumText('pendCount', pendCountHome)}</span><span class="text-xs font-medium text-[#626260]"> 节</span></div>
+          <div class="text-[11px] text-[#9c9fa5] mt-0.5">${pendCountHome ? `${pendOldestHome && pendOldestHome !== todayStr ? '最早 ' + pendOldestHome.slice(5).replace('-', '/') : '今天上完还没点'} ›` : '全部处理完了'}</div>
+        </button>
         <div class="lm-card px-4 py-4">
           <div class="text-[11px] font-medium text-[#9c9fa5] flex items-center gap-1"><span class="inline-block w-2 h-2 rounded-full" style="background:#fe4c02"></span> 本周剩余</div>
           <div class="lm-stat-v mt-1 text-[#fe4c02]"><span data-roll="weekLeft">${homeNumText('weekLeft', weekLeft)}</span><span class="text-xs font-medium text-[#626260]"> 节</span></div>
@@ -5327,7 +5426,7 @@
 
     // 数据卡数字滚动：值真的变了才滚（首帧 / 值没变都不滚）
     rollHomeNumbers(cards, [
-      ['todayPending', todayPending],
+      ['pendCount', pendCountHome],
       ['weekLeft', weekLeft],
       ['debtCount', isTeacherView() ? tDebtCount : debtCount],
       ['lowCount', isTeacherView() ? tLowCount : lowCount],
@@ -5446,80 +5545,20 @@
       // 今日课程状态胶囊 → 弹确认菜单（消课/请假二选一）
       const tag = e.target.closest('[data-home-checkin]');
       if (tag) { handleHomeCheckinTap(e); return; }
-      const t = e.target.closest('#homeCardDebt, #homeCardRenew');
+      const t = e.target.closest('#homeCardPending, #homeCardDebt, #homeCardRenew');
       if (!t) return;
+      if (t.id === 'homeCardPending') { openMobilePendingSheet(); return; }
       if (t.id === 'homeCardDebt') window.__switchMobileView('finance');
       if (t.id === 'homeCardRenew') { window.__switchMobileView('students'); setTimeout(() => {
         const f = document.getElementById('mobileStudentStatusFilter') || document.getElementById('filter-low');
         if (f) { f.value = 'low'; f.dispatchEvent(new Event('change')); }
       }, 250); }
     };
-    // ---- 未处理的消课（上课时间已过完，状态还挂在「待上」）----
-    // 常驻区块（空态也给一句「都处理完了」）：漏掉的课不主动露出来就永远想不起来。
-    // 与电脑端看板同一套取数（unprocessedSchedules），老师视角只算自己的课。
-    const pendBox = document.getElementById('mobileHomeUnprocessed');
-    if (pendBox) {
-      const pendList = unprocessedSchedules(inScope);
-      const todayStrP = formatDate(new Date());
-      if (!pendList.length) {
-        pendBox.innerHTML = `
-          <div class="flex items-center justify-between px-1 pt-1">
-            <div class="font-bold text-[13px] text-[#111111]">未处理的消课</div>
-            <div class="text-[10.5px] font-semibold" style="color:#2E5D68">全部处理完了</div>
-          </div>
-          <div class="lm-card px-5 py-4 text-[12px] text-[#9c9fa5] text-center">没有待处理的消课</div>`;
-        pendBox.onclick = null;
-      } else {
-        // 只铺最近 8 节（新的在上）：积压多了列表不该把首页顶穿，总量看标题括号
-        const pendShown = pendList.slice(-PENDING_SHOW_MAX).reverse();
-        pendBox.innerHTML = `
-          <div class="flex items-center justify-between px-1 pt-1">
-            <div class="font-bold text-[13px] text-[#111111]">未处理的消课（${pendList.length}）</div>
-            <div class="text-[10.5px] font-semibold" style="color:#7C4A03">${pendList[0].date !== todayStrP ? `最早 ${String(pendList[0].date).slice(5).replace('-', '/')}` : '上完还没点'}</div>
-          </div>
-          ${pendShown.map((s) => {
-            // date 正常是 'YYYY-MM-DD'；万一被写成完整 ISO（脏数据/老快照）也别把 'T07:41Z' 切到界面上
-            const dayStr = String(s.date || '').slice(0, 10);
-            const age = makeupAgeLabel(dayStr);
-            const dayLabel = dayStr === todayStrP ? '今天' : dayStr.slice(5).replace('-', '/');
-            return `
-            <div class="lm-card px-5 py-4 flex items-center gap-3.5" data-pend-row="${s.id}">
-              <div class="text-center shrink-0 min-w-[52px]">
-                <div class="font-bold text-[15px] text-[#111111]">${dayLabel}</div>
-                <div class="text-[10.5px] text-[#9c9fa5] mt-0.5">${s.startTime || '--'}</div>
-              </div>
-              <div class="flex-1 min-w-0" style="border-left:1px solid #f0ebe2;padding-left:14px">
-                <div class="font-bold text-[14.5px] text-[#111111] truncate">${s.studentName || ''} <span class="text-[#9c9fa5] font-medium">· ${s.subject || ''}</span></div>
-                <div class="text-[12px] truncate mt-1" style="color:#7C4A03;font-weight:600">上完没点消课${age.days >= 3 ? ` · 已拖 ${age.days} 天` : ''}</div>
-              </div>
-              <div class="flex items-center gap-2 shrink-0">
-                <button class="lm-mini-btn" data-pend-menu="${s.id}">处理</button>
-                <button class="lm-mini-btn" style="background:#111111;color:#fff" data-pend-checkin="${s.id}">消课</button>
-              </div>
-            </div>`;
-          }).join('')}
-          ${pendList.length > pendShown.length ? `<div class="text-[11px] font-semibold text-[#9c9fa5] px-1">另外还有 ${pendList.length - pendShown.length} 节更早的没处理</div>` : ''}`;
-        pendBox.onclick = (e) => {
-          const menuBtn = e.target.closest('[data-pend-menu]');
-          if (menuBtn) {
-            const sch = schedules.find((x) => x.id === menuBtn.getAttribute('data-pend-menu'));
-            if (sch && typeof openMobileScheduleActionMenu === 'function') openMobileScheduleActionMenu(sch);
-            return;
-          }
-          const ckBtn = e.target.closest('[data-pend-checkin]');
-          if (ckBtn) {
-            executeCheckIn(ckBtn.getAttribute('data-pend-checkin'));
-            return;
-          }
-          // 点卡片正文 = 同一件事：打开课程菜单（记请假 / 改期 / 删除都在里面）
-          const row = e.target.closest('[data-pend-row]');
-          if (row) {
-            const sch = schedules.find((x) => x.id === row.getAttribute('data-pend-row'));
-            if (sch && typeof openMobileScheduleActionMenu === 'function') openMobileScheduleActionMenu(sch);
-          }
-        };
-      }
-    }
+    // ---- 待处理课时 ----
+    // 入口就是上面数据看板里的「待处理课时」那一格（#homeCardPending）：点开从底部滑出
+    // 二级页面（#modalMobilePending）。首页不再铺明细，积压几十节也不会把首页顶长。
+    // 这里只负责一件事：抽屉开着时跟着重渲染，别让它在云同步 / 撤销之后停在旧数据。
+    if (isMobilePendingSheetOpen()) renderMobilePendingSheet();
 
     // ---- 待补课（近 7 天请假 · 需补 · 未核销）----
     // 今日行的「排补课」只管今天：三天前请的假没补上，在今日列表里根本露不出来，

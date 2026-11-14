@@ -33,7 +33,7 @@
        Play CDN 当年是把 <style> append 到 head 末尾，工具类实际压过自有样式；
        把这份 CSS 放到 head 前部会翻转层叠顺序（实测 FontAwesome 的 line-height:1
        会反过来盖掉 text-* 的行高，图标盒子从 24px 变 16px）。 -->
-  <link rel="stylesheet" href="css/tailwind.css?v=10">
+  <link rel="stylesheet" href="css/tailwind.css?v=11">
 </head>
 <body class="text-slate-800 font-sans h-[100dvh] flex flex-col overflow-hidden select-none" style="background: var(--surface-page);">
 
@@ -95,7 +95,6 @@
         <div id="mobileHomeHero" class="shrink-0"></div>
         <div id="mobileHomeCards" class="space-y-3"></div>
         <div id="mobileHomeToday" class="space-y-2"></div>
-        <div id="mobileHomeUnprocessed" class="space-y-2"></div>
         <div id="mobileHomeMakeup" class="space-y-2"></div>
         
       </div>
@@ -297,6 +296,22 @@
       <span>设置</span>
     </button>
   </nav>
+
+  <!-- 待处理课时（二级页面）：从底部滑出，点首页小卡进入。
+       列表由 renderMobilePendingSheet() 渲染；全部铺开（首页小卡只给数量） -->
+  <div id="modalMobilePending" role="dialog" aria-modal="true" aria-labelledby="modalMobilePendingTitle" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-end justify-center z-50 hidden transition-opacity">
+    <div class="bg-white lm-sheet w-full max-h-[88dvh] overflow-y-auto p-5 space-y-3 text-xs transform transition-all modal-box" style="padding-bottom: calc(1.5rem + env(safe-area-inset-bottom))">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <h3 id="modalMobilePendingTitle" class="font-bold text-base text-slate-800">待处理课时</h3>
+        <button id="btnCloseMobilePending" aria-label="关闭" class="text-slate-400 hover:text-slate-700 transition">
+          <i class="fa-solid fa-xmark text-xl"></i>
+        </button>
+      </div>
+      <div id="mobilePendingSub" class="text-[11px] font-semibold text-[#9c9fa5]"></div>
+      <div id="mobilePendingList" class="space-y-2"><!-- 动态渲染 --></div>
+      <div class="text-[10.5px] text-[#9c9fa5] leading-relaxed">点整行可记请假 / 改期 / 删除；右侧「消课」直接扣课时并记一笔流水。</div>
+    </div>
+  </div>
 
   <!-- 手机端 安排新课程 Modal 弹窗 -->
   <div id="modalMobileSchedule" role="dialog" aria-modal="true" aria-labelledby="modalMobileScheduleTitle" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-end justify-center z-50 hidden transition-opacity">
@@ -796,7 +811,7 @@
     </div>
   </div>
 
-  <script src="js/mobile.js?v=88"></script>
+  <script src="js/mobile.js?v=89"></script>
   <!-- 老师访问码登录遮罩（管理员数据加载后自动隐藏） -->
   <div id="teacherLoginGate" class="hidden fixed inset-0 z-[90] lm-gate flex flex-col items-center justify-center px-8">
     <div class="w-14 h-14 rounded-2xl bg-[#111111] flex items-center justify-center text-white shadow-lg mb-4">
