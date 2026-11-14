@@ -202,6 +202,26 @@
     return formatDate(d);
   }
 
+  // 财务明细里的「上课时间」= 这一节**什么时候上的**，不是什么时候点的消课。
+  // 取数拆两半：日期一律走 logLocalDate（与归月口径同一份），钟点取排课的 startTime。
+  // ⚠️ 找不到排课（被删 / 历史导入 / 退款）时**只显示日期**，绝不退回 checkInTime 的钟点 ——
+  //    那是「点消课」的那一刻：今天补登昨天的课会写成「11-14 09:12」，读起来像今天上的。
+  function logClassStamp(l) {
+    if (!l) return { date: '', hm: '' };
+    const sch = l.scheduleId ? schedules.find((s) => s.id === l.scheduleId) : null;
+    return { date: logLocalDate(l), hm: (sch && sch.startTime) || '' };
+  }
+  function logClassTimeText(l) {
+    const s = logClassStamp(l);
+    if (!s.date) return s.hm;
+    return s.hm ? `${s.date.slice(5)} ${s.hm}` : s.date.slice(5);
+  }
+  // 明细倒序也按上课时间排：点课顺序会被「今天补登昨天的课」打乱（补的那笔排到最上面）
+  function logClassSortKey(l) {
+    const s = logClassStamp(l);
+    return `${s.date} ${s.hm}`;
+  }
+
   function normalizeStudent(st) {
     // 名单导入的学员（只有姓名 + 加入时间、还没买课）：没有课程包是正常状态，
     // 补一个「基础课程 10 节」等于凭空造存量。这个标记只由历史导入设置。
@@ -3785,7 +3805,7 @@
     // 会让每个老师都被同一笔退款重复扣一次 —— 与手机端 renderMobileFinance 完全一致。
     let scopedLogs = checkInLogs.filter((l) => logLocalDate(l).startsWith(monthPrefix));
     if (scoped) scopedLogs = scopedLogs.filter((l) => !isRefundLog(l) && teacherRelatedLog(l, tId));
-    const monthLogs = scopedLogs.slice().sort((a, b) => (b.checkInTime || '').localeCompare(a.checkInTime || ''));
+    const monthLogs = scopedLogs.slice().sort((a, b) => logClassSortKey(b).localeCompare(logClassSortKey(a)));
 
     const monthLessons = monthLogs.reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
     // 退款流水 deductedLessons=0 → 课消节数天然不受影响；paymentAmount 是负数 → 金额自动被扣减
@@ -3878,7 +3898,7 @@
                   <th class="font-bold py-2.5">备注</th>
                   <th class="font-bold py-2.5 text-right">节数</th>
                   <th class="font-bold py-2.5 text-right">金额</th>
-                  <th class="font-bold py-2.5 text-right pr-2">时间</th>
+                  <th class="font-bold py-2.5 text-right pr-2">上课时间</th>
                 </tr>
               </thead>
               <tbody>
@@ -3892,7 +3912,7 @@
                   <td class="py-3 lm-t3 max-w-[180px] truncate" title="${l.remarks || ''}">${ref ? `退 ${l.refundLessons || 0} 节${l.remarks ? ' · ' + l.remarks : ''}` : (l.remarks || '—')}</td>
                   <td class="py-3 text-right lm-t2 whitespace-nowrap">${ref ? '<span class="lm-t3">—</span>' : `${l.deductedLessons} 节`}</td>
                   <td class="py-3 text-right font-bold whitespace-nowrap ${ref ? 'text-rose-600' : (l.paymentAmount > 0 ? 'lm-t1' : 'lm-t3')}">${l.paymentAmount ? fmtMoney(l.paymentAmount) : '—'}</td>
-                  <td class="py-3 text-right lm-t3 whitespace-nowrap pr-2">${(l.checkInTime || '').replace('T', ' ').slice(5, 16)}</td>
+                  <td class="py-3 text-right lm-t3 whitespace-nowrap pr-2">${logClassTimeText(l)}</td>
                 </tr>`;}).join('')}
               </tbody>
             </table>

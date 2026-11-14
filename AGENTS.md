@@ -991,3 +991,23 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       护栏：把 `stepDays` 写死 7 → 9 红（A1 变 11 节、A2 gaps 全 7、C1/C2、E1/E3），
       正好复现用户看到的「每周都排上」。
     - 版本 app.js?v=72 / mobile.js?v=86 / sw v134。
+
+63. **财务页「本月收入明细」每节显示的是上课时间，不是点消课的时刻**（2026-11-14，Jackson：
+    「本月我的收入明细的每节时间按上课时间计，不按实际消课时间计」）
+    - 旧写法：`(l.checkInTime || '').replace('T', ' ').slice(5, 16)` —— 这是 `checkInTime` 的 **UTC** 字符串，
+      两个错叠在一起：① 比本地早 8 小时（本地 12:00 的课显示 04:00）；② 它是「点消课那一刻」，
+      今天补登前天的课，时间列写着今天，看不出那节是哪天上的。
+    - 新口径（两端逐字一致）：`logClassStamp(l)` = `{ date: logLocalDate(l), hm: 该课排课的 startTime }`
+      · 日期**必须**走 `logLocalDate`（与归月同一份），优先 `l.date` 而不是排课的 `date` ——
+        课后改期会把 `schedule.date` 改到新日期，流水 `date` 才是**实际上的那天**；
+      · 钟点取 `schedules.find(s => s.id === l.scheduleId).startTime`；
+      · **找不到排课**（排课被删 / 历史导入 / 退款没有 `scheduleId`）→ **只显示 `MM-DD`**，
+        绝不退回 `checkInTime` 的钟点。历史导入的 `checkInTime` 是本地中午 12:00，显示出来就是假数据。
+      · 两个薄壳：`logClassTimeText(l)`（渲染）、`logClassSortKey(l)`（排序）。
+    - 明细倒序也改成按 `logClassSortKey`：旧排序用 `checkInTime`，补登的旧课会排到列表最上面。
+    - 桌面表头 `时间` → `上课时间`（手机端是行内小字，不改）。
+    - 回归 `tmp/finance-class-time-check.mjs` **20 项**（本地 + 线上）：A 桌面 5 行（有排课 / 历史导入 /
+      排课已删 / 退款）、B 手机同构、C 课后改期时流水 `date` 优先于排课 `date`。
+      护栏：① `logClassTimeText` 退回 `checkInTime` 切片 → 6 红（A2/A4/A6/A7/A8/C2，且复现 UTC 差 8 小时：
+      本地 12:00 显示成 `11-10 04:00`）；② 排序退回 `checkInTime` → 2 红（A8/A9）。
+    - 版本 app.js?v=73 / mobile.js?v=87 / sw v135。

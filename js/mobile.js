@@ -176,6 +176,25 @@
     return formatDate(d);
   }
 
+  // 财务明细里的「上课时间」= 这一节**什么时候上的**，不是什么时候点的消课。
+  // 日期走 logLocalDate（与归月口径同一份），钟点取排课的 startTime；
+  // 找不到排课（被删 / 历史导入 / 退款）只显示日期，绝不退回 checkInTime 的钟点
+  // （那是点课时刻，今天补登昨天的课会读成今天上的）。与电脑端 logClassStamp 同口径。
+  function logClassStamp(l) {
+    if (!l) return { date: '', hm: '' };
+    const sch = l.scheduleId ? schedules.find((s) => s.id === l.scheduleId) : null;
+    return { date: logLocalDate(l), hm: (sch && sch.startTime) || '' };
+  }
+  function logClassTimeText(l) {
+    const s = logClassStamp(l);
+    if (!s.date) return s.hm;
+    return s.hm ? `${s.date.slice(5)} ${s.hm}` : s.date.slice(5);
+  }
+  function logClassSortKey(l) {
+    const s = logClassStamp(l);
+    return `${s.date} ${s.hm}`;
+  }
+
   function addDays(date, days) {
     const result = new Date(date);
     result.setDate(result.getDate() + days);
@@ -6982,7 +7001,7 @@
     // 每个老师都会被同一笔退款重复扣一次 —— 故老师视角直接不摊分退款。
     let scopedLogs = checkInLogs.filter((l) => logLocalDate(l).startsWith(monthPrefix));
     if (isTeacherView()) scopedLogs = scopedLogs.filter((l) => !isRefundLog(l) && logRelatedToTeacher(l));
-    const monthLogs = scopedLogs.slice().sort((a, b) => (b.checkInTime || '').localeCompare(a.checkInTime || ''));
+    const monthLogs = scopedLogs.slice().sort((a, b) => logClassSortKey(b).localeCompare(logClassSortKey(a)));
 
     const monthLessons = monthLogs.reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
     // 退款流水 deductedLessons=0 → 课消节数天然不受影响；paymentAmount 是负数 → 金额自动被扣减
@@ -7091,7 +7110,7 @@
               </div>
               <div class="text-right shrink-0 ml-2">
                 <div class="font-bold ${ref ? 'text-[#d5304f]' : 'text-[#626260]'}">${ref ? fmtMoney(l.paymentAmount) : `${l.deductedLessons}节${l.paymentAmount > 0 ? ` · ¥${l.paymentAmount.toFixed(0)}` : ''}`}</div>
-                <div class="text-[10px] text-[#9c9fa5]">${(l.checkInTime || '').replace('T', ' ').slice(5, 16)}</div>
+                <div class="text-[10px] text-[#9c9fa5]">${logClassTimeText(l)}</div>
               </div>
             </div>`;}).join('')}
         </div>`}
