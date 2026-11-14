@@ -3220,6 +3220,8 @@
   // 今日行上的「排补课」只覆盖今天 —— 三天前请的假没补上，首页就再也看不见了，
   // 时间一长就变成没人记得的死账。所以首页/看板另开一块，把口子放到整周。
   const MAKEUP_WINDOW_DAYS = 7;
+  // 首页「未处理的消课」最多铺几行（积压多了只给最新 8 节 + 一行「还有 N 节」），与电脑端同值
+  const PENDING_SHOW_MAX = 8;
 
   // 近 7 天待补清单：请假 + 需补 + 未核销，按「日期+时间」升序（早请假的排前面，先补最容易烂的那节）。
   // scopeFn 用于老师视角过滤（手机端传 inScope，电脑端传 null = 全量）。
@@ -3231,6 +3233,33 @@
     const toStr = formatDate(today);
     return schedules
       .filter((s) => (!scopeFn || scopeFn(s)) && isPendingMakeup(s) && s.date >= fromStr && s.date <= toStr)
+      .sort((a, b) => ((a.date || '') + (a.startTime || '')).localeCompare((b.date || '') + (b.startTime || '')));
+  }
+
+  // 「未处理的消课」：上课时间已经过完、状态却还挂在 scheduled 的课 ——
+  // 既没点消课，也没记请假 / 改期 / 取消。往日漏掉的也算（那正是最该补的），今天的按钟点判。
+  // ⚠️ 用**结束时间**（startTime + durationMinutes，缺省 45）而不是开始时间：
+  //    正在上的那节不该被催成「未处理」；「待上」由今日课时那边负责，两者不重叠。
+  // 与电脑端 unprocessedSchedules() 逐字一致（电脑端 scopeFn 传 null）。
+  function unprocessedSchedules(scopeFn) {
+    const now = new Date();
+    const todayStr = formatDate(now);
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const minOf = (hm) => {
+      const m = /^(\d{1,2}):(\d{2})/.exec(String(hm || ''));
+      return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+    };
+    return schedules
+      .filter((s) => {
+        if (scopeFn && !scopeFn(s)) return false;
+        if ((s.status || SCHEDULE_STATUS.SCHEDULED) !== SCHEDULE_STATUS.SCHEDULED) return false;
+        if (!s.date || s.date > todayStr) return false;
+        if (s.date < todayStr) return true;
+        const start = minOf(s.startTime);
+        if (start === null) return true;   // 老数据没写钟点：判不了，保守列出来让人自己看
+        const end = start + (Number(s.durationMinutes) || 45);
+        return nowMin > end;
+      })
       .sort((a, b) => ((a.date || '') + (a.startTime || '')).localeCompare((b.date || '') + (b.startTime || '')));
   }
 
@@ -5425,6 +5454,73 @@
         if (f) { f.value = 'low'; f.dispatchEvent(new Event('change')); }
       }, 250); }
     };
+    // ---- 未处理的消课（上课时间已过完，状态还挂在「待上」）----
+    // 常驻区块（空态也给一句「都处理完了」）：漏掉的课不主动露出来就永远想不起来。
+    // 与电脑端看板同一套取数（unprocessedSchedules），老师视角只算自己的课。
+    const pendBox = document.getElementById('mobileHomeUnprocessed');
+    if (pendBox) {
+      const pendList = unprocessedSchedules(inScope);
+      const todayStrP = formatDate(new Date());
+      if (!pendList.length) {
+        pendBox.innerHTML = `
+          <div class="flex items-center justify-between px-1 pt-1">
+            <div class="font-bold text-[13px] text-[#111111]">未处理的消课</div>
+            <div class="text-[10.5px] font-semibold" style="color:#2E5D68">全部处理完了</div>
+          </div>
+          <div class="lm-card px-5 py-4 text-[12px] text-[#9c9fa5] text-center">没有待处理的消课</div>`;
+        pendBox.onclick = null;
+      } else {
+        // 只铺最近 8 节（新的在上）：积压多了列表不该把首页顶穿，总量看标题括号
+        const pendShown = pendList.slice(-PENDING_SHOW_MAX).reverse();
+        pendBox.innerHTML = `
+          <div class="flex items-center justify-between px-1 pt-1">
+            <div class="font-bold text-[13px] text-[#111111]">未处理的消课（${pendList.length}）</div>
+            <div class="text-[10.5px] font-semibold" style="color:#7C4A03">${pendList[0].date !== todayStrP ? `最早 ${String(pendList[0].date).slice(5).replace('-', '/')}` : '上完还没点'}</div>
+          </div>
+          ${pendShown.map((s) => {
+            // date 正常是 'YYYY-MM-DD'；万一被写成完整 ISO（脏数据/老快照）也别把 'T07:41Z' 切到界面上
+            const dayStr = String(s.date || '').slice(0, 10);
+            const age = makeupAgeLabel(dayStr);
+            const dayLabel = dayStr === todayStrP ? '今天' : dayStr.slice(5).replace('-', '/');
+            return `
+            <div class="lm-card px-5 py-4 flex items-center gap-3.5" data-pend-row="${s.id}">
+              <div class="text-center shrink-0 min-w-[52px]">
+                <div class="font-bold text-[15px] text-[#111111]">${dayLabel}</div>
+                <div class="text-[10.5px] text-[#9c9fa5] mt-0.5">${s.startTime || '--'}</div>
+              </div>
+              <div class="flex-1 min-w-0" style="border-left:1px solid #f0ebe2;padding-left:14px">
+                <div class="font-bold text-[14.5px] text-[#111111] truncate">${s.studentName || ''} <span class="text-[#9c9fa5] font-medium">· ${s.subject || ''}</span></div>
+                <div class="text-[12px] truncate mt-1" style="color:#7C4A03;font-weight:600">上完没点消课${age.days >= 3 ? ` · 已拖 ${age.days} 天` : ''}</div>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <button class="lm-mini-btn" data-pend-menu="${s.id}">处理</button>
+                <button class="lm-mini-btn" style="background:#111111;color:#fff" data-pend-checkin="${s.id}">消课</button>
+              </div>
+            </div>`;
+          }).join('')}
+          ${pendList.length > pendShown.length ? `<div class="text-[11px] font-semibold text-[#9c9fa5] px-1">另外还有 ${pendList.length - pendShown.length} 节更早的没处理</div>` : ''}`;
+        pendBox.onclick = (e) => {
+          const menuBtn = e.target.closest('[data-pend-menu]');
+          if (menuBtn) {
+            const sch = schedules.find((x) => x.id === menuBtn.getAttribute('data-pend-menu'));
+            if (sch && typeof openMobileScheduleActionMenu === 'function') openMobileScheduleActionMenu(sch);
+            return;
+          }
+          const ckBtn = e.target.closest('[data-pend-checkin]');
+          if (ckBtn) {
+            executeCheckIn(ckBtn.getAttribute('data-pend-checkin'));
+            return;
+          }
+          // 点卡片正文 = 同一件事：打开课程菜单（记请假 / 改期 / 删除都在里面）
+          const row = e.target.closest('[data-pend-row]');
+          if (row) {
+            const sch = schedules.find((x) => x.id === row.getAttribute('data-pend-row'));
+            if (sch && typeof openMobileScheduleActionMenu === 'function') openMobileScheduleActionMenu(sch);
+          }
+        };
+      }
+    }
+
     // ---- 待补课（近 7 天请假 · 需补 · 未核销）----
     // 今日行的「排补课」只管今天：三天前请的假没补上，在今日列表里根本露不出来，
     // 只能翻回日历去找 —— 时间一长就成了没人记得的死账。这块把口子放到整周。

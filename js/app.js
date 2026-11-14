@@ -472,6 +472,8 @@
   //   completed  已消课（签到，记入财务流水）
   //   studentLeave 学员请假（退还排课时扣掉的课时）
   const SCHEDULE_STATUS = { SCHEDULED: 'scheduled', COMPLETED: 'completed', STUDENT_LEAVE: 'student_leave' };
+  // 看板「未处理的消课」卡片最多铺几行（积压多了只给最新 8 节 + 一行「还有 N 节」）
+  const PENDING_SHOW_MAX = 8;
 
   function normalizeSchedule(sch) {
     if (!sch.status) sch.status = SCHEDULE_STATUS.SCHEDULED;
@@ -2062,6 +2064,33 @@
     return { days, text, chip };
   }
 
+  // 「未处理的消课」：上课时间已经过完、状态却还挂在 scheduled 的课 ——
+  // 既没点消课，也没记请假 / 改期 / 取消。往日漏掉的也算（那正是最该补的），今天的按钟点判。
+  // ⚠️ 用**结束时间**（startTime + durationMinutes，缺省 45）而不是开始时间：
+  //    正在上的那节不该被催成「未处理」；「待上」由今日时间轴的 todayPending 负责，两者不重叠。
+  // 与手机端 unprocessedSchedules() 逐字一致。
+  function unprocessedSchedules(scopeFn) {
+    const now = new Date();
+    const todayStr = formatDate(now);
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const minOf = (hm) => {
+      const m = /^(\d{1,2}):(\d{2})/.exec(String(hm || ''));
+      return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+    };
+    return schedules
+      .filter((s) => {
+        if (scopeFn && !scopeFn(s)) return false;
+        if ((s.status || SCHEDULE_STATUS.SCHEDULED) !== SCHEDULE_STATUS.SCHEDULED) return false;
+        if (!s.date || s.date > todayStr) return false;
+        if (s.date < todayStr) return true;
+        const start = minOf(s.startTime);
+        if (start === null) return true;   // 老数据没写钟点：判不了，保守列出来让人自己看
+        const end = start + (Number(s.durationMinutes) || 45);
+        return nowMin > end;
+      })
+      .sort((a, b) => ((a.date || '') + (a.startTime || '')).localeCompare((b.date || '') + (b.startTime || '')));
+  }
+
   // 消课（签到确认）：状态→completed，记财务流水；课时不足部分记欠课账
   // 返回布尔值供按钮三态动画判断走向；
   // opts.skipRefresh / opts.silentToast：给「看板一键消课」用，把重渲染推迟到成功动画播完之后，
@@ -3302,6 +3331,65 @@
           if (mk) openScheduleModalForEdit(mk);
         });
       });
+    }
+
+    // ---- 未处理的消课（上课时间已过完，状态还挂在「待上」）----
+    // 常驻卡片而不是空则隐藏：这类「漏掉的」不主动露出来就永远想不起来看。
+    // 与手机端 renderMobileHome 里的 mobileHomeUnprocessed 同一套取数（unprocessedSchedules）。
+    const pendCardList = document.getElementById('dashPendingCardList');
+    const pendCardBadge = document.getElementById('dashPendingCardBadge');
+    if (pendCardList && !dashBusy) {
+      const pendList = unprocessedSchedules();
+      const pendOldest = pendList[0];
+      if (pendCardBadge) {
+        pendCardBadge.textContent = pendList.length
+          ? `共 ${pendList.length} 节${pendOldest && pendOldest.date !== todayStr ? ` · 最早 ${String(pendOldest.date).slice(5).replace('-', '/')}` : ''}`
+          : '全部处理完了';
+        pendCardBadge.style.background = pendList.length ? '#FEF3C7' : '#e8f2f4';
+        pendCardBadge.style.color = pendList.length ? '#7C4A03' : '#2E5D68';
+      }
+      if (!pendList.length) {
+        pendCardList.innerHTML = `<div class="text-center py-6 text-[#a8a29e] text-xs"><i class="fa-solid fa-circle-check text-2xl mb-2 block opacity-40"></i>没有待处理的消课</div>`;
+      } else {
+        // 只铺最近 8 节（新的在上）：积压很多时卡片不该撑满屏幕，总量看徽章
+        const pendShown = pendList.slice(-PENDING_SHOW_MAX).reverse();
+        pendCardList.innerHTML = pendShown.map((s) => {
+          // date 正常是 'YYYY-MM-DD'；万一被写成完整 ISO（脏数据/老快照）也别把 'T07:41Z' 切到界面上
+          const dayStr = String(s.date || '').slice(0, 10);
+          const age = makeupAgeLabel(dayStr);
+          const dayLabel = dayStr === todayStr ? '今天' : dayStr.slice(5).replace('-', '/');
+          return `<div class="flex items-center justify-between px-5 py-3 border-t border-[#f2ece4] hover:bg-[#faf8f3] transition cursor-pointer dash-pend-row" data-id="${s.id}" title="点击打开课程菜单（记请假 / 改期 / 删除都在里面）">
+            <div class="flex items-center gap-3 min-w-0">
+              <span class="w-2 h-2 rounded-full shrink-0" style="background:#B98235"></span>
+              <div class="text-[13px] font-bold text-[#111111] truncate">${dayLabel} ${s.startTime || '--'} ${s.subject || ''} · ${s.studentName || ''}</div>
+              ${age.days >= 3 ? age.chip : ''}
+            </div>
+            <button class="lm-checkin-btn dash-pend-checkin shrink-0 text-[11px] font-bold px-3.5 py-1.5 rounded-full bg-[#111111] text-white transition" data-id="${s.id}">
+              <span class="lm-cb-label">消课</span>
+              <span class="lm-cb-spinner" aria-hidden="true"></span>
+              <svg class="lm-cb-check" viewBox="0 0 24 24" aria-hidden="true"><path pathLength="100" d="M4.5 12.6 L9.7 17.8 L19.5 6.6"/></svg>
+            </button>
+          </div>`;
+        }).join('') + (pendList.length > pendShown.length
+          ? `<div class="px-5 py-2.5 text-[11px] font-semibold text-[#a8a29e] border-t border-[#f2ece4]">另外还有 ${pendList.length - pendShown.length} 节更早的没处理</div>`
+          : '');
+        // 整行点击 → 课程菜单（请假 / 改期 / 删除都在里面），别只留一个「消课」把路堵死
+        pendCardList.querySelectorAll('.dash-pend-row').forEach((row) => {
+          row.addEventListener('click', (e) => {
+            if (e.target.closest('.dash-pend-checkin')) return;   // 点消课按钮别同时弹菜单
+            const sch = schedules.find((x) => x.id === row.getAttribute('data-id'));
+            if (sch) openScheduleActionMenu(sch);
+          });
+        });
+        pendCardList.querySelectorAll('.dash-pend-checkin').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const sch = schedules.find((x) => x.id === btn.getAttribute('data-id'));
+            if (!sch) return;
+            if (!window.uiAnim || !window.uiAnim.runAsyncButton) { executeCheckIn(sch.id); return; }
+            window.uiAnim.runAsyncButton(btn, () => executeCheckIn(sch.id, '', { skipRefresh: true }), () => refreshView());
+          });
+        });
+      }
     }
 
     // ---- 待补课（近 7 天请假 · 需补 · 未核销）----

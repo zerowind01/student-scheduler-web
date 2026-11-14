@@ -1011,3 +1011,24 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       护栏：① `logClassTimeText` 退回 `checkInTime` 切片 → 6 红（A2/A4/A6/A7/A8/C2，且复现 UTC 差 8 小时：
       本地 12:00 显示成 `11-10 04:00`）；② 排序退回 `checkInTime` → 2 红（A8/A9）。
     - 版本 app.js?v=73 / mobile.js?v=87 / sw v135。
+
+64. **首页「未处理的消课」卡片**（2026-11-14，Jackson：「在首页增加一个卡片，显示当前未处理的消课」）
+    - 口径（`unprocessedSchedules(scopeFn)`，电脑端 / 手机端**逐字一致**）：只认 `status === scheduled`
+      （缺 status 的新建排课按 scheduled 算）、`date <= 今天`；
+      往日的**一律算**（漏掉的正是最该补的）；今天的要**结束时间**已过才算。
+    - ⚠️ 用结束时间 `startTime + durationMinutes`（缺省 45）而不是开始时间：
+      正在上的那节不该被催成「未处理」。与今日时间轴的「待上」（`todayPending` = 今天所有 scheduled）
+      刻意不重叠 —— 一个问「还有多少没上」，一个问「上完了还没点」。
+    - 顺序：`date + startTime` **升序**（最老的排最前），渲染时 `slice(-8).reverse()` 只铺最近 8 行
+      （`PENDING_SHOW_MAX = 8`），超出的补一行「另外还有 N 节更早的没处理」；积多时卡片不撑满屏。
+    - 交互：行内「消课」= `executeCheckIn`（带三态动画，`skipRefresh` + `refreshView` 与今日时间轴同一套）；
+      点整行 = 打开课程菜单（`openScheduleActionMenu` / `openMobileScheduleActionMenu`），
+      请假 / 改期 / 删除都在里面。**只给消课一个按钮等于把「学生其实请假了」的路堵死**。
+    - 桌面是常驻卡（空态「没有待处理的消课」），位置在今日时间轴那行之后、待补课卡之前；
+      手机在 `#mobileHomeToday` 与 `#mobileHomeMakeup` 之间（`#mobileHomeUnprocessed`），老师视角走 `inScope`。
+    - 回归 `tmp/pending-card-check.mjs` **24 项**：A 桌面取数（含「正在上」不算）、行内消课落库、
+      B 点行开菜单、C 手机同构、D 积压 15 节只铺 8 行。
+      护栏：① 改用开始时间判 → 6 红（A2/A7/A8/A9/A10/A11，会把正在上的「15:03 声乐·赵同学」催出来）；
+      ② 排除往日 → 6 红（A2/A4/A8/A9/A10/D1）；③ 不判 status → 5 红（已消课/请假混进列表）；
+      ④ 手机端改用开始时间 → 2 红（C1/C4）。
+    - 版本 app.js?v=74 / mobile.js?v=88 / sw v136。
