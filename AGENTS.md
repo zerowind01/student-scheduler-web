@@ -1110,3 +1110,32 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       护栏：① 手机退回「有名字就只比名字」→ 7 红（A2/A4/A5/A6/A7/B2/B3，且复现「本月课消 2.0 节」）；
       ② 电脑端名字优先 → 1 红（C1）；③ `recordCheckInLog` 不写 teacherId → 1 红（D3）。
     - 版本 app.js?v=77 / mobile.js?v=91 / sw v139。
+
+68. **老师名归一：简称一律改成档案全名（数据迁移，不是只改显示）**（2026-11-15，Jackson：
+    「把任老师的数据统一归到任凌枫，温老师统一归到温沛愉」）
+    - 第 67 条解决了「id vs 名字谁优先」，但**没解决简称本身对不上**：名字兜底是比较
+      `去空格 + 去尾部「老师」`，于是「温老师」→「温」、「任老师」→「任」，和档案全名「温沛愉／任凌枫」
+      永远不相等。只靠兜底，这批课永远判给谁都不是。
+    - 云端真数据（机构码 `Zerowind`，2026-11-15）：`teachers` 只有两条档案（任凌枫 t_…642 / 温沛愉
+      t_…837），但 `schedules` 里 80 条 `teacherName` 是简称（任老师 61 / 温老师 19 + 1 条助教位），
+      `checkInLogs` 里 34 条是简称（任老师 26 / 温老师 8），其中**大量没有 `teacherId`**（历史导入）。
+    - 唯一写入点 `migrateTeacherNames()`（两端逐字同构），幂等，只改「与档案不一致」的字段：
+      ① 记录有 `teacherId` 且能对上档案 → `teacherName` 按档案覆盖（id 是准的，名字可能过时）；
+      ② 没 id / id 已失效 → 名字归一后**唯一命中**某位老师（全等，或简称是唯一前缀）→ 补 id + 全名；
+      ③ 命中不唯一（机构里同姓两位，如「任凌枫」「任晓」）→ **原样不动**，宁可留着也别乱认。
+      覆盖 4 个字段：`schedules.teacherName / assistantTeacherName`、同名的流水两字段。
+    - 调用点（必须都在 teachers 解析**之后**）：`loadData()`、`pullFromCloudSync()`、
+      `checkUrlSyncData()`、`BroadcastChannel` 收到别的标签页数据时。漏了任何一处，别的入口就能把旧简称
+      写回内存、再随下一次保存覆盖云端。
+    - **迁移完要推一次云端**（`teacherNamesFixed > 0` → 延迟 2.5s `pushToCloudSync()`）：
+      不推的话每台设备各迁各的（结果一样，但云端快照一直脏）。延迟是因为 `loadData` 早于
+      `schoolSyncKey` 的 `let` 初始化，同步调用会撞 TDZ。
+    - 手机端 `loadTeacherSession()` 里还要顺手校正会话名：`teacherSession` 是 PIN 登录时**快照存下**的
+      `{teacherId, name, pin}`，档案改名后它不会自己变，财务页表头会一直显示「任老师」。注意
+      `loadTeacherSession()` 在 `loadData()` **之后**调用（要靠已加载的 teachers 校验 PIN），
+      所以校正写在这里能拿到归一后的档案名。
+    - 回归 `tmp/teacher-name-unify-check.mjs` **26 项**：A 电脑端字段归一（含助教位、「温沛愉老师」带尾巴、
+      档案外的人不动、其它字段/金额不动、财务页归属）；B 幂等（已归一数据再加载逐字节一致）；
+      C 同姓两位不乱认；D 手机端同构 + 登录态名字刷新 + 页面不再出现简称。
+      护栏：① 砍掉前缀兜底 → 4 红（A3/A4/A7/A8）；② 不唯一时硬认第一个 → 3 红（C1/C2/C3）。
+    - 版本 app.js?v=78 / mobile.js?v=92 / sw v140。

@@ -36,6 +36,8 @@
   // 学员状态（2026-10-24）：页面级状态必须声明在顶部，写在函数上方会 TDZ 白屏
   let mStatusStudentId = '';                   // 状态弹层当前学员
   let pauseExpiredNoticeQueued = false;        // 停课到期提示只弹一次
+  let teacherNamesFixed = 0;                   // 老师名归一（简称→档案全名）改了多条，只为合并弹一次提示
+  let teacherNamesNoticeQueued = false;
   let calSelected = formatDate(getToday());    // 当前选中日期（周/月档共用）
   const CAL_CELL_H = 46;                       // 单行日期格高度（px）
   const CAL_ROW_GAP = 2;                       // #calGrid 的 gap-y-0.5 = 2px
@@ -67,6 +69,16 @@
       if (teacherSession && !teachers.some((t) => t.id === teacherSession.teacherId && t.accessPin === teacherSession.pin)) {
         teacherSession = null; // 访问码已被管理员撤销/更换
         localStorage.removeItem('edu_teacher_session_v1');
+      }
+      // 档案改过名（「任老师」→「任凌枫」）→ 会话里存的老名字跟着改正。
+      // loadData() 在 loadTeacherSession() 之前跑，所以这里 teachers 已经是归一后的档案；
+      // 不修的话财务页表头、老师视角文案会一直显示旧简称。
+      if (teacherSession) {
+        const me = teachers.find((t) => t.id === teacherSession.teacherId);
+        if (me && me.name && teacherSession.name !== me.name) {
+          teacherSession.name = me.name;
+          localStorage.setItem('edu_teacher_session_v1', JSON.stringify(teacherSession));
+        }
       }
     } catch (e) { teacherSession = null; }
     return teacherSession;
@@ -100,6 +112,70 @@
   // 老师名归一：去所有空格 + 去尾部「老师」（档案叫「温沛愉老师」、排课写「温沛愉」也算同一个）
   function teacherNameKey(n) {
     return String(n == null ? '' : n).replace(/\s+/g, '').replace(/老师$/, '');
+  }
+
+  // ============ 老师名归一（与 app.js 逐字同构，别单边改） ============
+  // 2026-11-15，Jackson：「把任老师的数据统一归到任凌枫，温老师统一归到温沛愉」。
+  // 排课/流水的 teacherName 是手写自由文本，早期录的是简称（「任老师」），档案是全名；
+  // 名字兜底只能救「去尾『老师』后完全相等」，「任」对「任凌枫」永远不相等 → 那批课判给谁都不是。
+  //   ① 有 teacherId 且能对上档案 → teacherName 按档案覆盖
+  //   ② 没 id / id 已失效 → 名字归一后**唯一命中**某位老师（全等，或简称是唯一前缀）→ 补 id + 全名
+  //   ③ 命中不唯一（同姓两位）→ 原样留着，宁可不动也别乱认
+  function findTeacherByName(name) {
+    const k = teacherNameKey(name);
+    if (!k) return null;
+    const keyed = [];
+    teachers.forEach((t) => {
+      const tk = teacherNameKey(t.name);
+      if (tk) keyed.push({ t: t, tk: tk });
+    });
+    const exact = keyed.filter((x) => x.tk === k);
+    if (exact.length === 1) return exact[0].t;
+    if (exact.length > 1) return null;                   // 两位同名 → 不敢认
+    const prefixed = keyed.filter((x) => x.tk.indexOf(k) === 0);
+    return prefixed.length === 1 ? prefixed[0].t : null;  // 「任」→「任凌枫」，仅当唯一
+  }
+
+  function migrateTeacherNames() {
+    let fixed = 0;
+    const fixOne = (obj, idKey, nameKey) => {
+      if (!obj) return;
+      const rawId = obj[idKey];
+      const rawName = obj[nameKey];
+      if (!rawId && !rawName) return;
+      let t = rawId ? teachers.find((x) => x.id === rawId) : null;
+      if (!t) t = findTeacherByName(rawName);
+      if (!t) return;
+      if (obj[idKey] !== t.id || obj[nameKey] !== t.name) {
+        obj[idKey] = t.id;
+        obj[nameKey] = t.name;
+        fixed++;
+      }
+    };
+    schedules.forEach((s) => {
+      fixOne(s, 'teacherId', 'teacherName');
+      fixOne(s, 'assistantTeacherId', 'assistantTeacherName');
+    });
+    checkInLogs.forEach((l) => {
+      fixOne(l, 'teacherId', 'teacherName');
+      fixOne(l, 'assistantTeacherId', 'assistantTeacherName');
+    });
+    // 老师登录态里存的名字也一起刷新（老会话可能还写着「任老师」，财务页表头会跟着显示简称）
+    if (teacherSession && teacherSession.teacherId) {
+      const me = teachers.find((x) => x.id === teacherSession.teacherId);
+      if (me && teacherSession.name !== me.name) {
+        teacherSession.name = me.name;
+        try { localStorage.setItem('edu_teacher_session_v1', JSON.stringify(teacherSession)); } catch (e) {}
+      }
+    }
+    if (fixed > 0) {
+      teacherNamesFixed += fixed;
+      if (!teacherNamesNoticeQueued) {
+        teacherNamesNoticeQueued = true;                 // 加载与云端拉取会各跑一遍，别弹两次
+        setTimeout(() => { try { showToast(`👤 已统一 ${teacherNamesFixed} 条记录的老师名`); } catch (e) {} }, 1100);
+      }
+    }
+    return fixed;
   }
 
   // 排课归属某位老师：**id 命中或名字命中都算**（2026-10-22，Jackson：「温沛愉的排课怎么在手机端
@@ -3638,11 +3714,20 @@
     // 停课到期自动回到在读（只清 paused 字段，幂等）
     expirePauses();
 
+    // 老师名归一（简称 → 档案全名），必须在排课/流水解析之后、财务统计之前
+    migrateTeacherNames();
+
     // 历史账目校准：旧口径把长课时记成多节 → 先回正节数/金额/课时余额，再对欠课账
     migrateLessonUnits();
 
     // 欠课账校准：负课时（手动填的欠课）同步进欠课账
     syncAllDebts();
+
+    // 老师名归一真改过数据 → 顺手推一次云端（幂等，但云端快照也该是干净的）。
+    // 延迟执行：loadData 早于 schoolSyncKey 初始化，同步调用会撞上 TDZ。
+    if (teacherNamesFixed > 0) {
+      setTimeout(() => { try { pushToCloudSync(); } catch (e) {} }, 2500);
+    }
 
     saveDataLocalOnly();
   }
@@ -3738,6 +3823,7 @@
             if (Array.isArray(remoteData.rechargeLogs)) rechargeLogs = remoteData.rechargeLogs.map(normalizeRechargeLog).filter(Boolean);
 
             // 云端拿回来的仍可能是旧口径数据 → 每次覆盖后都校准一次（幂等）
+            migrateTeacherNames();
             expirePauses();
             migrateLessonUnits();
 
@@ -3777,6 +3863,7 @@
           checkInLogs = event.data.checkInLogs || [];
           debts = (event.data.debts || []).map(normalizeDebt);
           if (Array.isArray(event.data.rechargeLogs)) rechargeLogs = event.data.rechargeLogs.map(normalizeRechargeLog).filter(Boolean);
+          migrateTeacherNames();
           saveDataLocalOnly();
           renderMobileTeacherSelect();
           renderCalendar();
@@ -3867,6 +3954,8 @@
           schedules = (data.schedules || []).map(normalizeSchedule);
           migrateSeriesIds();
           teachers = mergeTeachersKeepPin(data.teachers, teachers);
+          // 老师名归一：简称（「任老师」）统一成档案全名（「任凌枫」）
+          migrateTeacherNames();
           expirePauses();
           saveDataLocalOnly();
           showToast('⚡ 扫码同步成功！已载入电脑端最新课表！');
@@ -4202,6 +4291,7 @@
           schedules = (data.schedules || []).map(normalizeSchedule);
           migrateSeriesIds();
           teachers = mergeTeachersKeepPin(data.teachers, teachers);
+          migrateTeacherNames();
           saveData();
           renderMobileTeacherSelect();
           renderCalendar();

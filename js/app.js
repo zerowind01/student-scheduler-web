@@ -142,6 +142,8 @@
           schedules = (data.schedules || []).map(normalizeSchedule);
           migrateSeriesIds();
           teachers = mergeTeachersKeepPin(data.teachers, teachers);
+          // 老师名归一：简称（「任老师」）统一成档案全名（「任凌枫」），关系归属也跟着定死
+          migrateTeacherNames();
           expirePauses();
           migrateLessonUnits();
           // 欠课账校准：负课时（欠课）同步进欠课账
@@ -1745,11 +1747,20 @@
     // 停课到期自动回到在读（只清 paused 字段，幂等）
     expirePauses();
 
+    // 老师名归一（简称 → 档案全名），必须在排课/流水解析之后、财务统计之前
+    migrateTeacherNames();
+
     // 历史账目校准：旧口径把长课时记成多节 → 先回正节数/金额/课时余额，再对欠课账
     migrateLessonUnits();
 
     // 欠课账校准：负课时（手动填的欠课）同步进欠课账，保证财务页欠课名单完整
     syncAllDebts();
+
+    // 老师名归一真改过数据 → 顺手推一次云端，别让每台设备各迁各的（幂等，但云端快照也该是干净的）。
+    // 延迟执行：loadData 早于 schoolSyncKey 初始化，同步调用会撞上 TDZ。
+    if (teacherNamesFixed > 0) {
+      setTimeout(() => { try { pushToCloudSync(); } catch (e) {} }, 2500);
+    }
 
     saveDataLocalOnly();
   }
@@ -1849,6 +1860,7 @@
             if (Array.isArray(remoteData.rechargeLogs)) rechargeLogs = remoteData.rechargeLogs.map(normalizeRechargeLog).filter(Boolean);
 
             // 云端拿回来的仍可能是旧口径数据 → 每次覆盖后都校准一次（幂等）
+            migrateTeacherNames();
             expirePauses();
             migrateLessonUnits();
 
@@ -1888,6 +1900,7 @@
           checkInLogs = event.data.checkInLogs || [];
           debts = (event.data.debts || []).map(normalizeDebt);
           if (Array.isArray(event.data.rechargeLogs)) rechargeLogs = event.data.rechargeLogs.map(normalizeRechargeLog).filter(Boolean);
+          migrateTeacherNames();
           saveDataLocalOnly();
           renderTeacherOptions();
           refreshView();
@@ -2664,13 +2677,80 @@
     return teacherNameHit(nm, teacherId);
   }
 
+  // 老师名归一：去所有空格 + 去尾部「老师」（档案叫「温沛愉老师」、排课写「温沛愉」也算同一个）
+  function teacherKey(n) {
+    return String(n == null ? '' : n).replace(/\s+/g, '').replace(/老师$/, '');
+  }
+
   // 老师名相等：去所有空格 + 去尾部「老师」（排课手写「温沛愉老师」也算同一个人）
   function teacherNameHit(name, teacherId) {
     const t = teachers.find((x) => x.id === teacherId);
     if (!t) return false;
-    const key = (n) => String(n == null ? '' : n).replace(/\s+/g, '').replace(/老师$/, '');
-    const k = key(name);
-    return !!k && k === key(t.name);
+    const k = teacherKey(name);
+    return !!k && k === teacherKey(t.name);
+  }
+
+  // ==========================================
+  // 老师名归一（2026-11-15，Jackson：「把任老师的数据统一归到任凌枫，温老师统一归到温沛愉」）
+  // 排课/流水的 teacherName 是**手写自由文本**，早期录的是简称（「任老师」），老师档案是全名
+  // （「任凌枫」）。名字兜底只能救「去尾『老师』后完全相等」，「任」对「任凌枫」永远不相等
+  // → 这批课在财务页/老师视角里判给谁都不是（第 67 条只解决了「名字 vs id 谁优先」，
+  //   没解决「简称 vs 全名」）。这里做一次幂等归一，跑完两个字段都是档案全名：
+  //   ① 有 teacherId 且能对上档案 → teacherName 按档案覆盖（id 是准的，名字可能过时）
+  //   ② 没 id / id 已失效 → 名字归一后**唯一命中**某位老师（全等，或简称是唯一前缀）→ 补 id + 全名
+  //   ③ 命中不唯一（机构里同姓两位）→ 原样留着，宁可不动也别乱认
+  // 幂等：只改「和档案不一致」的字段，第二次跑 fixed=0。
+  function findTeacherByName(name) {
+    const k = teacherKey(name);
+    if (!k) return null;
+    const keyed = [];
+    teachers.forEach((t) => {
+      const tk = teacherKey(t.name);
+      if (tk) keyed.push({ t: t, tk: tk });
+    });
+    const exact = keyed.filter((x) => x.tk === k);
+    if (exact.length === 1) return exact[0].t;
+    if (exact.length > 1) return null;                 // 两位同名 → 不敢认
+    const prefixed = keyed.filter((x) => x.tk.indexOf(k) === 0);
+    return prefixed.length === 1 ? prefixed[0].t : null; // 「任」→「任凌枫」，仅当唯一
+  }
+
+  let teacherNamesFixed = 0;
+  let teacherNamesNoticeQueued = false;
+  function migrateTeacherNames() {
+    let fixed = 0;
+    const fixOne = (obj, idKey, nameKey) => {
+      if (!obj) return;
+      const rawId = obj[idKey];
+      const rawName = obj[nameKey];
+      if (!rawId && !rawName) return;
+      let t = rawId ? teachers.find((x) => x.id === rawId) : null;
+      if (!t) t = findTeacherByName(rawName);
+      if (!t) return;
+      if (obj[idKey] !== t.id || obj[nameKey] !== t.name) {
+        obj[idKey] = t.id;
+        obj[nameKey] = t.name;
+        fixed++;
+      }
+    };
+    // 排课：主讲 / 助教
+    schedules.forEach((s) => {
+      fixOne(s, 'teacherId', 'teacherName');
+      fixOne(s, 'assistantTeacherId', 'assistantTeacherName');
+    });
+    // 消课流水：同上（历史导入那批只有名字、没有 id，这里顺手补上，以后不必再靠名字猜）
+    checkInLogs.forEach((l) => {
+      fixOne(l, 'teacherId', 'teacherName');
+      fixOne(l, 'assistantTeacherId', 'assistantTeacherName');
+    });
+    if (fixed > 0) {
+      teacherNamesFixed += fixed;
+      if (!teacherNamesNoticeQueued) {
+        teacherNamesNoticeQueued = true;                 // 加载与云端拉取会各跑一遍，别弹两次
+        setTimeout(() => showToast(`👤 已统一 ${teacherNamesFixed} 条记录的老师名（简称 → 档案全名）`, 'user'), 1100);
+      }
+    }
+    return fixed;
   }
 
   // 视角下拉里显示的老师名（带科目）
