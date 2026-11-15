@@ -2102,27 +2102,47 @@
   // 既没点消课，也没记请假 / 改期 / 取消。往日漏掉的也算（那正是最该补的），今天的按钟点判。
   // ⚠️ 用**结束时间**（startTime + durationMinutes，缺省 45）而不是开始时间：
   //    正在上的那节不该被催成「未处理」；「待上」由今日时间轴的 todayPending 负责，两者不重叠。
-  // 与手机端 unprocessedSchedules() 逐字一致。
-  function unprocessedSchedules(scopeFn) {
+  // 与手机端 pendingExpired() / unprocessedSchedules() 逐字一致。
+  function pendingExpired(s, todayStr) {
+    if (!s) return false;
+    if ((s.status || SCHEDULE_STATUS.SCHEDULED) !== SCHEDULE_STATUS.SCHEDULED) return false;
+    const today = todayStr || formatDate(new Date());
+    if (!s.date || s.date > today) return false;
+    if (s.date < today) return true;
+    const m = /^(\d{1,2}):(\d{2})/.exec(String(s.startTime || ''));
+    if (!m) return true;                 // 老数据没写钟点：判不了，保守列出来让人自己看
     const now = new Date();
-    const todayStr = formatDate(now);
-    const nowMin = now.getHours() * 60 + now.getMinutes();
-    const minOf = (hm) => {
-      const m = /^(\d{1,2}):(\d{2})/.exec(String(hm || ''));
-      return m ? Number(m[1]) * 60 + Number(m[2]) : null;
-    };
+    const end = Number(m[1]) * 60 + Number(m[2]) + (Number(s.durationMinutes) || 45);
+    return now.getHours() * 60 + now.getMinutes() > end;
+  }
+
+  function unprocessedSchedules(scopeFn) {
+    const todayStr = formatDate(new Date());
     return schedules
       .filter((s) => {
         if (scopeFn && !scopeFn(s)) return false;
-        if ((s.status || SCHEDULE_STATUS.SCHEDULED) !== SCHEDULE_STATUS.SCHEDULED) return false;
-        if (!s.date || s.date > todayStr) return false;
-        if (s.date < todayStr) return true;
-        const start = minOf(s.startTime);
-        if (start === null) return true;   // 老数据没写钟点：判不了，保守列出来让人自己看
-        const end = start + (Number(s.durationMinutes) || 45);
-        return nowMin > end;
+        if (s.pendingIgnored) return false;      // 手动忽略过的（不催、不计数）
+        return pendingExpired(s, todayStr);
       })
       .sort((a, b) => ((a.date || '') + (a.startTime || '')).localeCompare((b.date || '') + (b.startTime || '')));
+  }
+
+  // 忽略 / 恢复「待处理课时」：只是把这条从催办列表里摘掉/放回 ——
+  // **不动任何业务数据**：不消课、不扣课时、不改状态、不开欠课。
+  // 用于「这节课本来就不该点消课」的情况（老数据、班级课、线下已结清的）。
+  // 恢复入口在课程菜单里，别做成一次性的（误点就永远找不回来）。
+  function setPendingIgnored(schId, on) {
+    const sch = schedules.find((x) => x.id === schId);
+    if (!sch) return false;
+    if (on) {
+      sch.pendingIgnored = true;
+      sch.pendingIgnoredAt = formatDate(new Date());
+    } else {
+      delete sch.pendingIgnored;
+      delete sch.pendingIgnoredAt;
+    }
+    saveData();
+    return true;
   }
 
   // 待处理课时的二级页（底部抽屉）：打开 / 关闭 / 列表渲染。
@@ -2140,23 +2160,73 @@
 
   // ⚠️ 二级页**不截断**（首页小卡只给数量）：进来就是要看全部的，别在这儿再藏一半。
   // 新的在上（与首页同序）：刚上完的那节最可能是要补点的。
+  // 已忽略折叠区：展开 / 收起 / 单条恢复。
+  // 列表每次重渲染都会重建 DOM，所以统一用 onclick **赋值**（别 addEventListener，会越绑越多）。
+  function bindIgnoredSheetEvents(listEl) {
+    const toggle = listEl.querySelector('#pendingIgnoredToggle');
+    const box = listEl.querySelector('#pendingIgnoredBox');
+    if (toggle && box) {
+      toggle.onclick = () => {
+        box.classList.toggle('hidden');
+        const n = schedules.filter((s) => s.pendingIgnored).length;
+        toggle.textContent = box.classList.contains('hidden')
+          ? `已忽略 ${n} 节 · 点开可恢复`
+          : `收起已忽略（${n} 节）`;
+      };
+    }
+    listEl.querySelectorAll('.pending-restore').forEach((btn) => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const sch = schedules.find((x) => x.id === btn.getAttribute('data-id'));
+        if (!sch) return;
+        if (!setPendingIgnored(sch.id, false)) return;
+        showToast('已恢复待处理提醒', 'bell');
+        refreshView();
+      };
+    });
+  }
+
   function renderPendingSheet() {
     const listEl = document.getElementById('modalPendingList');
     if (!listEl) return;
     const todayStr = formatDate(new Date());
     const list = unprocessedSchedules();
+    // 被忽略的课：单独收在折叠区里。不这么做，误点一下就"永久消失"——
+    // 可能是两个月前的课，在日历上根本翻不到，只能靠这个口子捞回来。
+    const ignored = schedules
+      .filter((s) => s.pendingIgnored)
+      .sort((a, b) => ((a.date || '') + (a.startTime || '')).localeCompare((b.date || '') + (b.startTime || '')));
     const subEl = document.getElementById('modalPendingSub');
     if (subEl) {
       if (!list.length) {
-        subEl.textContent = '全部处理完了 · 没有上完还没点消课的课';
+        subEl.textContent = ignored.length
+          ? `全部处理完了 · 另有 ${ignored.length} 节已忽略`
+          : '全部处理完了 · 没有上完还没点消课的课';
       } else {
         const oldest = String(list[0].date || '').slice(0, 10);
         subEl.textContent = `共 ${list.length} 节 · 状态还是「待上课」，上课时间已过`
           + (oldest && oldest !== todayStr ? ` · 最早 ${oldest.slice(5).replace('-', '/')}` : '');
       }
     }
+    // 已忽略折叠区（与手机端同构）
+    const ignoredHtml = ignored.length ? `
+      <div class="border-t border-[#f7f3ec]">
+        <button id="pendingIgnoredToggle" class="w-full text-center text-[11px] font-semibold text-[#a8a29e] hover:text-[#78716c] py-2.5 transition">已忽略 ${ignored.length} 节 · 点开可恢复</button>
+        <div id="pendingIgnoredBox" class="hidden">
+          ${ignored.slice().reverse().map((s) => {
+            const dayStr = String(s.date || '').slice(0, 10);
+            return `<div class="flex items-center gap-3 px-6 py-2 hover:bg-[#faf8f3] transition">
+              <div class="text-[11px] font-semibold text-[#a8a29e] shrink-0 w-[46px]">${dayStr.slice(5).replace('-', '/')}</div>
+              <div class="flex-1 min-w-0 text-[12px] font-semibold text-[#78716c] truncate">${s.studentName || ''} · ${s.subject || ''}</div>
+              <button class="pending-restore text-[11px] font-bold px-3 py-1 rounded-full bg-[#f5f2ec] text-[#44403c] hover:bg-[#e7e5e4] transition" data-id="${s.id}">恢复</button>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>` : '';
+
     if (!list.length) {
-      listEl.innerHTML = `<div class="text-center py-16 text-[#a8a29e] text-xs"><i class="fa-solid fa-circle-check text-2xl mb-2 block opacity-40"></i>没有待处理的消课</div>`;
+      listEl.innerHTML = `<div class="text-center py-16 text-[#a8a29e] text-xs"><i class="fa-solid fa-circle-check text-2xl mb-2 block opacity-40"></i>没有待处理的消课</div>${ignoredHtml}`;
+      bindIgnoredSheetEvents(listEl);
       return;
     }
     listEl.innerHTML = list.slice().reverse().map((s) => {
@@ -2178,6 +2248,7 @@
         </div>
         <div class="flex items-center gap-2 shrink-0">
           <button class="pending-menu text-[11px] font-bold px-3 py-1.5 rounded-full bg-[#f5f2ec] text-[#44403c] hover:bg-[#e7e5e4] transition" data-id="${s.id}">处理</button>
+          <button class="pending-ignore text-[11px] font-bold px-2.5 py-1.5 rounded-full text-[#a8a29e] hover:text-[#78716c] hover:bg-[#f5f2ec] transition" data-id="${s.id}" title="忽略：不再出现在待处理课时（课程菜单里可恢复）">忽略</button>
           <button class="lm-checkin-btn pending-checkin shrink-0 text-[11px] font-bold px-3.5 py-1.5 rounded-full bg-[#111111] text-white transition" data-id="${s.id}">
             <span class="lm-cb-label">消课</span>
             <span class="lm-cb-spinner" aria-hidden="true"></span>
@@ -2185,14 +2256,26 @@
           </button>
         </div>
       </div>`;
-    }).join('');
+    }).join('') + ignoredHtml;
+
+    bindIgnoredSheetEvents(listEl);
 
     // 整行点击 → 课程菜单（请假 / 改期 / 删除都在里面），别只留一个「消课」把路堵死
     listEl.querySelectorAll('.pending-row').forEach((row) => {
       row.addEventListener('click', (e) => {
-        if (e.target.closest('.pending-checkin') || e.target.closest('.pending-menu')) return;
+        if (e.target.closest('.pending-checkin') || e.target.closest('.pending-menu') || e.target.closest('.pending-ignore')) return;
         const sch = schedules.find((x) => x.id === row.getAttribute('data-id'));
         if (sch) openScheduleActionMenu(sch);
+      });
+    });
+    listEl.querySelectorAll('.pending-ignore').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const sch = schedules.find((x) => x.id === btn.getAttribute('data-id'));
+        if (!sch) return;
+        if (!setPendingIgnored(sch.id, true)) return;
+        showToast('已忽略 · 不再出现在待处理课时（课程菜单里可恢复）', 'eye-slash');
+        refreshView();
       });
     });
     listEl.querySelectorAll('.pending-menu').forEach((btn) => {
@@ -2348,6 +2431,9 @@
     sch.needMakeup = false;
     sch.madeUpById = null;
     syncMakeupLink(sch);
+    // 撤销 = 这节又要重新处理 → 「忽略待处理」的标记一并撤掉，否则它不会回到待处理列表
+    delete sch.pendingIgnored;
+    delete sch.pendingIgnoredAt;
     saveData();
     refreshView();
     offerUndo('已撤销状态，还原为待上课', 'rotate-left', `还原 ${sch.studentName} 的课`);
@@ -5239,6 +5325,18 @@
 
     const BTN = 'w-full py-3 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2';
 
+    // 「忽略待处理」只在真的上完没点消课（或已经被忽略）时才给这个口子 ——
+    // 未来的课本来就不在待处理列表里，给按钮只会让人以为点了会删课。
+    const ignoreBtn = status === SCHEDULE_STATUS.SCHEDULED && (schedule.pendingIgnored || pendingExpired(schedule))
+      ? (schedule.pendingIgnored
+        ? `<button data-act="unignorePending" class="${BTN} btn-quiet">
+          <i class="fa-solid fa-bell"></i> 恢复待处理提醒
+        </button>`
+        : `<button data-act="ignorePending" class="${BTN} btn-quiet">
+          <i class="fa-solid fa-eye-slash"></i> 忽略（不再提示待处理）
+        </button>`)
+      : '';
+
     let actionsHtml = '';
     if (status !== SCHEDULE_STATUS.STUDENT_LEAVE) {
       actionsHtml += `
@@ -5246,6 +5344,7 @@
         <button data-act="checkin" class="${BTN} bg-emerald-500 text-white hover:bg-emerald-600">
           <i class="fa-solid fa-circle-check"></i> 消课签到（${getLessonCost(schedule)}节）
         </button>` : ''}
+        ${ignoreBtn}
         <button data-act="leave" class="lm-btn-leave ${BTN}">
           <i class="fa-solid fa-person-walking-arrow-right"></i> 学员请假（退还${getLessonCost(schedule)}节）${status === SCHEDULE_STATUS.COMPLETED ? ' · 改请假' : ''}
         </button>
@@ -5328,6 +5427,18 @@
       if (act === 'leave') { renderBody('ask'); return; }   // 请假先切二选一那一屏
       menu.remove();
       if (act === 'checkin') executeCheckIn(schedule.id);
+      else if (act === 'ignorePending') {
+        if (setPendingIgnored(schedule.id, true)) {
+          showToast('已忽略 · 不再出现在待处理课时（课程菜单里可恢复）', 'eye-slash');
+          refreshView();
+        }
+      }
+      else if (act === 'unignorePending') {
+        if (setPendingIgnored(schedule.id, false)) {
+          showToast('已恢复待处理提醒', 'bell');
+          refreshView();
+        }
+      }
       else if (act === 'makeup') openScheduleModalForNew(student, formatDate(new Date()), schedule.startTime, schedule);
       else if (act === 'makeupEdit') openScheduleModalForEdit(makePlan);
       else if (act === 'need') setNeedMakeup(schedule.id, true);

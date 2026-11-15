@@ -1139,3 +1139,34 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       C 同姓两位不乱认；D 手机端同构 + 登录态名字刷新 + 页面不再出现简称。
       护栏：① 砍掉前缀兜底 → 4 红（A3/A4/A7/A8）；② 不唯一时硬认第一个 → 3 红（C1/C2/C3）。
     - 版本 app.js?v=78 / mobile.js?v=92 / sw v140。
+
+69. **待处理课时：按钮尺寸要自己给全 + 「忽略」是可逆的**（2026-11-15，Jackson：
+    「这些按钮变成这样了」+ 截图 +「另外加一个忽略按钮」）
+    - **按钮塌陷真因**：`.lm-checkin-btn` 只管加载/完成三态动画的定位（`position:relative; overflow:hidden`），
+      **尺寸全靠外部类**。电脑端写了 `px-3.5 py-1.5 rounded-full text-[11px] font-bold`，
+      手机端抽屉只写了 `class="lm-checkin-btn"` + inline 背景 → 裸 button 塌成 24×16，
+      和「处理」贴在一起、文字像被裁。修法：两枚都挂 **`.lm-mini-btn`**（26px 高 / pill / 11px 700 /
+      `flex:none`），消课再叠 `.lm-checkin-btn` 跑动画。回归断言按钮**等高 26px**、
+      消课宽度 ≥44、三枚依次不重叠、右边缘在卡片内 —— 少给尺寸类就红（A4/A5）。
+    - ⚠️ **手机端 `button[aria-label]` 会被全局触控规则撑成 44×44**
+      （`mobile-theme.css: button.icon-btn, button[aria-label] { min-width/min-height:44px }`）。
+      文字按钮别再补 `aria-label`（文字本身就是标签），否则一枚 44 一枚 26，一行歪掉（A4 就是这么红的）。
+    - **忽略语义**：只把这条从催办列表摘掉，**不动任何业务数据**（不消课、不扣课时、不改状态、不开欠课）。
+      数据落 `s.pendingIgnored = true` / `s.pendingIgnoredAt`，`unprocessedSchedules()` 里
+      `if (s.pendingIgnored) return false;` → 首页入口卡数字、抽屉行数自动跟着变。
+      用于「这节课本来就不该点消课」（老数据、班级课、线下已结清）。
+    - **必须可逆**：抽屉底部有折叠区「已忽略 N 节 · 点开可恢复」（两端同构），
+      课程菜单里也有「恢复待处理提醒」/「忽略（不再提示待处理）」互斥项。
+      不做恢复入口的话，误点一次就"永久消失"——被忽略的往往是两个月前的课，日历上根本翻不到。
+    - 菜单里的「忽略」只在 `scheduled && (pendingIgnored || pendingExpired(s))` 时给：
+      未来的课本来就不在列表里，给按钮只会让人以为点了会删课。
+    - `revertScheduleStatus()`（撤销消课/请假 → 待上课）里要 `delete sch.pendingIgnored`：
+      撤销的语义就是「这节要重新处理」，不清标记它不会回到列表。
+    - `pendingExpired(s, todayStr)` 抽成单条判定（两端逐字一致），`unprocessedSchedules()` 复用它 +
+      过滤 `pendingIgnored`。口径不变：**结束时间**（startTime + durationMinutes 缺省 45）已过。
+    - 回归 `tmp/pending-ignore-check.mjs` **34 项**：A 排版几何（等高/不重叠/不出卡片/文字不被裁）；
+      B 门行忽略后消失 + 数字变 + 不产生流水/不扣课时/状态不变；C 折叠区恢复 + 菜单里忽略；
+      D 电脑端同口径；E 账目零影响。
+      护栏：① 还原「消课按钮不挂 lm-mini-btn」→ 2 红（A4/A5，复现 24×16 裸按钮）；
+      ② 去掉 `pendingIgnored` 过滤 → 3 红（B1/B2/C8）。
+    - 版本 app.js?v=79 / mobile.js?v=94 / tailwind.css?v=12 / sw v142。
