@@ -36,6 +36,8 @@
   // **故意不复用 selectedTeacherFilter** —— 顶栏那个筛选器只在课表页可见（switchPage 里 mainTopbar 只在
   // schedule 页显示），若共用，用户在课表页筛了某老师、切到财务页会看到数字变了却找不到原因。
   let financeTeacherFilter = 'all';
+  // 财务页「本月收入明细」是否展开为全部流水（往月补登的课只在这里找得到，见 logCheckInMonth）
+  let financeLogShowAll = false;
   let currentWeekStart = getMonday(new Date()); // 当前视图对应的周一
   let calendarViewMode = 'week';      // 'week' | 'month'（月历总览）
   let monthSelectedDate = null;       // 月视图当前选中日（对齐手机版：点格子选中，右栏出当日安排）
@@ -202,6 +204,16 @@
     return formatDate(d);
   }
 
+  // 「点消课那一下」落在哪个月（本地）。用来识别**本月补登往月的课**：
+  // 归月一律按上课日期，于是这类流水在本月明细里天然不存在 —— 用户看着自己刚点完的课
+  // 在财务页翻不到，就会以为没记上。财务页据此在表底提示，并给「查看全部」入口。
+  function logCheckInMonth(l) {
+    if (!l || !l.checkInTime) return '';
+    const d = new Date(l.checkInTime);
+    if (isNaN(d.getTime())) return '';
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+
   // 财务明细里的「上课时间」= 这一节**什么时候上的**，不是什么时候点的消课。
   // 取数拆两半：日期一律走 logLocalDate（与归月口径同一份），钟点取排课的 startTime。
   // ⚠️ 找不到排课（被删 / 历史导入 / 退款）时**只显示日期**，绝不退回 checkInTime 的钟点 ——
@@ -215,6 +227,12 @@
     const s = logClassStamp(l);
     if (!s.date) return s.hm;
     return s.hm ? `${s.date.slice(5)} ${s.hm}` : s.date.slice(5);
+  }
+  // 全部流水视图用：日期不省略年份（翻往月时「11-28」到底是哪年得靠猜）
+  function logClassTimeFull(l) {
+    const s = logClassStamp(l);
+    if (!s.date) return s.hm || '—';
+    return s.hm ? `${s.date} ${s.hm}` : s.date;
   }
   // 明细倒序也按上课时间排：点课顺序会被「今天补登昨天的课」打乱（补的那笔排到最上面）
   function logClassSortKey(l) {
@@ -3969,7 +3987,19 @@
     // 退款流水 deductedLessons=0 → 课消节数天然不受影响；paymentAmount 是负数 → 金额自动被扣减
     const monthValue = monthLogs.reduce((acc, l) => acc + (l.paymentAmount || 0), 0);
     // 老师视角下 monthLogs 已排除退款 → 这里天然为 0（退款是机构层面的账，不挂在某个老师头上）
-    const monthRefund = monthLogs.filter(isRefundLog).reduce((acc, l) => acc + Math.abs(l.paymentAmount || 0), 0);
+
+    // 明细表可切「全部」：归月一律按**上课日期**，所以「今天点消课、课是上个月的」这种补登
+    // 在本月明细里天然不存在。只给本月一个表 = 用户刚点完的课在财务页翻不到，以为没记上。
+    const allScopedLogs = (scoped
+      ? checkInLogs.filter((l) => !isRefundLog(l) && teacherRelatedLog(l, tId))
+      : checkInLogs).slice().sort((a, b) => logClassSortKey(b).localeCompare(logClassSortKey(a)));
+    const ALL_LOG_CAP = 300;   // 全部视图只渲染最近 300 笔，够查账又不至于把 DOM 撑爆
+    const detailLogs = financeLogShowAll ? allScopedLogs.slice(0, ALL_LOG_CAP) : monthLogs;
+    const detailLessons = detailLogs.reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
+    const detailValue = detailLogs.reduce((acc, l) => acc + (l.paymentAmount || 0), 0);
+    const detailRefund = detailLogs.filter(isRefundLog).reduce((acc, l) => acc + Math.abs(l.paymentAmount || 0), 0);
+    // 本月点课、但上课日期不在本月 → 本月明细里没有它们，表底单独点出来
+    const backfillLogs = allScopedLogs.filter((l) => logCheckInMonth(l) === monthPrefix && !logLocalDate(l).startsWith(monthPrefix));
 
     // 老师视角：待消存量 / 课时存量价值 / 欠课名单 / 续费预警 只算**该老师授课的课程包**
     // 历史学员（已归档）不算存量也不算欠课：人已经离校，课消金额仍按流水照算（上面那几项不受影响）
@@ -4042,11 +4072,14 @@
       <div class="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
         <!-- 本月收入明细：桌面表格 -->
         <div class="lm-stat-card rounded-2xl xl:col-span-2">
-          <div class="flex items-center justify-between px-4 pt-4 pb-2">
-            <div class="font-bold text-xs lm-t1 flex items-center gap-1.5"><i class="fa-solid fa-receipt" style="color:#ff5600;"></i> 本月收入明细${scoped ? `<span class="text-[10px] font-bold lm-t3">· ${vLabel}</span>` : ''}</div>
-            <div class="text-[11px] font-bold lm-t2">${monthLogs.length} 笔 · ${monthLessons.toFixed(1)} 节 · 净 ${fmtMoney(monthValue)}${monthRefund > 0 ? ` <span class="text-rose-500">（已退 ¥${monthRefund.toFixed(0)}）</span>` : ''}</div>
+          <div class="flex items-center justify-between px-4 pt-4 pb-2 gap-2 flex-wrap">
+            <div class="font-bold text-xs lm-t1 flex items-center gap-1.5"><i class="fa-solid fa-receipt" style="color:#ff5600;"></i> ${financeLogShowAll ? '全部收入明细' : '本月收入明细'}${scoped ? `<span class="text-[10px] font-bold lm-t3">· ${vLabel}</span>` : ''}</div>
+            <div class="flex items-center gap-2">
+              <button type="button" id="financeLogScopeBtn" class="text-[10px] font-bold px-2 py-1 rounded-full border border-[#efe9e0] lm-t2 hover:bg-[#faf8f3] transition whitespace-nowrap">${financeLogShowAll ? '回到本月' : '查看全部'}</button>
+              <div class="text-[11px] font-bold lm-t2">${detailLogs.length}${financeLogShowAll && allScopedLogs.length > ALL_LOG_CAP ? '/' + allScopedLogs.length : ''} 笔 · ${detailLessons.toFixed(1)} 节 · 净 ${fmtMoney(detailValue)}${detailRefund > 0 ? ` <span class="text-rose-500">（已退 ¥${detailRefund.toFixed(0)}）</span>` : ''}</div>
+            </div>
           </div>
-          ${monthLogs.length === 0 ? '<div class="text-[11px] lm-t3 py-8 text-center">本月暂无消课记录</div>' : `
+          ${detailLogs.length === 0 ? `<div class="text-[11px] lm-t3 py-8 text-center">${financeLogShowAll ? '还没有任何消课记录' : '本月暂无消课记录'}</div>` : `
           <div class="max-h-[480px] overflow-y-auto custom-scrollbar px-2 pb-2">
             <table class="w-full text-xs">
               <thead class="sticky top-0 bg-white">
@@ -4060,21 +4093,28 @@
                 </tr>
               </thead>
               <tbody>
-                ${monthLogs.map((l) => {
+                ${detailLogs.map((l) => {
                   // 退款行：没有「消课节数」，金额是负数 —— 单独立样式，别混在消课行里读
                   const ref = isRefundLog(l);
+                  // 不属于本月的行：时间补上年份，翻旧账时一眼看出「这节是上个月的」
+                  const inMonth = logLocalDate(l).startsWith(monthPrefix);
                   return `
                 <tr class="border-b border-[#f2ece4] ${ref ? 'bg-rose-50/40' : 'hover:bg-[#faf8f3]'} transition">
-                  <td class="py-3 pl-2 font-bold lm-t1 whitespace-nowrap">${l.studentName}${ref ? '<span class="ml-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-600">退款</span>' : ''}</td>
+                  <td class="py-3 pl-2 font-bold lm-t1 whitespace-nowrap">${l.studentName}${ref ? '<span class="ml-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-600">退款</span>' : ''}${!inMonth ? '<span class="ml-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#FDF3E3] text-[#7C4A03]">往月</span>' : ''}</td>
                   <td class="py-3 lm-t2 whitespace-nowrap">${l.courseName}</td>
                   <td class="py-3 lm-t3 max-w-[180px] truncate" title="${l.remarks || ''}">${ref ? `退 ${l.refundLessons || 0} 节${l.remarks ? ' · ' + l.remarks : ''}` : (l.remarks || '—')}</td>
                   <td class="py-3 text-right lm-t2 whitespace-nowrap">${ref ? '<span class="lm-t3">—</span>' : `${l.deductedLessons} 节`}</td>
                   <td class="py-3 text-right font-bold whitespace-nowrap ${ref ? 'text-rose-600' : (l.paymentAmount > 0 ? 'lm-t1' : 'lm-t3')}">${l.paymentAmount ? fmtMoney(l.paymentAmount) : '—'}</td>
-                  <td class="py-3 text-right lm-t3 whitespace-nowrap pr-2">${logClassTimeText(l)}</td>
+                  <td class="py-3 text-right lm-t3 whitespace-nowrap pr-2">${inMonth ? logClassTimeText(l) : logClassTimeFull(l)}</td>
                 </tr>`;}).join('')}
               </tbody>
             </table>
-          </div>`}
+          </div>
+          ${!financeLogShowAll && backfillLogs.length ? `
+          <div class="px-4 py-2.5 text-[11px] font-semibold text-[#7C4A03] border-t border-[#f2ece4] bg-[#FDF3E3] flex items-center justify-between gap-2 flex-wrap">
+            <span><i class="fa-solid fa-circle-info mr-1"></i>另有 ${backfillLogs.length} 笔是本月补登的往月课（上课日期早于本月），按上课日期归月，没算进上面两项</span>
+            <button type="button" id="financeLogBackfillBtn" class="underline font-bold whitespace-nowrap">查看</button>
+          </div>` : ''}`}
         </div>
 
         <!-- 右栏：本月充值 + 续费预警 + 欠课名单 + 课时存量价值 -->
@@ -4146,6 +4186,22 @@
       if (!vSel.value) { financeTeacherFilter = 'all'; vSel.value = 'all'; }
       vSel.addEventListener('change', () => {
         financeTeacherFilter = vSel.value;
+        renderPageFinance();
+      });
+    }
+
+    // 明细表：本月 ↔ 全部（往月补登的课只在这边找得到）
+    const logScopeBtn = document.getElementById('financeLogScopeBtn');
+    if (logScopeBtn) {
+      logScopeBtn.addEventListener('click', () => {
+        financeLogShowAll = !financeLogShowAll;
+        renderPageFinance();
+      });
+    }
+    const backfillBtn = document.getElementById('financeLogBackfillBtn');
+    if (backfillBtn) {
+      backfillBtn.addEventListener('click', () => {
+        financeLogShowAll = true;
         renderPageFinance();
       });
     }

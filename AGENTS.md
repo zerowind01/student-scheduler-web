@@ -1064,3 +1064,22 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       护栏：① 抽屉改 `items-center` → 1 红（B9）；② 抽屉截 8 行 → 1 红（D4）；
       ③ 不跟着刷抽屉 → 1 红（C2）。
     - 版本 app.js?v=75 / mobile.js?v=89 / sw v137 / tailwind 重建。
+
+66. **财务页明细要能翻到「往月补登的课」**（2026-11-15，Jackson：「有一个学生叫范昕甯消课后没有出现在
+    财务页上的记录？」）
+    - 不是没记流水。财务页明细只取 `logLocalDate(l).startsWith(monthPrefix)`，而归月一律按**上课日期**
+      （第 61 条）。于是「今天点了上个月那节课」的补登在本月明细里天然不存在 —— 而财务页也没有任何
+      入口能翻到它，看着就像消课没记上。（该学生多半是刚用「待处理课时」抽屉补点的往日课，见第 64/65 条。）
+    - 口径不动：`本月课消 / 课消价值` 两个 KPI 仍只算本月，切明细视图**不影响**它们。
+    - 明细表加切换：`financeLogShowAll`（电脑）/ `mobileFinanceLogAll`（手机，**声明放文件顶部**）。
+      「查看全部」→ `allScopedLogs`（老师视角同样过滤退款与任职关系），最多渲染 `ALL_LOG_CAP = 300` 笔；
+      统计口径跟着换成全部（`detailLogs / detailLessons / detailValue / detailRefund`）。
+    - 全部视图里**不属于本月的行**：名字旁打「往月」标；时间走 `logClassTimeFull(l)`（**带年份**）——
+      翻旧账时 `10-28` 到底是哪年不能靠猜。本月行仍用 `logClassTimeText`（MM-DD）。
+    - 表底提示：`logCheckInMonth(l) === monthPrefix && !logLocalDate(l).startsWith(monthPrefix)`
+      → 「另有 N 笔是本月补登的往月课（按上课日期归月）」，右侧「查看」直接切全部。只在**本月视图**出现。
+    - 回归 `tmp/finance-all-logs-check.mjs` **27 项**（A 电脑 16 / B 手机 11，本地与线上都 27/27）：
+      默认只有本月 2 笔 → 补登提示 → 切全部 4 笔（含「往月」标与完整日期）→ KPI 不变 → 回到本月。
+      护栏：① 忽略切换（`detailLogs = monthLogs`）→ 10 红；② 不产补登提示 → 6 红；
+      ③ 往月行不补年份 → 3 红（A11/A12/B9）。
+    - 版本 app.js?v=76 / mobile.js?v=90 / sw v138。

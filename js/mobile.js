@@ -31,6 +31,8 @@
   // 默认「周」：进课表先看这一周全貌，比 3 日窗口更适合快速定位。
   let calView = 'week';
   let mobileStudentScope = 'active';           // 学员页范围：active=在读 / archived=历史学员库
+  // 财务页「收入明细」是否展开为全部流水（往月补登的课只在这里找得到）
+  let mobileFinanceLogAll = false;
   // 学员状态（2026-10-24）：页面级状态必须声明在顶部，写在函数上方会 TDZ 白屏
   let mStatusStudentId = '';                   // 状态弹层当前学员
   let pauseExpiredNoticeQueued = false;        // 停课到期提示只弹一次
@@ -176,6 +178,15 @@
     return formatDate(d);
   }
 
+  // 「点消课那一下」落在哪个月（本地）。用来识别**本月补登往月的课**：归月按上课日期，
+  // 这类流水在本月明细里天然不存在，得在表底提示出来，否则用户以为自己刚点的课没记上。
+  function logCheckInMonth(l) {
+    if (!l || !l.checkInTime) return '';
+    const d = new Date(l.checkInTime);
+    if (isNaN(d.getTime())) return '';
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+
   // 财务明细里的「上课时间」= 这一节**什么时候上的**，不是什么时候点的消课。
   // 日期走 logLocalDate（与归月口径同一份），钟点取排课的 startTime；
   // 找不到排课（被删 / 历史导入 / 退款）只显示日期，绝不退回 checkInTime 的钟点
@@ -189,6 +200,12 @@
     const s = logClassStamp(l);
     if (!s.date) return s.hm;
     return s.hm ? `${s.date.slice(5)} ${s.hm}` : s.date.slice(5);
+  }
+  // 全部流水视图用：日期不省略年份（翻往月时「11-28」到底是哪年得靠猜）
+  function logClassTimeFull(l) {
+    const s = logClassStamp(l);
+    if (!s.date) return s.hm || '—';
+    return s.hm ? `${s.date} ${s.hm}` : s.date;
   }
   function logClassSortKey(l) {
     const s = logClassStamp(l);
@@ -7141,7 +7158,18 @@
     const monthLessons = monthLogs.reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
     // 退款流水 deductedLessons=0 → 课消节数天然不受影响；paymentAmount 是负数 → 金额自动被扣减
     const monthValue = monthLogs.reduce((acc, l) => acc + (l.paymentAmount || 0), 0);
-    const monthRefund = monthLogs.filter(isRefundLog).reduce((acc, l) => acc + Math.abs(l.paymentAmount || 0), 0);
+
+    // 明细可切「全部」：归月按**上课日期**，本月补登往月的课在本月明细里天然没有。
+    const allScopedLogs = (isTeacherView()
+      ? checkInLogs.filter((l) => !isRefundLog(l) && logRelatedToTeacher(l))
+      : checkInLogs).slice().sort((a, b) => logClassSortKey(b).localeCompare(logClassSortKey(a)));
+    const ALL_LOG_CAP = 300;   // 全部视图只渲染最近 300 笔（与电脑端同值）
+    const detailLogs = mobileFinanceLogAll ? allScopedLogs.slice(0, ALL_LOG_CAP) : monthLogs;
+    const detailLessons = detailLogs.reduce((acc, l) => acc + (l.deductedLessons || 0), 0);
+    const detailValue = detailLogs.reduce((acc, l) => acc + (l.paymentAmount || 0), 0);
+    const detailRefund = detailLogs.filter(isRefundLog).reduce((acc, l) => acc + Math.abs(l.paymentAmount || 0), 0);
+    // 本月点课但上课日期不在本月 → 本月明细里没有，表底单独点出来
+    const backfillLogs = allScopedLogs.filter((l) => logCheckInMonth(l) === monthPrefix && !logLocalDate(l).startsWith(monthPrefix));
 
     // 环比（与上月整月比）：只在能由消课流水直接推出的两项上放徽章；
     // 「待消存量 / 欠课学员」没有历史快照，硬算会出假数。老师视角按同一口径过滤。
@@ -7230,25 +7258,37 @@
       </div>
 
       <div class="lm-card p-4">
-        <div class="font-bold text-[13px] text-[#111111] mb-2 flex items-center gap-1.5"><i class="fa-solid fa-receipt text-[#ff5600]"></i> 本月${isTeacherView() ? '我的' : ''}收入明细${monthRefund > 0 ? ` <span class="text-[11px] font-medium text-[#d5304f]">已退 ¥${monthRefund.toFixed(0)}</span>` : ''}</div>
-        ${monthLogs.length === 0 ? '<div class="text-[12px] text-[#9c9fa5] py-4 text-center">本月暂无消课记录</div>' : `
+        <div class="flex items-center justify-between gap-2 mb-2">
+          <div class="font-bold text-[13px] text-[#111111] flex items-center gap-1.5"><i class="fa-solid fa-receipt text-[#ff5600]"></i> ${mobileFinanceLogAll ? '全部' : '本月'}${isTeacherView() ? '我的' : ''}收入明细${detailRefund > 0 ? ` <span class="text-[11px] font-medium text-[#d5304f]">已退 ¥${detailRefund.toFixed(0)}</span>` : ''}</div>
+          <button type="button" id="mFinanceLogScopeBtn" class="shrink-0 text-[10px] font-bold px-2 py-1 rounded-full active:opacity-60 transition" style="border:1px solid #e8e1d7;color:#6b6560">${mobileFinanceLogAll ? '回到本月' : '查看全部'}</button>
+        </div>
+        <div class="text-[10px] text-[#9c9fa5] mb-1.5">${detailLogs.length}${mobileFinanceLogAll && allScopedLogs.length > ALL_LOG_CAP ? '/' + allScopedLogs.length : ''} 笔 · ${detailLessons.toFixed(1)} 节 · 净 ${fmtMoney(detailValue)}</div>
+        ${detailLogs.length === 0 ? `<div class="text-[12px] text-[#9c9fa5] py-4 text-center">${mobileFinanceLogAll ? '还没有任何消课记录' : '本月暂无消课记录'}</div>` : `
         <div class="space-y-1.5">
-          ${monthLogs.map((l) => {
+          ${detailLogs.map((l) => {
             // 退款行单独立样式（没有消课节数、金额是负数），别混在消课行里读
             const ref = isRefundLog(l);
+            // 不属于本月的行：时间补上年份，翻旧账时一眼看出「这节是上个月的」
+            const inMonth = logLocalDate(l).startsWith(monthPrefix);
             return `
             <div class="flex items-center justify-between text-[11.5px] ${ref ? 'bg-[#fff2f4]' : 'bg-[#faf6ef]'} px-3 py-2 rounded-xl">
               <div class="min-w-0">
                 <span class="font-bold text-[#111111]">${l.studentName}</span>
                 <span class="text-[#9c9fa5] ml-1">${l.courseName}</span>
                 ${ref ? `<span class="font-bold text-[#d5304f] ml-1">退款 ${l.refundLessons || 0} 节</span>` : ''}
+                ${!inMonth ? '<span class="ml-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full" style="background:#FDF3E3;color:#7C4A03">往月</span>' : ''}
               </div>
               <div class="text-right shrink-0 ml-2">
                 <div class="font-bold ${ref ? 'text-[#d5304f]' : 'text-[#626260]'}">${ref ? fmtMoney(l.paymentAmount) : `${l.deductedLessons}节${l.paymentAmount > 0 ? ` · ¥${l.paymentAmount.toFixed(0)}` : ''}`}</div>
-                <div class="text-[10px] text-[#9c9fa5]">${logClassTimeText(l)}</div>
+                <div class="text-[10px] text-[#9c9fa5]">${inMonth ? logClassTimeText(l) : logClassTimeFull(l)}</div>
               </div>
             </div>`;}).join('')}
         </div>`}
+        ${!mobileFinanceLogAll && backfillLogs.length ? `
+        <div class="mt-2 px-3 py-2 rounded-xl text-[10.5px] font-semibold flex items-center justify-between gap-2" style="background:#FDF3E3;color:#7C4A03">
+          <span><i class="fa-solid fa-circle-info mr-1"></i>另有 ${backfillLogs.length} 笔本月补登的往月课，按上课日期归月，没算进上面的本月课消</span>
+          <button type="button" id="mFinanceLogBackfillBtn" class="shrink-0 underline font-bold active:opacity-60">查看</button>
+        </div>` : ''}
       </div>
 
       <div class="lm-card p-4">
@@ -7281,6 +7321,22 @@
         if (log) openMobileStudentDetail(log.studentId);
       });
     });
+
+    // 明细表：本月 ↔ 全部（往月补登的课只在这边找得到）
+    const logScopeBtn = document.getElementById('mFinanceLogScopeBtn');
+    if (logScopeBtn) {
+      logScopeBtn.addEventListener('click', () => {
+        mobileFinanceLogAll = !mobileFinanceLogAll;
+        renderMobileFinance();
+      });
+    }
+    const backfillBtn = document.getElementById('mFinanceLogBackfillBtn');
+    if (backfillBtn) {
+      backfillBtn.addEventListener('click', () => {
+        mobileFinanceLogAll = true;
+        renderMobileFinance();
+      });
+    }
 
     // 欠课红点
     const badge = document.getElementById('mobileNavDebtBadge');
