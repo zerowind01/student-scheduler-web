@@ -639,7 +639,12 @@
       paymentAmount: payment,
       checkInTime: new Date().toISOString(),
       remarks: remarks || '',
+      // 老师归属：**id 比名字可靠**（排课里的名字常是「任老师」这种手写简称），一并落到流水上，
+      // 课后改派老师也不会把这笔课从原老师账上抹掉
+      teacherId: schedule.teacherId || '',
+      assistantTeacherId: schedule.assistantTeacherId || '',
       teacherName: schedule.teacherName || '',
+      assistantTeacherName: schedule.assistantTeacherName || '',
       date: schedule.date || '',
     });
   }
@@ -2635,21 +2640,37 @@
       ((s.subject || '') === courseName || (c && s.courseId === c.id)));
   }
 
-  // 某条消课流水是否属于该老师的课：流水带 teacherId 直接判，老流水回退查排课。
-  // ⚠️ 兜底分支 `!sch` 意味着「既无 teacherId 又找不到排课」的流水对**每个**老师都返回 true ——
-  //    退款流水正是这种（scheduleId=''），所以老师视角必须额外排除退款，见 renderPageFinance。
+  // 某条消课流水是否属于该老师的课。归属顺序：**流水自带 id → 排课上的主讲/助教 id → 名字**。
+  // ⚠️ 名字只能垫底，不能抢在排课 id 前面：排课里的老师名是**手写自由文本**，常写简称
+  //    （「任老师」），而老师档案是全名（「任凌枫」）—— 只比名字会把课判给谁都不是，
+  //    老师视角里整月消失（2026-11-15 范昕甯：11-07 / 11-14 两节都是「任老师」）。
+  // ⚠️ 兜底分支「既无排课也无老师名」对**每个**老师都返回 true —— 退款流水正是这种
+  //    （scheduleId=''），所以老师视角必须额外排除退款，见 renderPageFinance。
   function teacherRelatedLog(log, teacherId) {
     if (isAllTeachers(teacherId)) return true;
-    if (log.teacherId) return log.teacherId === teacherId;
-    const sch = schedules.find((s) => s.id === log.scheduleId);
-    if (sch) return sch.teacherId === teacherId || sch.assistantTeacherId === teacherId;
-    // 历史导入的流水**只有老师名字**：没有 teacherId、也没有排课。
-    // 不按名字兜底就会落到「无排课 = 算这位老师的」，把每一笔历史课重复算进每一位老师。
-    if (log.teacherName) {
-      const t = teachers.find((x) => x.id === teacherId);
-      return !!t && t.name === log.teacherName;
+    if (log.teacherId || log.assistantTeacherId) {
+      return log.teacherId === teacherId || log.assistantTeacherId === teacherId;
     }
-    return true; // 既无排课也无老师名（退款等）→ 保持旧口径
+    const sch = schedules.find((s) => s.id === log.scheduleId);
+    if (sch && (sch.teacherId || sch.assistantTeacherId)) {
+      if (sch.teacherId === teacherId || sch.assistantTeacherId === teacherId) return true;
+      // 排课挂着别人的 id：这笔可能是助教点的（流水只记名字）→ 名字再兜一次
+      return teacherNameHit(log.teacherName, teacherId);
+    }
+    // 历史导入的流水**只有老师名字**：没有 teacherId、也没有排课（排课可能没挂老师档案）。
+    // 不按名字兜底就会落到「无排课 = 算这位老师的」，把每一笔历史课重复算进每一位老师。
+    const nm = log.teacherName || (sch && sch.teacherName) || '';
+    if (!nm) return true; // 既无排课也无老师名（退款等）→ 保持旧口径
+    return teacherNameHit(nm, teacherId);
+  }
+
+  // 老师名相等：去所有空格 + 去尾部「老师」（排课手写「温沛愉老师」也算同一个人）
+  function teacherNameHit(name, teacherId) {
+    const t = teachers.find((x) => x.id === teacherId);
+    if (!t) return false;
+    const key = (n) => String(n == null ? '' : n).replace(/\s+/g, '').replace(/老师$/, '');
+    const k = key(name);
+    return !!k && k === key(t.name);
   }
 
   // 视角下拉里显示的老师名（带科目）

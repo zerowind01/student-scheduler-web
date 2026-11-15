@@ -1083,3 +1083,30 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       护栏：① 忽略切换（`detailLogs = monthLogs`）→ 10 红；② 不产补登提示 → 6 红；
       ③ 往月行不补年份 → 3 红（A11/A12/B9）。
     - 版本 app.js?v=76 / mobile.js?v=90 / sw v138。
+
+67. **消课流水的老师归属：id 优先，名字只能垫底**（2026-11-15，Jackson：「有一个学生叫范昕甯消课后没有
+    出现在财务页上的记录？」→「该学生上个月还有显示在我的收入明细，这个月内的消课通通没有」）
+    - 真因（用机构码 `Zerowind` 从 `/api/sync` 拉的云端真数据钉死的，不是猜）：老师档案叫 **任凌枫**、
+      **温沛愉**，但排课里的 `teacherName` 是**手写自由文本**，常写简称「任老师」「温老师」
+      （11 月排课：任老师 14 条 / 任凌枫 30 条 / 温老师 5 条 / 温沛愉 63 条）。
+      手机端 `logRelatedToTeacher` 旧写法是 `if (log.teacherId || log.teacherName) return 只比名字`
+      → 「任老师」≠「任凌枫」→ 这两节课**判给谁都不是**，老师视角整月消失。
+      范昕甯 11-07 / 11-14 两节都是「任老师」，而 10 月那几笔里混着「任凌枫」的 → 「上个月还有显示」。
+      电脑端当时反而是对的（它先查排课 `teacherId`），所以这个 bug **只在手机老师登录时出现**。
+    - 统一口径（两端逐字一致，**顺序不能动**）：
+      ① 流水自带 `teacherId` / `assistantTeacherId` → 只认 id；
+      ② 排课上的 `teacherId` / `assistantTeacherId` → 命中即真；都不命中但排课确实挂了 id →
+         **名字再兜一次**（助教点的课，流水只记名字）；
+      ③ 都没有 id 才比名字（历史导入的流水只有名字）；
+      ④ 既无排课也无老师名（退款等）→ 仍返回 true（老师视角另外排除退款，见第 33 条）。
+      名字比较一律走 `teacherNameHit()` / `teacherNameMatches()`：**去所有空格 + 去尾部「老师」**。
+    - `recordCheckInLog` 顺手把 `teacherId / assistantTeacherId / assistantTeacherName` 一起写进流水 ——
+      以后不用再靠名字猜，课后改派老师也不会把这笔课从原老师账上抹掉。**这是新流水才有的字段，
+      老流水仍走 ② 查排课**，别在别处假设 `log.teacherId` 一定存在。
+    - 真数据验证：任凌枫 11 月可见 12 → **16 笔**（4 笔「任老师」回来，范昕甯两节都在），
+      温沛愉 23 笔不变（没串账）。
+    - 回归 `tmp/teacher-log-attribution-check.mjs` **17 项**：A 手机老师视角（简称/全名/历史导入/
+      不串账/全部视图的往月行）、B 另一位老师不串账、C 电脑端同口径、D 消课新流水带 `teacherId`。
+      护栏：① 手机退回「有名字就只比名字」→ 7 红（A2/A4/A5/A6/A7/B2/B3，且复现「本月课消 2.0 节」）；
+      ② 电脑端名字优先 → 1 红（C1）；③ `recordCheckInLog` 不写 teacherId → 1 红（D3）。
+    - 版本 app.js?v=77 / mobile.js?v=91 / sw v139。

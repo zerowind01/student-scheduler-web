@@ -132,15 +132,35 @@
       ((s.subject || '') === courseName || s.courseId === st.courses.find((c) => c.name === courseName)?.id));
   }
 
-  // 老师视角：某条消课流水是否属于该老师的课（流水带 teacherId 直接判，老流水回退查排课）
+  // 老师视角：某条消课流水是否属于该老师的课。
+  // 归属顺序：**流水自带 id → 排课上的主讲/助教 id → 名字**。
+  // ⚠️ 不能「一看到老师名就只比名字」：排课里的老师名是手写自由文本，常写简称（「任老师」），
+  //    档案却是全名（「任凌枫」）—— 名字一比就判给谁都不是，老师视角里整月消失
+  //    （2026-11-15 范昕甯：11-07 / 11-14 两节都挂「任老师」，人整个月从「我的收入明细」里没了）。
   function logRelatedToTeacher(log) {
     if (!teacherSession) return true;
-    if (log.teacherId || log.teacherName) return schRelatedToTeacher(log, teacherSession.teacherId, teacherSession.name);
+    const tid = teacherSession.teacherId;
+    const tname = teacherSession.name;
+    if (log.teacherId || log.assistantTeacherId) {
+      return log.teacherId === tid || log.assistantTeacherId === tid;
+    }
     const sch = schedules.find((s) => s.id === log.scheduleId);
-    if (sch) return schRelatedToTeacher(sch, teacherSession.teacherId, teacherSession.name);
-    // 历史导入的流水只有老师名字（无 teacherId / 无排课）→ 按名字归属，否则会重复算进每位老师
-    if (log.teacherName) return log.teacherName === teacherSession.name;
-    return true;
+    if (sch && (sch.teacherId || sch.assistantTeacherId)) {
+      if (sch.teacherId === tid || sch.assistantTeacherId === tid) return true;
+      // 排课挂着别人的 id：这笔可能是助教点的（流水只记名字）→ 名字再兜一次
+      return teacherNameHit(log.teacherName, tname);
+    }
+    // 历史导入的流水只有老师名字（无 teacherId / 排课没挂老师档案）→ 按名字归属，
+    // 否则会落到「无排课 = 算这位老师的」，把每一笔历史课重复算进每位老师
+    const nm = log.teacherName || (sch && sch.teacherName) || '';
+    if (!nm) return true;
+    return teacherNameHit(nm, tname);
+  }
+
+  // 老师名相等（去空格 + 去尾部「老师」再比）；空名字一律不命中
+  function teacherNameHit(a, b) {
+    const k = teacherNameKey(a);
+    return !!k && k === teacherNameKey(b);
   }
 
   function getToday() {
@@ -598,7 +618,11 @@
       paymentAmount: payment,
       checkInTime: new Date().toISOString(),
       remarks: remarks || '',
+      // 老师归属：**id 比名字可靠**（排课里的名字常是「任老师」这种手写简称），一并落到流水上
+      teacherId: schedule.teacherId || '',
+      assistantTeacherId: schedule.assistantTeacherId || '',
       teacherName: schedule.teacherName || '',
+      assistantTeacherName: schedule.assistantTeacherName || '',
       date: schedule.date || '',
     });
   }
