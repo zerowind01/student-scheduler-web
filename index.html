@@ -432,10 +432,17 @@
         <div id="extKpiRow" class="grid grid-cols-2 lg:grid-cols-4 gap-4"><!-- KPI 卡动态渲染 --></div>
         <div class="bg-white border border-[#efe9e0] rounded-2xl flex items-center justify-between gap-3 px-4 py-3 flex-wrap">
           <div id="extListTitle" class="text-[13px] font-bold text-[#111111]">本月记录</div>
-          <div id="extFilterBar" class="flex items-center gap-1 bg-[#f5f2ec] p-0.5 rounded-lg text-[11px] font-bold">
+          <div class="flex items-center gap-2 flex-wrap">
+            <div class="flex items-center gap-1.5">
+              <i class="fa-solid fa-user-tie text-[#78716c] text-xs"></i>
+              <label for="extTeacherSelect" class="text-[11px] font-bold text-[#57534e]">老师</label>
+              <select id="extTeacherSelect" class="bg-white border border-[#efe9e0] rounded-lg px-2 py-1 text-[11px] font-bold text-[#111111] outline-none focus:ring-1 focus:ring-[#a8a29e] cursor-pointer max-w-[160px]"></select>
+            </div>
+            <div id="extFilterBar" class="flex items-center gap-1 bg-[#f5f2ec] p-0.5 rounded-lg text-[11px] font-bold">
             <button data-ext-filter="all" class="px-2.5 py-1 rounded-md bg-white shadow-2xs text-[#111111] transition">全部</button>
             <button data-ext-filter="unpaid" class="px-2.5 py-1 rounded-md text-[#78716c] transition">待收</button>
             <button data-ext-filter="paid" class="px-2.5 py-1 rounded-md text-[#78716c] transition">已收</button>
+          </div>
           </div>
         </div>
         <div id="extListBody" class="grid grid-cols-1 xl:grid-cols-2 gap-3"><!-- 一项目一张卡，点开看活动明细 --></div>
@@ -1118,6 +1125,10 @@
           <input id="extProjectOrg" type="text" list="extOrgList" placeholder="主办方 / 客户" autocomplete="off" class="lm-ext-input">
         </div>
         <div>
+          <label for="extProjectTeacher" class="block font-bold text-[#44403c] mb-1.5">负责老师 <span class="text-rose-500">*</span></label>
+          <select id="extProjectTeacher" class="lm-ext-input"></select>
+        </div>
+        <div>
           <label for="extProjectNote" class="block font-bold text-[#44403c] mb-1.5">备注 <span class="text-[#a8a29e] font-medium">选填</span></label>
           <input id="extProjectNote" type="text" placeholder="如：合同编号 / 结算方式" autocomplete="off" class="lm-ext-input">
         </div>
@@ -1419,7 +1430,7 @@
   </div>
 
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=90"></script>
+  <script src="js/app.js?v=91"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

@@ -41,6 +41,9 @@
   // 工作台（外部收入）页面级状态：**必须声明在顶部**（写在函数上方会 TDZ 白屏，AGENTS 第 47 条）
   let mobileExtMonthOffset = 0;   // 0 = 本月，-1 = 上月
   let mobileExtFilter = 'all';    // all | unpaid | paid
+  // 工作台老师视角：all = 全部老师，否则是 teacherId（与桌面端 extTeacherFilter 同口径，各自独立）。
+  // 老师登录态（teacherSession）时强制只看自己，见 renderMobileWorkbench 里的生效值。
+  let mobileExtTeacherFilter = 'all';
   // 已展开的单位卡片（key = 单位名）。默认全收起，点卡才铺明细（2026-11-25）
   let mobileExtOpen = new Set();
   let mobileExtDraftType = '演出'; // 表单当前类型
@@ -2967,6 +2970,8 @@
       // 项目状态：ongoing=进行中 / done=完成待收款 / archived=已收款归档
       // 老项目没这个字段 → 一律按「进行中」（用户口径：新建的项目统一进行中，点完结才变）
       status: ['ongoing', 'done', 'archived'].includes(o.status) ? o.status : 'ongoing',
+      // 负责老师：2026-11-26 起项目按老师独立；老项目没这个字段 → 迁移时归任凌枫（见 migrateExtProjectTeachers）
+      teacherId: String(o.teacherId || '').trim(),
       // 默认金额：新建/编辑项目时填，之后在这个项目下记活动自动带入
       defaultAmount: Number.isFinite(rawAmt) && rawAmt > 0 ? Math.round(rawAmt * 100) / 100 : 0,
       // 默认活动：新建/编辑项目时填，之后在这个项目下记活动自动带入（不填 = 不带）
@@ -3020,6 +3025,39 @@
 
   function deleteExtProject(id) {
     extProjects = extProjects.filter((p) => p.id !== id);
+  }
+
+  // 工作台老师口径（与桌面端 extProjectInScope 同义，生效值由调用方传：管理员用 mobileExtTeacherFilter，
+  // 老师登录态用 teacherSession.teacherId）。'all' 看全部；没归属的老项目在任何视角都可见。
+  function mobileExtProjectInScope(p, f) {
+    if (!f || f === 'all') return true;
+    const tid = String((p && p.teacherId) || '');
+    return !tid || tid === f;
+  }
+
+  function mobileExtTeacherName(id) {
+    const t = teachers.find((q) => q.id === id);
+    return t ? String(t.name || '') : '';
+  }
+
+  // 2026-11-26 工作台按老师独立：老项目没有 teacherId → 一律归任凌枫（用户口径：现有数据是任凌枫老师的）。
+  // 老师按名找：任凌枫 / 任凌楓 / 含“凌枫”/“凌楓”都算；找不到就先留空（各视角都可见，编辑项目时再补）。
+  function findRenLingfengTeacherId() {
+    const hit = teachers.find((t) => {
+      const n = String((t && t.name) || '').trim();
+      return n === '任凌枫' || n === '任凌楓' || n.includes('凌枫') || n.includes('凌楓');
+    });
+    return hit ? hit.id : '';
+  }
+
+  function migrateExtProjectTeachers() {
+    const tid = findRenLingfengTeacherId();
+    if (!tid) return false;
+    let changed = false;
+    extProjects.forEach((p) => {
+      if (!p.teacherId) { p.teacherId = tid; changed = true; }
+    });
+    return changed;
   }
 
   // 归月按**开始日期**，与课消的 logLocalDate 口径一致（看"这场是什么时候演的"）
@@ -4180,6 +4218,7 @@
       extProjects = [];
     }
     migrateExtProjects();
+    migrateExtProjectTeachers();
 
     if (rawSchedules !== null) {
       try {
@@ -4403,6 +4442,7 @@
             if (Array.isArray(remoteData.externalIncomes)) externalIncomes = remoteData.externalIncomes.map(normalizeExternalIncome).filter(Boolean);
             if (Array.isArray(remoteData.extProjects)) extProjects = remoteData.extProjects.map(normalizeExtProject).filter(Boolean);
             migrateExtProjects();
+            migrateExtProjectTeachers();
 
             // 云端拿回来的仍可能是旧口径数据 → 每次覆盖后都校准一次（幂等）
             migrateTeacherNames();
@@ -4448,6 +4488,7 @@
           if (Array.isArray(event.data.externalIncomes)) externalIncomes = event.data.externalIncomes.map(normalizeExternalIncome).filter(Boolean);
           if (Array.isArray(event.data.extProjects)) extProjects = event.data.extProjects.map(normalizeExtProject).filter(Boolean);
           migrateExtProjects();
+          migrateExtProjectTeachers();
           migrateTeacherNames();
           saveDataLocalOnly();
           renderMobileTeacherSelect();
@@ -7886,8 +7927,23 @@
     const box = document.getElementById('mobileWorkbenchContent');
     if (!box) return;
 
+    // 视角先校准：该老师被删时静默回退全校，再用最终值算数（与桌面端 extSyncTeacherSelect 同口径）
+    if (mobileExtTeacherFilter && mobileExtTeacherFilter !== 'all' && !teachers.some((t) => t.id === mobileExtTeacherFilter)) {
+      mobileExtTeacherFilter = 'all';
+    }
+    // 老师视角生效值：老师登录态强制只看自己（不给选别人的）；管理员用下拉的 mobileExtTeacherFilter
+    const tFilter = isTeacherView() ? teacherSession.teacherId : mobileExtTeacherFilter;
+    const scopeName = tFilter && tFilter !== 'all' ? mobileExtTeacherName(tFilter) : '';
+
     // 与桌面端同口径：全量汇总，不按月份切片；项目是索引，卡内是它的每一次活动
-    const allList = extIncomesSorted(externalIncomes);
+    // 2026-11-26 老师视角：先定可见项目，再由项目定可见活动；孤儿活动只在全校视角出现
+    const scopedProjects = extProjects.filter((p) => mobileExtProjectInScope(p, tFilter));
+    const scopedPids = new Set(scopedProjects.map((p) => p.id));
+    const allList = extIncomesSorted(externalIncomes).filter((x) => {
+      const pid = String(x.projectId || '');
+      return scopedPids.has(pid)
+        || ((!tFilter || tFilter === 'all') && !extProjects.some((p) => p.id === pid));
+    });
     const paidList = allList.filter((x) => x.paid);
     const unpaidList = allList.filter((x) => !x.paid);
     const total = extIncomeSum(allList);
@@ -7895,9 +7951,9 @@
 
     // 与桌面端同构：空项目也出卡，建完就能点「记一场活动」
     const groupMap = new Map();
-    extProjects.forEach((p) => groupMap.set(p.id, {
+    scopedProjects.forEach((p) => groupMap.set(p.id, {
       key: p.id, name: p.name, org: p.org || '未填单位', note: p.note,
-      status: p.status || 'ongoing', defaultAmount: p.defaultAmount || 0, items: [],
+      status: p.status || 'ongoing', teacherId: p.teacherId || '', defaultAmount: p.defaultAmount || 0, items: [],
     }));
     rows.forEach((x) => {
       const pid = String(x.projectId || '');
@@ -7949,6 +8005,8 @@
       const payTxt = g.unpaid > 0 ? '待收' : '已收'; // 手机卡头窄，金额已有小计，这里只留状态
       const payColor = g.unpaid > 0 ? '#b45309' : '#047857';
       const sm = extProjectStatusMeta(g);
+      // 全校视角时卡片上标出负责老师，不然分不清是谁的项目；单老师视角不用标
+      const tName = (!tFilter || tFilter === 'all') ? mobileExtTeacherName(g.teacherId) : '';
       const done = g.status === 'done';
       const archived = g.status === 'archived';
       return `
@@ -7957,7 +8015,7 @@
           <div class="w-8 h-8 rounded-xl shrink-0 flex items-center justify-center" style="background:#f5f3ff"><i class="fa-solid fa-folder-open text-[11px] text-[#6d28d9]"></i></div>
           <div class="flex-1 min-w-0">
             <div class="text-[13.5px] font-black text-[#111111] truncate">${extEsc(g.org)}</div>
-            <div class="text-[10.5px] font-semibold text-[#9c9fa5] mt-0.5 truncate">${extEsc(g.name)} · ${g.items.length} 场 · <span style="color:${sm.fg}">${sm.text}</span> · <span style="color:${payColor}">${payTxt}</span></div>
+            <div class="text-[10.5px] font-semibold text-[#9c9fa5] mt-0.5 truncate">${tName ? extEsc(tName) + ' · ' : ''}${extEsc(g.name)} · ${g.items.length} 场 · <span style="color:${sm.fg}">${sm.text}</span> · <span style="color:${payColor}">${payTxt}</span></div>
           </div>
           <div class="shrink-0 text-right text-[15px] font-black text-[#111111]">${extMoney(g.total)}</div>
           <i class="fa-solid fa-chevron-down text-[10px] text-[#c4bfb7] transition-transform ${open ? 'rotate-180' : ''}"></i>
@@ -7981,7 +8039,7 @@
       <div class="lm-card p-4">
         <div class="text-center">
           <div class="text-[10.5px] font-bold text-[#9c9fa5]">工作台 · 外部收入（按项目汇总）</div>
-          <div class="text-[13px] font-black text-[#111111] mt-0.5">全部记录</div>
+          <div class="text-[13px] font-black text-[#111111] mt-0.5">${scopeName ? scopeName + '的记录' : '全部记录'}</div>
         </div>
         <div class="mt-3 flex items-end justify-between">
           <div>
@@ -7997,6 +8055,15 @@
         <div class="mt-3 flex items-center gap-1 bg-[#f5f2ec] p-0.5 rounded-xl">
           ${chip('all', '全部')}${chip('unpaid', '待收')}${chip('paid', '已收')}
         </div>
+        ${isTeacherView() ? '' : `
+        <div class="mt-3 flex items-center gap-2">
+          <i class="fa-solid fa-user-tie text-[11px] text-[#9c9fa5]"></i>
+          <span class="text-[11px] font-bold text-[#9c9fa5]">老师</span>
+          <select id="mExtTeacherSelect" class="flex-1 bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-[11.5px] font-bold text-slate-800 outline-none">
+            <option value="all">全部老师</option>
+            ${teachers.map((t) => `<option value="${t.id}">${extEsc(t.name)}${t.subject ? ' · ' + extEsc(t.subject) : ''}</option>`).join('')}
+          </select>
+        </div>`}
         <button id="mExtAdd" class="w-full mt-2.5 py-3 rounded-xl bg-[#111111] text-white text-[12.5px] font-bold flex items-center justify-center gap-1.5 active:opacity-90">
           <i class="fa-solid fa-folder-plus text-[11px]"></i> 新建项目
         </button>
@@ -8007,6 +8074,14 @@
           <div class="text-[11.5px] font-semibold text-[#9c9fa5]">${groups.length ? '这个筛选下没有记录' : extProjects.length ? '这个项目下还没有活动' : '还没有项目，先建一个项目'}</div>
         </div>`}
     `;
+
+    // 老师视角下拉（卡片每次重绘，元素是新的，直接绑 change 即可；该老师被删时静默回退全校）
+    const mSel = box.querySelector('#mExtTeacherSelect');
+    if (mSel) {
+      mSel.value = mobileExtTeacherFilter;
+      if (!mSel.value) { mobileExtTeacherFilter = 'all'; mSel.value = 'all'; }
+      mSel.onchange = () => { mobileExtTeacherFilter = mSel.value; renderMobileWorkbench(); };
+    }
 
     // 一次性事件委托（box 内容每次重绘，用 onclick 赋值避免重复绑定）
     box.onclick = (e) => {
@@ -8164,6 +8239,19 @@
     mExtFillDatalist('mExtProjectNameList', extProjects.map((q) => q.name));
     mExtFillDatalist('mExtOrgList', extProjects.map((q) => q.org));
     mExtFillDatalist('mExtProjectActivityList', externalIncomes.map((i) => i.activity));
+    // 负责老师下拉：老师登录态只能是自己（锁死）；管理员编辑用项目自己的，新建默认当前视角的老师
+    const tSel = document.getElementById('mExtProjectTeacher');
+    if (tSel) {
+      if (isTeacherView()) {
+        tSel.innerHTML = `<option value="${teacherSession.teacherId}">${extEsc(teacherSession.name || '')}</option>`;
+        tSel.value = teacherSession.teacherId;
+        tSel.disabled = true;
+      } else {
+        tSel.innerHTML = '<option value="">请选择老师</option>' + teachers.map((t) => `<option value="${t.id}">${extEsc(t.name)}${t.subject ? ' · ' + extEsc(t.subject) : ''}</option>`).join('');
+        tSel.value = p ? (p.teacherId || '') : (mobileExtTeacherFilter && mobileExtTeacherFilter !== 'all' ? mobileExtTeacherFilter : '');
+        tSel.disabled = false;
+      }
+    }
     showModal('modalMobileExtProject');
   }
 
@@ -8174,11 +8262,13 @@
     const org = val('mExtProjectOrg');
     if (!name) { showToast('项目名称要填一个'); return; }
     if (!org) { showToast('「单位 / 客户」要填一个'); return; }
+    const teacherId = val('mExtProjectTeacher');
+    if (!teacherId) { showToast('选一个负责老师'); return; }
     const defaultAmount = Number(val('mExtProjectDefaultAmount') || 0);
     if (!Number.isFinite(defaultAmount) || defaultAmount < 0) { showToast('默认金额填个正数'); return; }
     pushUndo(id ? '编辑项目' : '新建项目');
     const saved = upsertExtProject({
-      name, org, note: val('mExtProjectNote'), defaultAmount,
+      name, org, note: val('mExtProjectNote'), defaultAmount, teacherId,
       defaultActivity: val('mExtProjectDefaultActivity'),
       defaultType: mobileExtProjectDraftType,
       defaultStartTime: time24Value('mExtProjectDefaultStartTime'),
@@ -8230,7 +8320,8 @@
       // 兜底：老入口直接记一笔时，按「单位 + 活动名」自动建项目
       const fallbackOrg = val('mExtOrg');
       if (!fallbackOrg) { showToast('先建一个项目，再在项目里记活动'); return; }
-      project = upsertExtProject({ name: activity || fallbackOrg, org: fallbackOrg, note: '' }, null);
+      const fbTeacher = isTeacherView() ? teacherSession.teacherId : ((mobileExtTeacherFilter && mobileExtTeacherFilter !== 'all') ? mobileExtTeacherFilter : '');
+      project = upsertExtProject({ name: activity || fallbackOrg, org: fallbackOrg, note: '', teacherId: fbTeacher }, null);
       projectId = project.id;
     }
     const org = project.org;
