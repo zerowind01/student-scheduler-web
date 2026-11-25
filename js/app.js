@@ -2813,12 +2813,15 @@
 
   // 日期行文案：`11/28 周五`，跨天补 `→ 11/29`
   function extDayText(x) {
-    const md = (d) => String(d || '').slice(5).replace('-', '/');
+    // 全量汇总后不同年份的记录会排在一起，跨年要带年份，不然 10/15 分不清是哪一年
+    const raw = String(x.date || '');
+    const md = raw.slice(5).replace('-', '/');
+    const yr = raw && !raw.startsWith(String(new Date().getFullYear())) ? raw.slice(0, 4) + '/' : '';
     let wd = '';
     try {
       wd = ' 周' + ['日', '一', '二', '三', '四', '五', '六'][new Date(x.date + 'T00:00:00').getDay()];
     } catch (e) { wd = ''; }
-    return `${md(x.date)}${wd}`;
+    return `${yr}${md}${wd}`;
   }
 
   // 时间段文案：`19:30-21:30`，缺一头就给一头，都没有算「全天」
@@ -4801,19 +4804,16 @@
     const listBody = document.getElementById('extListBody');
     if (!kpiRow || !listBody) return;
 
-    const monthPrefix = extMonthKey(extMonthOffset);
-    const labelEl = document.getElementById('extMonthLabel');
-    if (labelEl) labelEl.textContent = extMonthName(monthPrefix);
-
-    const monthList = extIncomesOfMonth(monthPrefix);
+    // 2026-11-25 Jackson：「按项目总结显示，一个项目会有一次或多次活动。不用按月份记录」
+    // 工作台改全量汇总：不再按月份切片，所有待收项目直接摆在列表里；单位/客户仍是卡片索引。
+    const monthList = extIncomesSorted(externalIncomes);
     const paidList = monthList.filter((x) => x.paid);
     const unpaidList = monthList.filter((x) => !x.paid);
     const total = extIncomeSum(monthList);
-    const isCurrent = monthPrefix === extMonthKey(0);
 
     // KPI 只有这四格：合计 / 已收 / 待收 / 平均。**不混课消数字**（那是财务页的事）
     const kpi = [
-      { key: 'total', label: `${isCurrent ? '本月' : '当月'}合计`, value: extMoney(total), sub: `${monthList.length} 场活动`, color: '#111111' },
+      { key: 'total', label: '累计合计', value: extMoney(total), sub: `${monthList.length} 场活动`, color: '#111111' },
       { key: 'paid', label: '已收', value: extMoney(extIncomeSum(paidList)), sub: `${paidList.length} 场`, color: '#047857' },
       { key: 'unpaid', label: '待收', value: extMoney(extIncomeSum(unpaidList)), sub: `${unpaidList.length} 场`, color: '#b45309' },
       { key: 'avg', label: '平均每场', value: extMoney(monthList.length ? total / monthList.length : 0), sub: '按场次摊', color: '#6d28d9' },
@@ -4840,14 +4840,14 @@
     const titleEl = document.getElementById('extListTitle');
     if (titleEl) {
       const fLabel = extFilter === 'unpaid' ? '待收' : extFilter === 'paid' ? '已收' : '全部';
-      titleEl.textContent = `${extMonthName(monthPrefix)} · ${fLabel} ${rows.length} 场`;
+      titleEl.textContent = `全部记录 · ${fLabel} ${rows.length} 场`;
     }
 
     if (!rows.length) {
       listBody.innerHTML = `
         <div class="py-16 text-center xl:col-span-2 bg-white border border-[#efe9e0] rounded-2xl">
           <i class="fa-solid fa-briefcase text-2xl text-[#d6d3d1] mb-2 block"></i>
-          <div class="text-[12px] text-[#a8a29e] font-semibold">${monthList.length ? '这个筛选下没有记录' : '这个月还没有外部收入'}</div>
+          <div class="text-[12px] text-[#a8a29e] font-semibold">${monthList.length ? '这个筛选下没有记录' : '还没有外部收入'}</div>
           <button id="btnExtEmptyAdd" class="mt-3 px-3.5 py-1.5 rounded-xl bg-[#111111] text-white text-[11px] font-bold">记一笔</button>
         </div>`;
       const b = document.getElementById('btnExtEmptyAdd');
@@ -5053,9 +5053,6 @@
 
   function bindWorkbenchEvents() {
     safeBind('btnExtAdd', 'click', () => openExtIncomeForm());
-    safeBind('btnExtPrevMonth', 'click', () => { extMonthOffset -= 1; renderPageWorkbench(); });
-    safeBind('btnExtNextMonth', 'click', () => { extMonthOffset += 1; renderPageWorkbench(); });
-    safeBind('btnExtThisMonth', 'click', () => { extMonthOffset = 0; renderPageWorkbench(); });
     document.querySelectorAll('[data-ext-filter]').forEach((btn) => {
       btn.addEventListener('click', () => {
         extFilter = btn.getAttribute('data-ext-filter') || 'all';

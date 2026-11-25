@@ -1315,3 +1315,12 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
     - `btnSaveSyncKey` 也改走 `applySyncKey()` 统一入口；`applySyncKey` 只在**同步码真的变了**时才清待推队列，
       重存同一个码不能丢掉还没推上去的数据。
     - 版本 app.js v84 / mobile.js v99 / tailwind v16 / sw v147；回归 `tmp/sync-diag-check.mjs` 20 项。
+
+75. **工作台改为「按单位总结 · 全量不按月份」**（2026-11-25，Jackson：「按项目总结显示，一个项目会有一次或多次活动。不用按月份记录」；确认「项目」= 单位/客户）
+    - 去掉两端月份导航（电脑 btnExtPrevMonth/extMonthLabel/…，手机 mExtPrevMonth/mExtMonthLabel），
+      KPI 改「累计合计」，列表/KPI 全量取 `externalIncomes`，不再 `extIncomesOfMonth()`。
+      **待收不管几月都直接显示** —— 用户就是在 11 月看不到 10 月记的宝瑶小学 ¥600 才提的。
+    - 卡片维度仍是单位/客户（第 72 条），一单位一卡、点开铺多次活动明细；跨年记录在日期前补年份。
+    - `extIncomesOfMonth/extMonthKey/extMonthOffset` 函数与状态保留（表单保存后挪月份游标无害），
+      但**渲染层不许再用它们切片**；护栏证明退回按月份会红 18 项。
+    - 回归 `tmp/workbench-check.mjs` **118 项**；版本 app v85 / mobile v100 / sw v148。

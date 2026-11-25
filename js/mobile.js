@@ -2980,12 +2980,15 @@
 
   // 日期行文案：`11/28 周五`，跨天补 `→ 11/29`
   function extDayText(x) {
-    const md = (d) => String(d || '').slice(5).replace('-', '/');
+    // 全量汇总后不同年份的记录会排在一起，跨年要带年份，不然 10/15 分不清是哪一年
+    const raw = String(x.date || '');
+    const md = raw.slice(5).replace('-', '/');
+    const yr = raw && !raw.startsWith(String(new Date().getFullYear())) ? raw.slice(0, 4) + '/' : '';
     let wd = '';
     try {
       wd = ' 周' + ['日', '一', '二', '三', '四', '五', '六'][new Date(x.date + 'T00:00:00').getDay()];
     } catch (e) { wd = ''; }
-    return `${md(x.date)}${wd}`;
+    return `${yr}${md}${wd}`;
   }
 
   // 时间段文案：`19:30-21:30`，缺一头就给一头，都没有算「全天」
@@ -7732,8 +7735,8 @@
     const box = document.getElementById('mobileWorkbenchContent');
     if (!box) return;
 
-    const monthPrefix = extMonthKey(mobileExtMonthOffset);
-    const monthList = extIncomesOfMonth(monthPrefix);
+    // 与桌面端同口径：全量汇总，不按月份切片；待收项目一律直接显示
+    const monthList = extIncomesSorted(externalIncomes);
     const paidList = monthList.filter((x) => x.paid);
     const unpaidList = monthList.filter((x) => !x.paid);
     const total = extIncomeSum(monthList);
@@ -7750,7 +7753,8 @@
     const rowHtml = (x) => {
       const tm = extIncomeTypeMeta(x.type);
       const pm = extIncomePaidMeta(x);
-      const md = String(x.date || '').slice(5).replace('-', '/');
+      const rawDate = String(x.date || '');
+      const md = (rawDate && !rawDate.startsWith(String(new Date().getFullYear())) ? rawDate.slice(2, 4) + '/' : '') + rawDate.slice(5).replace('-', '/');
       let wd = '';
       try { wd = '周' + ['日', '一', '二', '三', '四', '五', '六'][new Date(x.date + 'T00:00:00').getDay()]; } catch (e) { wd = ''; }
       const cross = extCrossText(x);
@@ -7798,17 +7802,13 @@
 
     box.innerHTML = `
       <div class="lm-card p-4">
-        <div class="flex items-center justify-between">
-          <button id="mExtPrevMonth" class="w-9 h-9 rounded-xl flex items-center justify-center text-[#78716c] active:bg-[#f5f2ec]"><i class="fa-solid fa-chevron-left text-[11px]"></i></button>
-          <div class="text-center">
-            <div class="text-[10.5px] font-bold text-[#9c9fa5]">工作台 · 外部收入</div>
-            <div id="mExtMonthLabel" class="text-[13px] font-black text-[#111111] mt-0.5">${extMonthName(monthPrefix)}</div>
-          </div>
-          <button id="mExtNextMonth" class="w-9 h-9 rounded-xl flex items-center justify-center text-[#78716c] active:bg-[#f5f2ec]"><i class="fa-solid fa-chevron-right text-[11px]"></i></button>
+        <div class="text-center">
+          <div class="text-[10.5px] font-bold text-[#9c9fa5]">工作台 · 外部收入（按单位汇总）</div>
+          <div class="text-[13px] font-black text-[#111111] mt-0.5">全部记录</div>
         </div>
         <div class="mt-3 flex items-end justify-between">
           <div>
-            <div class="text-[10.5px] font-bold text-[#9c9fa5]">当月合计</div>
+            <div class="text-[10.5px] font-bold text-[#9c9fa5]">累计合计</div>
             <div id="mExtTotal" class="text-[28px] font-black text-[#111111] leading-none mt-1">${extMoney(total)}</div>
             <div class="text-[10.5px] font-semibold text-[#9c9fa5] mt-1">${monthList.length} 场活动</div>
           </div>
@@ -7827,7 +7827,7 @@
       ${rows.length ? `<div class="space-y-2">${groupHtml}</div>` : `
         <div class="lm-card p-8 text-center">
           <i class="fa-solid fa-briefcase text-xl text-[#d6d3d1] mb-2 block"></i>
-          <div class="text-[11.5px] font-semibold text-[#9c9fa5]">${monthList.length ? '这个筛选下没有记录' : '这个月还没有外部收入'}</div>
+          <div class="text-[11.5px] font-semibold text-[#9c9fa5]">${monthList.length ? '这个筛选下没有记录' : '还没有外部收入'}</div>
         </div>`}
     `;
 
@@ -7839,8 +7839,6 @@
         renderMobileWorkbench();
         return;
       }
-      if (e.target.closest('#mExtPrevMonth')) { mobileExtMonthOffset -= 1; renderMobileWorkbench(); return; }
-      if (e.target.closest('#mExtNextMonth')) { mobileExtMonthOffset += 1; renderMobileWorkbench(); return; }
       if (e.target.closest('#mExtAdd')) { openMobileExtForm(); return; }
       const tg = e.target.closest('[data-mext-toggle]');
       if (tg) {
