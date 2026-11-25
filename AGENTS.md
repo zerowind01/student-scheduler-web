@@ -1210,3 +1210,41 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       ③ 去掉 `extEsc` 转义 → 3 红；④ 去掉 `.lm-island.is-6` 收窄 → 1 红（I3，格宽 55.3）。
     - 版本 app.js?v=80 / mobile.js?v=95 / tokens v13 / styles v36 / mobile-theme v35 /
       tailwind v13 / sw v143。
+
+71. **全站 24 小时制 + 工作台改以「单位/客户」为索引**（2026-11-25，Jackson：
+    「lessonmate 全系统采用24小时制显示时间」「工作台以单位/客户做索引，为必填项，活动为可填字段」）
+
+    **一、24 小时制**
+    - **原生 `<input type="time">` 没法强制 24 小时**：它按**浏览器界面语言**渲染，英文环境是
+      `07:30 PM`。实测给 input 加 `lang="zh-CN"` 在 `--lang=en-US` 的 Chrome 上依然 12 小时
+      （宽度 98 vs 74，差的就是 AM/PM 那截）。属性、lang、CSS 都改不了 → 只能不用它。
+    - 全站 6 个时间框（排课弹层电脑/手机各 1、工作台记账电脑/手机各 2）统一改成
+      `<input type="text" data-time24>`，`initApp` / `initMobileApp` 里 `bindTime24All()` 统一挂行为：
+      边打边补冒号（`1930` → `19:30`）、少打一位按整点收（`930` → `09:30`）、失焦补零。
+    - 取数一律走 **`time24Value(elId)`**（内部 `time24Complete`），别直接读 `.value` ——
+      用户可能只打了 `19` 就点保存，`'19'` 存进去整站排序/ICS 全乱。
+    - `time24Typing` / `time24Complete` / `bindTime24` / `bindTime24All` / `time24Value`
+      **两端逐字同构**，改一处必须同步另一处。
+    - 手机端会弹键盘：`css/styles.css` 给 `input[data-time24]` 在 ≤767px 兜了 `font-size:16px`
+      （低于 16px iOS 聚焦会放大整页）。
+    - 注意 `type="date"` 仍然跟语言走（en-US 显示 `11/25/2026`），Jackson 这次只要求时间；
+      要统一日期格式得另做，别顺手改。
+    - 回归 `tmp/workbench-check.mjs` L 段 7 项：没有原生 time 控件 / 都是 text+data-time24 /
+      连打 1930 → 19:30 / 少打一位 930 → 09:30 / 落库 HH:MM / 列表无 AM/PM。
+      护栏：把 `#inputStartTime` 还原成 `type="time"` → L1/L2 红。
+
+    **二、工作台以单位/客户为索引**
+    - 表单顺序调成 **单位/客户（必填 \*）→ 金额 → 活动（选填）**；`saveExtIncomeForm` /
+      `saveMobileExtForm` 里单位为空直接 toast 拦下（`if (!org)`），活动不再校验。
+      ⚠️ 别把 `activity` 的必填校验加回来 —— Jackson 明确说活动是可填字段。
+    - 列表**按单位分组**：`extGroupByOrg(list)`（两端同构）→ `{key, org, items, total, unpaid}`，
+      组间按**金额从多到少**、金额相同按单位名；`org` 为空的（改动前的老数据）自成一组
+      「（未填单位）」并**永远垫底**。
+    - 组头：单位名 + `N 场` + 小计；`0 < unpaid < total` 时才额外标「待收 ¥x」（全待收时小计就等于待收，
+      重复显示很吵）。行内**不再重复单位**（已在组头），主行是活动，活动为空显示灰色「未填活动」。
+    - `extOrgText()` 已删，换成 **`extCrossText()`** 只回「跨天至 11/25」（单位上移到组头了）。
+    - 单位改成必填索引后，同一家客户被写成两种写法会让分组裂开 → 表单里 `#extOrg` / `#mExtOrg`
+      挂 `<datalist>`（`extFillDatalist` / `mExtFillDatalist`，候选来自已填过的值）。
+    - 版本 app.js?v=81 / mobile.js?v=96 / styles v37 / tailwind v14 / sw v144。
+      回归 `tmp/workbench-check.mjs` **102 项**（新增 A12–A16 分组、K1–K8 单位必填/活动选填）。
+      护栏：去掉 `if (!org)` → K2/K3/K4 红；`extGroupByOrg` 换成平铺 → A10/A12/A13/A14/K1 红。

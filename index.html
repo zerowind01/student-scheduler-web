@@ -21,7 +21,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <!-- Custom CSS -->
   <link rel="stylesheet" href="css/tokens.css?v=13">
-  <link rel="stylesheet" href="css/styles.css?v=36">
+  <link rel="stylesheet" href="css/styles.css?v=37">
   <link rel="stylesheet" href="css/legacy-tokens.css?v=15">
   <!-- GSAP 动效：本地内置优先（cdnjs 曾实测超时，CDN 挂掉会让全部 GSAP 动效静默消失）。
        本地缺失时才回落到 CDN；两者都失败也不影响功能——anim.js 检测不到 window.gsap 会退化为静态。 -->
@@ -36,7 +36,7 @@
        改完 class 要重新生成：tools\build-tailwind.cmd
        ⚠ 必须留在 </head> 之前（即所有自有样式之后），复刻 Play CDN 把 <style>
        append 到 head 末尾的层叠顺序；挪到前面会翻转优先级。 -->
-  <link rel="stylesheet" href="css/tailwind.css?v=13">
+  <link rel="stylesheet" href="css/tailwind.css?v=14">
 </head>
 <body class="text-[#111111] font-sans h-screen flex flex-col overflow-hidden select-none" style="background: var(--surface-page);">
 
@@ -610,7 +610,7 @@
           </div>
           <div>
             <label class="block font-medium text-[#44403c] mb-1">开始时间</label>
-            <input type="time" id="inputStartTime" required step="300" class="w-full px-2.5 py-1.5 border border-[#efe9e0] rounded-lg focus:ring-1 focus:ring-[#a8a29e] outline-none">
+            <input type="text" id="inputStartTime" data-time24 required placeholder="HH:MM" class="w-full px-2.5 py-1.5 border border-[#efe9e0] rounded-lg focus:ring-1 focus:ring-[#a8a29e] outline-none">
           </div>
         </div>
 
@@ -1113,33 +1113,35 @@
           <label class="block font-bold text-[#44403c] mb-1.5">类型</label>
           <div id="extTypeChips" class="flex flex-wrap gap-1.5"></div>
         </div>
-        <div>
-          <label for="extActivity" class="block font-bold text-[#44403c] mb-1.5">活动</label>
-          <input id="extActivity" type="text" placeholder="如：新年音乐会 · 钢琴伴奏" class="lm-ext-input">
-        </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label for="extOrg" class="block font-bold text-[#44403c] mb-1.5">单位</label>
-            <input id="extOrg" type="text" placeholder="主办方 / 客户" class="lm-ext-input">
+            <label for="extOrg" class="block font-bold text-[#44403c] mb-1.5">单位 / 客户 <span class="text-rose-500">*</span></label>
+            <input id="extOrg" type="text" list="extOrgList" placeholder="主办方 / 客户" autocomplete="off" class="lm-ext-input">
           </div>
           <div>
             <label for="extAmount" class="block font-bold text-[#44403c] mb-1.5">金额（元）</label>
             <input id="extAmount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0" class="lm-ext-input">
           </div>
         </div>
+        <div>
+          <label for="extActivity" class="block font-bold text-[#44403c] mb-1.5">活动 <span class="text-[#a8a29e] font-medium">选填</span></label>
+          <input id="extActivity" type="text" list="extActivityList" placeholder="如：新年音乐会 · 钢琴伴奏（可留空）" autocomplete="off" class="lm-ext-input">
+        </div>
+        <datalist id="extOrgList"></datalist>
+        <datalist id="extActivityList"></datalist>
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block font-bold text-[#44403c] mb-1.5">开始时间</label>
             <div class="flex gap-1.5">
               <input id="extStartDate" type="date" class="lm-ext-input">
-              <input id="extStartTime" type="time" class="lm-ext-input w-[102px] shrink-0">
+              <input id="extStartTime" type="text" data-time24 placeholder="HH:MM" class="lm-ext-input w-[102px] shrink-0">
             </div>
           </div>
           <div>
             <label class="block font-bold text-[#44403c] mb-1.5">结束时间 <span class="text-[#a8a29e] font-medium">留空=当天</span></label>
             <div class="flex gap-1.5">
               <input id="extEndDate" type="date" class="lm-ext-input">
-              <input id="extEndTime" type="time" class="lm-ext-input w-[102px] shrink-0">
+              <input id="extEndTime" type="text" data-time24 placeholder="HH:MM" class="lm-ext-input w-[102px] shrink-0">
             </div>
           </div>
         </div>
@@ -1356,7 +1358,7 @@
   </div>
 
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=80"></script>
+  <script src="js/app.js?v=81"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

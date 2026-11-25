@@ -200,6 +200,81 @@
     return `${year}-${month}-${day}`;
   }
 
+  // ==========================================================================
+  // 24 小时制时间输入（电脑 / 手机两端逐字同构）
+  // ==========================================================================
+  // 原生 <input type="time"> 的显示格式由**浏览器界面语言**决定（英文环境是 07:30 PM），
+  // 没有属性可以强制 24 小时：实测给 input 加 lang="zh-CN" 在 en-US 的 Chrome 上依然
+  // 渲染成 12 小时（宽度 98 vs 74，就是多出来的 AM/PM）。所以全站时间一律改用文本输入
+  // + 自动补冒号，值永远是 'HH:MM'，与数据里存的格式一致。
+  const TIME24_MAX_H = 23;
+  const TIME24_MAX_M = 59;
+
+  // 边打边格式化：1930 → 19:30 / 930 → 9:30 / 19 → 19（还没打完，先不补零）
+  function time24Typing(raw) {
+    const d = String(raw == null ? '' : raw).replace(/\D/g, '').slice(0, 4);
+    if (!d) return '';
+    if (d.length <= 2) return Number(d) > TIME24_MAX_H ? `${d[0]}:${d[1]}` : d;
+    const two = Number(d.slice(0, 2));
+    const hLen = two <= TIME24_MAX_H ? 2 : 1;
+    const hh = d.slice(0, hLen);
+    const mm = d.slice(hLen).slice(0, 2);
+    return `${hh.padStart(2, '0')}:${mm}`;
+  }
+
+  // 失焦 / 提交时补齐：'9' → '09:00'、'930' → '09:30'、'19:3' → '19:30'，越界钳住
+  function time24Complete(raw) {
+    const d = String(raw == null ? '' : raw).replace(/\D/g, '').slice(0, 4);
+    if (!d) return '';
+    let h = 0;
+    let m = 0;
+    if (d.length <= 2) {
+      h = Number(d);
+    } else if (Number(d.slice(0, 2)) <= TIME24_MAX_H) {
+      h = Number(d.slice(0, 2));
+      m = Number(d.slice(2).padEnd(2, '0'));
+    } else {
+      h = Number(d.slice(0, 1));
+      m = Number(d.slice(1));
+    }
+    if (!Number.isFinite(h) || h < 0) h = 0;
+    if (!Number.isFinite(m) || m < 0) m = 0;
+    h = Math.min(TIME24_MAX_H, Math.round(h));
+    m = Math.min(TIME24_MAX_M, Math.round(m));
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+
+  function bindTime24(el) {
+    if (!el || el.__t24) return;
+    el.__t24 = true;
+    if (!el.getAttribute('placeholder')) el.setAttribute('placeholder', 'HH:MM');
+    el.setAttribute('inputmode', 'numeric');
+    el.setAttribute('maxlength', '5');
+    el.setAttribute('autocomplete', 'off');
+    el.addEventListener('input', () => {
+      const atEnd = el.selectionStart === null || el.selectionStart === el.value.length;
+      const next = time24Typing(el.value);
+      if (next === el.value) return;
+      el.value = next;
+      // 补冒号后光标会被顶到前面，手动挪回末尾
+      if (atEnd) { try { el.setSelectionRange(next.length, next.length); } catch (e) { /* noop */ } }
+    });
+    el.addEventListener('blur', () => {
+      const next = time24Complete(el.value);
+      if (next !== el.value) el.value = next;
+    });
+  }
+
+  function bindTime24All(scope) {
+    (scope || document).querySelectorAll('[data-time24]').forEach(bindTime24);
+  }
+
+  // 读值统一过一遍（防止有人没触发 blur 就点了保存）
+  function time24Value(elId) {
+    const el = document.getElementById(elId);
+    return el ? time24Complete(el.value) : '';
+  }
+
   // 消课流水归属的「上课日期」（本地 YYYY-MM-DD）：优先用记录自带的本地 date，
   // 老数据没有 date 时把 UTC 的 checkInTime 换算回本地再取日期。
   // ⚠️ 绝不能拿 checkInTime 前 10 位当月/当日 —— 那是 UTC，比本地早 8 小时：
@@ -2614,6 +2689,30 @@
     return list.slice().sort((a, b) => ((b.date || '') + (b.startTime || '')).localeCompare((a.date || '') + (a.startTime || '')));
   }
 
+  // 以**单位 / 客户**为索引分组（2026-11-25 Jackson：「工作台以单位/客户做索引」）。
+  // 组间按金额从多到少（「谁给的最多」一眼看出来），金额相同按单位名；
+  // 没填单位的（老数据）永远垫底，不跟有单位的混在一起排。
+  function extGroupByOrg(list) {
+    const map = new Map();
+    list.forEach((x) => {
+      const key = String(x.org || '').trim();
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(x);
+    });
+    return [...map.entries()]
+      .map(([key, items]) => ({
+        key,
+        org: key || '（未填单位）',
+        items,
+        total: extIncomeSum(items),
+        unpaid: extIncomeSum(items.filter((i) => !i.paid)),
+      }))
+      .sort((a, b) => {
+        if (!a.key !== !b.key) return a.key ? -1 : 1;
+        return b.total - a.total || a.org.localeCompare(b.org, 'zh');
+      });
+  }
+
   // 日期行文案：`11/28 周五`，跨天补 `→ 11/29`
   function extDayText(x) {
     const md = (d) => String(d || '').slice(5).replace('-', '/');
@@ -2630,12 +2729,11 @@
     return x.startTime || x.endTime || '全天';
   }
 
-  // 单位那行：跨天的活动在这里点明「跨天至 11/25」。
-  // 不塞进时间段（日期列只有 108px，多两个字就折成三行）也不塞进类型徽章（那行要留给活动名）。
-  function extOrgText(x) {
-    const org = x.org ? extEsc(x.org) : '—';
+  // 跨天补充说明。单位已经提到分组标题上了，行内不再重复单位，只标「跨天至 11/25」。
+  // 不塞进时间段（日期列只有 108px，多两个字就折成三行）。
+  function extCrossText(x) {
     const cross = x.endDate && x.endDate !== x.date;
-    return cross ? `${org} · 跨天至 ${String(x.endDate).slice(5).replace('-', '/')}` : org;
+    return cross ? `跨天至 ${String(x.endDate).slice(5).replace('-', '/')}` : '';
   }
 
   // 活动/单位是手输文本，插进 innerHTML 前必须转义（项目里其它地方是受控数据，这里不是）
@@ -3920,6 +4018,8 @@
     switchPage('dashboard');
     // 工作台（外部收入）：月份切换 / 筛选 / 记一笔 / 表单
     bindWorkbenchEvents();
+    // 全站时间输入统一 24 小时制（原生 time 控件会跟浏览器语言显示 AM/PM）
+    bindTime24All();
     // 看板：本周 / 上周消课趋势切换
     document.querySelectorAll('.dash-week-tab').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -4636,25 +4736,44 @@
       return;
     }
 
-    listBody.innerHTML = rows.map((x) => {
+    // 分组：单位/客户是索引，组头带场次与小计，组内按日期倒序
+    const groups = extGroupByOrg(rows).map((g) => Object.assign(g, { items: extIncomesSorted(g.items) }));
+
+    const rowHtml = (x) => {
       const tm = extIncomeTypeMeta(x.type);
       const pm = extIncomePaidMeta(x);
+      const cross = extCrossText(x);
       return `
-      <div class="flex items-center gap-3 px-4 py-3 border-b border-[#f5f1ea] hover:bg-[#faf8f3] transition cursor-pointer" data-ext-row="${x.id}">
+      <div class="flex items-center gap-3 px-4 py-3 border-b border-[#f5f1ea] hover:bg-[#faf8f3] transition cursor-pointer" data-ext-row="${x.id}" data-ext-org="${extEsc(x.org)}">
         <div class="w-[108px] shrink-0">
           <div class="text-[12px] font-bold text-[#111111]">${extDayText(x)}</div>
           <div class="text-[10.5px] text-[#a8a29e] font-semibold mt-0.5">${extTimeText(x)}</div>
         </div>
-        <span class="shrink-0 text-[10.5px] font-bold px-2 py-0.5 rounded-md" style="background:${tm.bg};color:${tm.fg}">${x.type}</span>
+        <span class="shrink-0 w-[38px] text-center text-[10.5px] font-bold px-1.5 py-0.5 rounded-md" style="background:${tm.bg};color:${tm.fg}">${x.type}</span>
         <div class="flex-1 min-w-0">
-          <div class="text-[13px] font-bold text-[#111111] truncate">${extEsc(x.activity) || '（未填活动）'}</div>
-          <div class="text-[11px] text-[#a8a29e] truncate mt-0.5">${extOrgText(x)}</div>
+          <div class="text-[13px] font-bold truncate ${x.activity ? 'text-[#111111]' : 'text-[#c4bfb7]'}">${extEsc(x.activity) || '未填活动'}</div>
+          ${cross ? `<div class="text-[11px] text-[#a8a29e] truncate mt-0.5">${cross}</div>` : ''}
         </div>
         <div class="w-[92px] shrink-0 text-right text-[14px] font-black text-[#111111]">${extMoney(x.amount)}</div>
         <span class="w-[46px] shrink-0 text-center text-[10.5px] font-bold px-1.5 py-0.5 rounded-md" style="background:${pm.bg};color:${pm.fg}">${pm.text}</span>
         <button data-ext-edit="${x.id}" class="shrink-0 w-7 h-7 rounded-lg text-[#a8a29e] hover:text-[#111111] hover:bg-[#f0ebe2] transition" title="编辑"><i class="fa-solid fa-pen text-[11px]"></i></button>
       </div>`;
-    }).join('');
+    };
+
+    listBody.innerHTML = groups.map((g) => `
+      <div class="flex items-center justify-between gap-3 px-4 py-2 bg-[#faf8f3] border-b border-[#f0ebe2]" data-ext-group="${extEsc(g.org)}">
+        <div class="flex items-center gap-1.5 min-w-0">
+          <i class="fa-solid fa-user-tie text-[10px] text-[#b8b2a8]"></i>
+          <span class="text-[12px] font-black text-[#111111] truncate">${extEsc(g.org)}</span>
+          <span class="text-[10.5px] font-semibold text-[#a8a29e] shrink-0">${g.items.length} 场</span>
+        </div>
+        <div class="flex items-center gap-2.5 shrink-0">
+          ${g.unpaid > 0 && g.unpaid < g.total ? `<span class="text-[10.5px] font-bold" style="color:#b45309">待收 ${extMoney(g.unpaid)}</span>` : ''}
+          <span class="text-[12.5px] font-black text-[#111111]">${extMoney(g.total)}</span>
+        </div>
+      </div>
+      ${g.items.map(rowHtml).join('')}
+    `).join('');
 
     listBody.querySelectorAll('[data-ext-row]').forEach((row) => {
       row.addEventListener('click', (e) => {
@@ -4722,8 +4841,20 @@
     set('extEndTime', x ? x.endTime : '');
     const delBtn = document.getElementById('btnExtDelete');
     if (delBtn) delBtn.classList.toggle('hidden', !x);
+    // 单位改成必填索引后，同一家客户被写成「万达广场」「万达广场  」会很烦 → 填过的进下拉候选
+    extFillDatalist('extOrgList', externalIncomes.map((i) => i.org));
+    extFillDatalist('extActivityList', externalIncomes.map((i) => i.activity));
     extFormSyncChips();
     showModal('modalExtIncome');
+  }
+
+  // 已填过的文本进 <datalist> 候选（同一家客户别写成两种写法，否则分组会裂开）
+  function extFillDatalist(elId, values) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    const uniq = [...new Set((values || []).map((v) => String(v || '').trim()).filter(Boolean))];
+    uniq.sort((a, b) => a.localeCompare(b, 'zh'));
+    el.innerHTML = uniq.map((v) => `<option value="${extEsc(v)}"></option>`).join('');
   }
 
   function saveExtIncomeForm() {
@@ -4732,12 +4863,13 @@
     const activity = val('extActivity');
     const org = val('extOrg');
     const date = val('extStartDate');
-    const startTime = val('extStartTime');
-    const endTime = val('extEndTime');
+    const startTime = time24Value('extStartTime');
+    const endTime = time24Value('extEndTime');
     let endDate = val('extEndDate');
 
     if (!date) { showToast('先选开始日期', 'triangle-exclamation'); return; }
-    if (!activity) { showToast('活动名称别空着', 'triangle-exclamation'); return; }
+    // 单位/客户是这张表的主索引（列表按它分组），必填；活动改成选填
+    if (!org) { showToast('「单位 / 客户」要填一个，列表按它索引', 'triangle-exclamation'); return; }
     const amount = Number(val('extAmount') || 0);
     if (!Number.isFinite(amount) || amount < 0) { showToast('金额填个正数', 'triangle-exclamation'); return; }
     if (!endDate) endDate = date;
@@ -6234,7 +6366,8 @@
     const assistantTeacherName = assistantTeacher ? assistantTeacher.name : '';
 
     const date = document.getElementById('inputCourseDate').value;
-    const startTime = document.getElementById('inputStartTime').value;
+    const startTime = time24Value('inputStartTime');
+    if (!date || !startTime) { showToast('日期和开始时间都要填', 'triangle-exclamation'); return; }
     const durationMinutes = parseInt(document.getElementById('selectDuration').value, 10);
     const room = document.getElementById('inputRoom').value.trim();
     const notes = document.getElementById('inputNotes') ? document.getElementById('inputNotes').value.trim() : '';
