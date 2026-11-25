@@ -1300,3 +1300,18 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       去掉 `|| pendingPushPayload` → B1/B2/B3 三红（注意 B 段必须同时把 meta 版本号改大，否则轮询不发拉取，测不到守卫）；
       `schedulePushRetry` 直接 return → A8/A9/A10/C3/C4 五红。
     - 版本 app.js?v=83 / mobile.js?v=98 / sw v146。
+
+74. **云同步自检面板 + 网络恢复即重推**（2026-11-25，Jackson 给同步码 `zerowind` 后查云端是空的）
+    - 用户报「云同步不行」且 toast 只说「暂时没连上」时，光靠猜没用：后端实测完全正常
+      （300KB / 800KB / 1.1MB 中文快照 POST 都 200，`/api/sync?meta=1` 正常）。
+      设置页加「测试云同步」按钮（电脑 `#btnSyncDiag` / `#syncDiagOut`，手机 `#btnMobileSyncDiag` /
+      `#mobileSyncDiagOut`），打出：站点 origin、同步码、网络、快照体积、待推状态、上次失败真实错误、
+      读/写探测 HTTP 状态码。**点结果可复制**，方便发截图/文字。
+    - ⚠️ 写探测必须用 **`同步码 + ':probe'`** 这个临时 key，绝不碰真实 key ——
+      否则用户点一下自检就把真实快照覆盖成 `{probe:1}`，全库没了。护栏已验证：改用真实 key → A8/C4 红。
+    - `lastPushError` / `lastPushAt` 记录每次失败的真实原因（含 `JSON.stringify` 抛错、
+      `Failed to fetch`、服务端状态码），自检面板显示；不记 → B2 红。
+    - `online` 事件立刻重推（清掉退避 timer），手机从电梯/地下室出来不用等 4~60s。去掉 → D3/D4 红。
+    - `btnSaveSyncKey` 也改走 `applySyncKey()` 统一入口；`applySyncKey` 只在**同步码真的变了**时才清待推队列，
+      重存同一个码不能丢掉还没推上去的数据。
+    - 版本 app.js v84 / mobile.js v99 / tailwind v16 / sw v147；回归 `tmp/sync-diag-check.mjs` 20 项。

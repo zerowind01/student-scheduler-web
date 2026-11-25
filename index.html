@@ -36,7 +36,7 @@
        改完 class 要重新生成：tools\build-tailwind.cmd
        ⚠ 必须留在 </head> 之前（即所有自有样式之后），复刻 Play CDN 把 <style>
        append 到 head 末尾的层叠顺序；挪到前面会翻转优先级。 -->
-  <link rel="stylesheet" href="css/tailwind.css?v=15">
+  <link rel="stylesheet" href="css/tailwind.css?v=16">
 </head>
 <body class="text-[#111111] font-sans h-screen flex flex-col overflow-hidden select-none" style="background: var(--surface-page);">
 
@@ -1021,6 +1021,13 @@
           <input type="text" id="inputSyncKey" required placeholder="如：my_school_2026" autocapitalize="none" autocomplete="off" autocorrect="off" spellcheck="false" class="w-full px-3 py-2 border border-[#efe9e0] rounded-xl outline-none focus:ring-2 focus:ring-[#a8a29e] font-bold text-[#111111]" style="text-transform:none">
         </div>
 
+        <div class="pt-1">
+          <button type="button" id="btnSyncDiag" class="w-full px-3 py-2 bg-white border border-[#efe9e0] hover:border-[#d6d3d1] text-[#57534e] rounded-xl font-bold transition flex items-center justify-center gap-1.5">
+            <i class="fa-solid fa-stethoscope"></i> 测试云同步（同步不上时点这个）
+          </button>
+          <pre id="syncDiagOut" class="hidden mt-2 p-2.5 bg-[#faf8f3] border border-[#efe9e0] rounded-xl text-[11px] leading-relaxed text-[#57534e] whitespace-pre-wrap break-all font-mono"></pre>
+        </div>
+
         <div class="flex items-center justify-end space-x-2 pt-2 border-t border-[#f2ece4]">
           <button type="button" id="btnCancelSyncModal" class="px-3.5 py-1.5 text-[#57534e] bg-[#f5f2ec] hover:bg-[#e7e5e4] rounded-xl font-medium">
             取消
@@ -1356,7 +1363,7 @@
   </div>
 
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=83"></script>
+  <script src="js/app.js?v=84"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

@@ -33,7 +33,7 @@
        Play CDN 当年是把 <style> append 到 head 末尾，工具类实际压过自有样式；
        把这份 CSS 放到 head 前部会翻转层叠顺序（实测 FontAwesome 的 line-height:1
        会反过来盖掉 text-* 的行高，图标盒子从 24px 变 16px）。 -->
-  <link rel="stylesheet" href="css/tailwind.css?v=15">
+  <link rel="stylesheet" href="css/tailwind.css?v=16">
 </head>
 <body class="text-slate-800 font-sans h-[100dvh] flex flex-col overflow-hidden select-none" style="background: var(--surface-page);">
 
@@ -729,6 +729,13 @@
           <input type="text" id="inputSyncKey" required placeholder="如：my_school_2026" autocapitalize="none" autocomplete="off" autocorrect="off" spellcheck="false" class="w-full px-3 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-[#ff5600]/30 font-bold text-slate-800" style="text-transform:none">
         </div>
 
+        <div class="pt-1">
+          <button type="button" id="btnMobileSyncDiag" class="w-full px-3 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold flex items-center justify-center gap-1.5">
+            <i class="fa-solid fa-stethoscope"></i> 测试云同步（同步不上时点这个）
+          </button>
+          <pre id="mobileSyncDiagOut" class="hidden mt-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] leading-relaxed text-slate-600 whitespace-pre-wrap break-all font-mono"></pre>
+        </div>
+
         <div class="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
           <button type="button" id="btnCancelSyncModal" class="px-3.5 py-1.5 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl font-medium">
             取消
@@ -881,7 +888,7 @@
     </div>
   </div>
 
-  <script src="js/mobile.js?v=98"></script>
+  <script src="js/mobile.js?v=99"></script>
   <!-- 老师访问码登录遮罩（管理员数据加载后自动隐藏） -->
   <div id="teacherLoginGate" class="hidden fixed inset-0 z-[90] lm-gate flex flex-col items-center justify-center px-8">
     <div class="w-14 h-14 rounded-2xl bg-[#111111] flex items-center justify-center text-white shadow-lg mb-4">

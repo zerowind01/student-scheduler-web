@@ -4085,6 +4085,8 @@
   let pendingPushPayload = null;   // 待重推的最新一份快照（后一次覆盖前一次）
   let pushRetryTimer = null;
   let pushRetryDelay = PUSH_RETRY_BASE_MS;
+  let lastPushError = '';          // 最近一次推送失败的真实原因（设置页自检要显示，别只说「不行」）
+  let lastPushAt = 0;              // 最近一次尝试推送的时间
 
   async function pushToCloudSync() {
     saveDataLocalOnly();
@@ -4122,6 +4124,7 @@
 
     try {
       isPushingToCloud = true;
+      lastPushAt = Date.now();
       const pushRes = await fetch(`${CLOUD_SYNC_ENDPOINT}?key=${encodeURIComponent(schoolSyncKey)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -4132,11 +4135,13 @@
       localStorage.setItem('edu_scheduler_last_sync_time', String(payload.updatedAt));
       if (pendingPushPayload === payload) pendingPushPayload = null; // 期间又改了就把新的留着
       cloudSyncFailedOnce = false;
+      lastPushError = '';
       pushRetryDelay = PUSH_RETRY_BASE_MS;
       clearTimeout(pushRetryTimer);
       pushRetryTimer = null;
     } catch (err) {
       console.warn('Cloud sync push:', err);
+      lastPushError = (err && err.message) || String(err);
       if (!cloudSyncFailedOnce) {
         cloudSyncFailedOnce = true;
         // 服务端明确回 4xx/5xx（配额满、快照过大）和「根本没连上」是两回事：前者重试也没用，
@@ -4162,6 +4167,56 @@
       sendPendingPush();
     }, delay);
   }
+
+  // ---- 云端自检（设置页「测试云同步」）----
+  // 手机上报「云同步不行」时，只靠一句 toast 分不清是「域名根本到不了」「被服务端拒了」还是「数据太大」。
+  // 这里把判定依据全打出来；写探测用一个临时 key（同步码 + ':probe'），绝不动真实快照。
+  async function runCloudDiagnose() {
+    const lines = [];
+    const now = new Date();
+    lines.push(`时间：${now.toLocaleString('zh-CN')}`);
+    lines.push(`站点：${location.origin}`);
+    lines.push(`同步码：${schoolSyncKey ? schoolSyncKey + `（${schoolSyncKey.length} 位）` : '（没设置）'}`);
+    lines.push(`网络：${navigator.onLine ? '在线' : '离线'}${document.hidden ? ' · 页面在后台' : ''}`);
+    const snapshot = { students, schedules, teachers, courseTypes, checkInLogs, debts, rechargeLogs, externalIncomes };
+    const bytes = JSON.stringify(snapshot).length;
+    lines.push(`快照体积：${(bytes / 1024).toFixed(0)} KB${bytes > 900 * 1024 ? ' ⚠️ 接近/超过 Upstash 1MB 上限' : ''}`);
+    lines.push(`待推送：${pendingPushPayload ? '有（上次没推上去）' : '无'}`);
+    lines.push(`上次推送：${lastPushAt ? new Date(lastPushAt).toLocaleTimeString('zh-CN') : '从未'}${lastPushError ? '' : '（没有失败记录）'}`);
+    if (lastPushError) lines.push(`上次错误：${lastPushError}`);
+    if (!schoolSyncKey) { lines.push('—— 没有同步码，跳过探测 ——'); return lines.join('\n'); }
+
+    // ① 读探测：能不能连上 /api/sync（只读版本号，几十字节）
+    try {
+      const t0 = Date.now();
+      const r = await fetch(`${CLOUD_SYNC_ENDPOINT}?key=${encodeURIComponent(schoolSyncKey)}&meta=1&_=${Date.now()}`, { cache: 'no-store' });
+      lines.push(`读：HTTP ${r.status} · ${Date.now() - t0}ms · ${(await r.text()).slice(0, 80)}`);
+    } catch (e) {
+      lines.push(`读：失败（${(e && e.message) || e}）← 域名/网络到不了`);
+    }
+    // ② 写探测：临时 key，不污染真实数据
+    try {
+      const t0 = Date.now();
+      const r = await fetch(`${CLOUD_SYNC_ENDPOINT}?key=${encodeURIComponent(schoolSyncKey + ':probe')}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ probe: 1, updatedAt: Date.now() })
+      });
+      lines.push(`写：HTTP ${r.status} · ${Date.now() - t0}ms · ${(await r.text()).slice(0, 80)}`);
+    } catch (e) {
+      lines.push(`写：失败（${(e && e.message) || e}）← 上传被掐断或域名到不了`);
+    }
+    return lines.join('\n');
+  }
+
+  // 网络一恢复就立刻重推，不等退避计时器（手机上从地下室/电梯出来最需要这个）
+  window.addEventListener('online', () => {
+    if (!pendingPushPayload) return;
+    pushRetryDelay = PUSH_RETRY_BASE_MS;
+    clearTimeout(pushRetryTimer);
+    pushRetryTimer = null;
+    sendPendingPush();
+  });
 
   async function pullFromCloudSync(force = false) {
     // 本地还有没推上去的改动 → 先别拉，否则云端旧快照会把刚改的数据盖掉（重推成功后才放开）
@@ -4351,10 +4406,12 @@
   }
 
   function applySyncKey(val) {
+    const prevKey = schoolSyncKey;
     schoolSyncKey = val;
     localStorage.setItem('edu_scheduler_school_key', val);
-    // 换了同步码：上一把 key 的待推快照绝不能推给新机构（会串数据）
-    pendingPushPayload = null;
+    // 换了同步码：上一把 key 的待推快照绝不能推给新机构（会串数据）。
+    // 但重存同一个码时不能丢 —— 那份还没推上去，丢了就永远停在「仅本机」。
+    if (prevKey !== val) pendingPushPayload = null;
     clearTimeout(pushRetryTimer);
     pushRetryTimer = null;
     pushRetryDelay = PUSH_RETRY_BASE_MS;
@@ -4635,12 +4692,26 @@
       // 与门禁同一套大小写容错：保留原文，只有原文查不到、大写能查到时才退回大写
       const val = await normalizeSyncKeyInput(el ? el.value : '');
       if (!val) { showToast('请输入同步码'); return; }
-      schoolSyncKey = val;
-      localStorage.setItem('edu_scheduler_school_key', val);
+      applySyncKey(val); // 统一入口：换码时丢弃上一把 key 的待推快照，防串机构
       hideModal('modalSyncKey');
       pullFromCloudSync(true).then(() => {
         showToast(`已开启云同步！同步码: ${val}`);
       });
+    });
+
+    safeBind('btnMobileSyncDiag', 'click', async () => {
+      const out = document.getElementById('mobileSyncDiagOut');
+      if (out) { out.classList.remove('hidden'); out.textContent = '探测中…'; }
+      const txt = await runCloudDiagnose();
+      if (out) {
+        out.textContent = txt;
+        // 手机上长按选字很难，点结果直接复制，方便把诊断发给别人看
+        out.onclick = () => {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(txt).then(() => showToast('自检结果已复制')).catch(() => {});
+          }
+        };
+      }
     });
 
     safeBind('btnCopyQuickSyncCode', 'click', () => {
