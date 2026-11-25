@@ -1870,6 +1870,17 @@
   let isPullingFromCloud = false;
   let cloudSyncFailedOnce = false; // 只提醒一次，避免弹窗轰炸
 
+  // ---- 推送失败自动重试（2026-11-25 Jackson 报「云同步不行」）----
+  // 旧写法有两个坑：
+  // ① `last_sync_time` 在 POST **之前**就写成本机 now。推送一失败，本地时钟就被推到未来，
+  //    之后 pull 里 `remoteVer > localTime` 永远不成立 → 这台设备再也拉不到别处的改动。
+  // ② 失败后没有任何重试，只能等用户下一次操作。手机在 4G 上偶发一次 TLS 断连就永久停在「仅本机」。
+  // 现在：只有 POST 真正 200 才更新本地时钟；失败留 payload 退避重推（4s → 8s → … 上限 60s）。
+  const PUSH_RETRY_BASE_MS = 4000;
+  let pendingPushPayload = null;   // 待重推的最新一份快照（后一次覆盖前一次）
+  let pushRetryTimer = null;
+  let pushRetryDelay = PUSH_RETRY_BASE_MS;
+
   // 云端同步改走同源 /api/sync 代理（凭据由服务端函数持有，前端不再暴露 token）
   // 服务端实现见 functions/api/sync.js（CF Pages Function）—— 读取 UPSTASH_REST_URL / UPSTASH_REST_TOKEN
   const CLOUD_SYNC_ENDPOINT = '/api/sync';
@@ -1878,53 +1889,83 @@
     saveDataLocalOnly();
     if (!schoolSyncKey) return;
 
+    const now = Date.now();
+    const payload = {
+      key: schoolSyncKey,
+      updatedAt: now,
+      __ctx: LM_CTX, // 来源标识：本页的 onmessage 据此忽略自己的回声
+      students,
+      schedules,
+      teachers,
+      courseTypes,
+      checkInLogs,
+      debts,
+      rechargeLogs,
+      externalIncomes,
+    };
+
+    // 本地其它标签页立刻看到改动，不等网络
+    if ('BroadcastChannel' in window) {
+      try {
+        new BroadcastChannel('edu_scheduler_broadcast').postMessage(payload);
+      } catch (e) {}
+    }
+
+    pendingPushPayload = payload;
+    await sendPendingPush();
+  }
+
+  async function sendPendingPush() {
+    const payload = pendingPushPayload;
+    if (!payload || !schoolSyncKey) return;
+
     try {
       isPushingToCloud = true;
-      const now = Date.now();
-
-      const payload = {
-        key: schoolSyncKey,
-        updatedAt: now,
-        __ctx: LM_CTX, // 来源标识：本页的 onmessage 据此忽略自己的回声
-        students,
-        schedules,
-        teachers,
-        courseTypes,
-        checkInLogs,
-        debts,
-        rechargeLogs,
-        externalIncomes,
-      };
-
-      localStorage.setItem('edu_scheduler_last_sync_time', String(now));
-
-      if ('BroadcastChannel' in window) {
-        try {
-          new BroadcastChannel('edu_scheduler_broadcast').postMessage(payload);
-        } catch (e) {}
-      }
-
-      const valStr = JSON.stringify(payload);
       const pushRes = await fetch(`${CLOUD_SYNC_ENDPOINT}?key=${encodeURIComponent(schoolSyncKey)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: valStr
+        body: JSON.stringify(payload)
       });
       if (!pushRes.ok) throw new Error(`cloud push failed: ${pushRes.status}`);
+      // 写进云端才算同步过：这一行必须留在 POST 成功之后（提前写会让本机再也拉不到别人的更新）
+      localStorage.setItem('edu_scheduler_last_sync_time', String(payload.updatedAt));
+      if (pendingPushPayload === payload) pendingPushPayload = null; // 期间又改了就把新的留着
       cloudSyncFailedOnce = false;
+      pushRetryDelay = PUSH_RETRY_BASE_MS;
+      clearTimeout(pushRetryTimer);
+      pushRetryTimer = null;
     } catch (err) {
       console.warn('Cloud sync push:', err);
       if (!cloudSyncFailedOnce) {
         cloudSyncFailedOnce = true;
-        showToast('⚠️ 云同步不可用：当前通过 file:// 直接打开或网络异常，数据仅保存在本机。请通过部署后的网址访问以启用跨设备同步。', 'cloud-slash');
+        // 服务端明确回 4xx/5xx（配额满、快照过大）和「根本没连上」是两回事：前者重试也没用，
+        // 得让用户看到状态码，不然永远只会说「云同步不行」。
+        const code = String((err && err.message) || '').match(/failed: (\d{3})/);
+        showToast(code
+          ? `⚠️ 云端拒绝了这次同步（服务端 ${code[1]}），数据已存本机`
+          : '⚠️ 云同步暂时没连上，已在本机保存，正在自动重试…', 'cloud-slash');
       }
+      schedulePushRetry();
     } finally {
       isPushingToCloud = false;
     }
   }
 
+  // 退避重推：期间用户又改了数据 → pendingPushPayload 已被更新的那份覆盖，重推时自然带最新数据
+  function schedulePushRetry() {
+    if (pushRetryTimer || !pendingPushPayload) return;
+    const delay = pushRetryDelay;
+    pushRetryDelay = Math.min(pushRetryDelay * 2, 60000);
+    pushRetryTimer = setTimeout(() => {
+      pushRetryTimer = null;
+      sendPendingPush();
+    }, delay);
+  }
+
+
   async function pullFromCloudSync(force = false) {
-    if (!schoolSyncKey || isPullingFromCloud || isPushingToCloud) return;
+    // 本地还有没推上去的改动 → 先别拉，否则云端旧快照会把刚改的数据盖掉（重推成功后才放开）
+    if (!schoolSyncKey || isPullingFromCloud || isPushingToCloud || pendingPushPayload) return;
 
     try {
       isPullingFromCloud = true;
@@ -4177,6 +4218,11 @@
   function applySyncKey(val) {
     schoolSyncKey = val;
     localStorage.setItem('edu_scheduler_school_key', val);
+    // 换了同步码：上一把 key 的待推快照绝不能推给新机构（会串数据）
+    pendingPushPayload = null;
+    clearTimeout(pushRetryTimer);
+    pushRetryTimer = null;
+    pushRetryDelay = PUSH_RETRY_BASE_MS;
   }
 
   // 探测云端该同步码下是否已有数据（同步码大小写敏感，用来做容错而不静默改写用户输入）

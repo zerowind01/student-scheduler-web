@@ -1275,3 +1275,28 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       B7b/I7b–I7f/I14b 手机端同构）。
       护栏：`const open = true`（默认全展开）→ A11/A12/A13/A17/A20/I7b/I7c 七红；
       去掉保存后 `add` → B7b/I14b 红。
+
+73. **云同步推送失败必须能自愈**（2026-11-25，Jackson 报「云同步不行」，手机端弹「云同步不可用」）
+
+    - 旧 `pushToCloudSync` 有两个真 bug，改同步代码前先看这里：
+      1. **`edu_scheduler_last_sync_time` 在 POST 之前就写成本机 now**。推送一失败，本地时钟被推到未来，
+         之后 `pullFromCloudSync` 里 `remoteData.updatedAt > localTime` 永远不成立 → **这台设备再也拉不到
+         别处的改动**（表现就是「只有这台不动」）。现在这行只能在 `POST.ok` 之后执行。
+      2. **失败后没有任何重试**，只能等用户下一次操作。手机 4G 一次 TLS 抖动就永久停在「仅本机」。
+    - 结构改成 `pushToCloudSync()`（组装 payload + 广播本地其他标签页）→ `sendPendingPush()`
+      （真正 fetch）→ 失败 `schedulePushRetry()`（4s → 8s → … 上限 60s）。
+      待推快照存 `pendingPushPayload`，后一次覆盖前一次，所以重推带的永远是**最新**数据。
+      **两端逐字同构**（app.js / mobile.js）。
+    - **有待推数据时 `pullFromCloudSync` 直接 return**（`|| pendingPushPayload`）：否则云端旧快照会把
+      刚改还没推上去的数据盖掉。重推成功清空后才恢复拉取。
+    - `applySyncKey()` 里必须清空待推队列 + 定时器：换同步码时把上一把 key 的快照推给新机构 = 串数据。
+    - 提示文案分两级：HTTP 4xx/5xx → 「云端拒绝了这次同步（服务端 N），数据已存本机」（重试无效，
+      多为 Upstash 配额满 / 单个 value 超 1MB）；纯网络失败 → 「暂时没连上，已在本机保存，正在自动重试…」。
+      **别再用旧文案**「云同步不可用：数据仅保存在本机。请通过部署后的网址访问」—— 手机上是 HTTPS 的，
+      这句话纯误导。
+    - 回归 `tmp/sync-retry-check.mjs` **21 项**（A 失败不推进时钟+退避重推 / B 待推时不被云端覆盖 /
+      C 手机端同构 / D 服务端 500 文案带状态码）。
+      护栏：把 `last_sync_time` 挪回 POST 前 → A2/A6/A9/A10/A11/B3 六红；
+      去掉 `|| pendingPushPayload` → B1/B2/B3 三红（注意 B 段必须同时把 meta 版本号改大，否则轮询不发拉取，测不到守卫）；
+      `schedulePushRetry` 直接 return → A8/A9/A10/C3/C4 五红。
+    - 版本 app.js?v=83 / mobile.js?v=98 / sw v146。
