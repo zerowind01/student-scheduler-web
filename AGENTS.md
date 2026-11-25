@@ -1366,3 +1366,13 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       护栏验证：去默认金额带入 → Q10/Q11/Qm5/Qm6 四红；编辑不保 status → Q16 红；
       卡头换回旧顺序 → Q2/Q3/Q8 三红。
     - 版本 app.js v87 / mobile.js v102 / tailwind v18 / sw v150。
+
+78. **工作台「记一场活动」取消结束日期，只留结束时间**（2026-11-26，Jackson：「在工作台新增活动里取消结束日期选项，保留结束时间」）
+    - 两端活动表单（电脑 `modalExtIncome` / 手机 `modalMobileExtIncome`）去掉结束日期输入框
+     （`extEndDate` / `mExtEndDate`）及「留空=当天」标注，只留 `extEndTime` / `mExtEndTime`。
+    - 保存时 `endDate` 直接取开始日期，不再读表单、不再校验「结束日期不能早于开始日期」；
+      删掉「开始日期改了、结束日期跟着走」的联动监听。跨天演出（22:00 → 次日 01:30）
+      仍走原有自动顺延（结束时间早于开始时间 → 顺延一天并 toast 说明）。
+    - 数据结构不动：`externalIncomes` 的 `endDate` 字段保留，归一化与「跨天至」显示照旧；
+      旧记录的跨天 `endDate` 不受影响。重复排课的 `inputRepeatEndDate` 是另一功能，不动。
+    - 版本 app.js v88 / mobile.js v103 / sw v151。

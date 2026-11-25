@@ -5221,12 +5221,6 @@
     safeBind('btnMExtDelete', 'click', deleteMobileExtForm);
     const mextModal = document.getElementById('modalMobileExtIncome');
     if (mextModal) mextModal.addEventListener('click', (e) => { if (e.target === mextModal) hideModal('modalMobileExtIncome'); });
-    // 开始日期改了、结束日期还停在旧值 → 跟着走（多数活动当天结束，跨天才手改）
-    const mextSd = document.getElementById('mExtStartDate');
-    if (mextSd) mextSd.addEventListener('change', () => {
-      const ed = document.getElementById('mExtEndDate');
-      if (ed && (!ed.value || ed.value < mextSd.value)) ed.value = mextSd.value;
-    });
     safeBind('navTabSettings', 'click', () => switchMobileView('settings'));
 
     // 设置页按钮
@@ -8083,7 +8077,6 @@
     set('mExtAmount', x ? (x.amount || '') : (p && p.defaultAmount ? p.defaultAmount : ''));
     set('mExtStartDate', x ? x.date : today);
     set('mExtStartTime', x ? x.startTime : '');
-    set('mExtEndDate', x ? (x.endDate || x.date) : today);
     set('mExtEndTime', x ? x.endTime : '');
     const delBtn = document.getElementById('btnMExtDelete');
     if (delBtn) delBtn.classList.toggle('hidden', !x);
@@ -8175,15 +8168,14 @@
     const date = val('mExtStartDate');
     const startTime = time24Value('mExtStartTime');
     const endTime = time24Value('mExtEndTime');
-    let endDate = val('mExtEndDate');
+    // 结束日期不再让填：默认就是开始那天；跨天（22:00 → 次日 01:30）仍由下面的自动顺延处理
+    let endDate = date;
 
     if (!date) { showToast('先选开始日期'); return; }
     // 单位/客户是主索引（列表按它分组），必填；活动改成选填
     if (!org) { showToast('「单位 / 客户」要填一个'); return; }
     const amount = Number(val('mExtAmount') || 0);
     if (!Number.isFinite(amount) || amount < 0) { showToast('金额填个正数'); return; }
-    if (!endDate) endDate = date;
-    if (endDate < date) { showToast('结束日期不能早于开始日期'); return; }
     // 同一天却「结束早于开始」= 想跨天（22:00 → 次日 01:30）：自动顺延一天并明确告知
     let crossNoted = false;
     if (endDate === date && startTime && endTime && endTime < startTime) {

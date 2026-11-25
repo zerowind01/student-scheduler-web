@@ -5160,7 +5160,6 @@
     set('extAmount', x ? (x.amount || '') : (p && p.defaultAmount ? p.defaultAmount : ''));
     set('extStartDate', x ? x.date : today);
     set('extStartTime', x ? x.startTime : '');
-    set('extEndDate', x ? (x.endDate || x.date) : today);
     set('extEndTime', x ? x.endTime : '');
     const delBtn = document.getElementById('btnExtDelete');
     if (delBtn) delBtn.classList.toggle('hidden', !x);
@@ -5252,15 +5251,14 @@
     const date = val('extStartDate');
     const startTime = time24Value('extStartTime');
     const endTime = time24Value('extEndTime');
-    let endDate = val('extEndDate');
+    // 结束日期不再让填：默认就是开始那天；跨天（22:00 → 次日 01:30）仍由下面的自动顺延处理
+    let endDate = date;
 
     if (!date) { showToast('先选开始日期', 'triangle-exclamation'); return; }
     // 单位/客户是这张表的主索引（列表按它分组），必填；活动改成选填
     if (!org) { showToast('「单位 / 客户」要填一个，列表按它索引', 'triangle-exclamation'); return; }
     const amount = Number(val('extAmount') || 0);
     if (!Number.isFinite(amount) || amount < 0) { showToast('金额填个正数', 'triangle-exclamation'); return; }
-    if (!endDate) endDate = date;
-    if (endDate < date) { showToast('结束日期不能早于开始日期', 'triangle-exclamation'); return; }
     // 同一天却「结束早于开始」= 想跨天（22:00 → 次日 01:30）。自动顺延一天并说明，
     // 比弹错误框让人反复试更省事，但必须让用户看见发生了什么。
     let crossNoted = false;
@@ -5326,12 +5324,6 @@
     if (modal) modal.addEventListener('click', (e) => { if (e.target === modal) hideModal('modalExtIncome'); });
     const pModal = document.getElementById('modalExtProject');
     if (pModal) pModal.addEventListener('click', (e) => { if (e.target === pModal) hideModal('modalExtProject'); });
-    // 开始日期改了、结束日期还停在上一个值 → 跟着走（多数活动当天结束，跨天才手改）
-    const sd = document.getElementById('extStartDate');
-    if (sd) sd.addEventListener('change', () => {
-      const ed = document.getElementById('extEndDate');
-      if (ed && (!ed.value || ed.value < sd.value)) ed.value = sd.value;
-    });
   }
 
   // 全部充值记录（桌面弹层）：按时间倒序，带撤销。撤销后重开一次，列表与合计当场刷新。
