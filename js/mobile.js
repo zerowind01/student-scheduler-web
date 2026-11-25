@@ -39,6 +39,8 @@
   // 工作台（外部收入）页面级状态：**必须声明在顶部**（写在函数上方会 TDZ 白屏，AGENTS 第 47 条）
   let mobileExtMonthOffset = 0;   // 0 = 本月，-1 = 上月
   let mobileExtFilter = 'all';    // all | unpaid | paid
+  // 已展开的单位卡片（key = 单位名）。默认全收起，点卡才铺明细（2026-11-25）
+  let mobileExtOpen = new Set();
   let mobileExtDraftType = '演出'; // 表单当前类型
   let mobileExtDraftPaid = false;  // 表单当前收款状态
   // 学员状态（2026-10-24）：页面级状态必须声明在顶部，写在函数上方会 TDZ 白屏
@@ -7639,44 +7641,46 @@
       try { wd = '周' + ['日', '一', '二', '三', '四', '五', '六'][new Date(x.date + 'T00:00:00').getDay()]; } catch (e) { wd = ''; }
       const cross = extCrossText(x);
       return `
-      <div class="lm-card p-3.5" data-mext-row="${x.id}">
-        <div class="flex items-start gap-2.5">
-          <div class="shrink-0 text-center w-[50px]">
-            <div class="text-[13px] font-black text-[#111111]">${md}</div>
-            <div class="text-[10px] font-semibold text-[#9c9fa5] mt-0.5">${wd}</div>
+      <div class="flex items-start gap-2.5 px-3.5 py-3 border-b border-[#f5f1ea] last:border-b-0 active:bg-[#faf8f3] transition" data-mext-row="${x.id}">
+        <div class="shrink-0 text-center w-[46px]">
+          <div class="text-[13px] font-black text-[#111111]">${md}</div>
+          <div class="text-[10px] font-semibold text-[#9c9fa5] mt-0.5">${wd}</div>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-md" style="background:${tm.bg};color:${tm.fg}">${x.type}</span>
+            <span class="text-[10.5px] font-semibold text-[#9c9fa5]">${extTimeText(x)}</span>
           </div>
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-1.5 flex-wrap">
-              <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-md" style="background:${tm.bg};color:${tm.fg}">${x.type}</span>
-              <span class="text-[10.5px] font-semibold text-[#9c9fa5]">${extTimeText(x)}</span>
-            </div>
-            <div class="text-[13.5px] font-bold truncate mt-1 ${x.activity ? 'text-[#111111]' : 'text-[#c4bfb7]'}">${extEsc(x.activity) || '未填活动'}</div>
-            ${cross ? `<div class="text-[11px] text-[#9c9fa5] truncate mt-0.5">${cross}</div>` : ''}
-          </div>
-          <div class="shrink-0 text-right">
-            <div class="text-[15px] font-black text-[#111111]">${extMoney(x.amount)}</div>
-            <div class="mt-1 inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-md" style="background:${pm.bg};color:${pm.fg}">${pm.text}</div>
-          </div>
+          <div class="text-[13px] font-bold truncate mt-1 ${x.activity ? 'text-[#111111]' : 'text-[#c4bfb7]'}">${extEsc(x.activity) || '未填活动'}</div>
+          ${cross ? `<div class="text-[11px] text-[#9c9fa5] truncate mt-0.5">${cross}</div>` : ''}
+        </div>
+        <div class="shrink-0 text-right">
+          <div class="text-[14.5px] font-black text-[#111111]">${extMoney(x.amount)}</div>
+          <div class="mt-1 inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-md" style="background:${pm.bg};color:${pm.fg}">${pm.text}</div>
         </div>
       </div>`;
     };
 
-    // 单位/客户是索引：每家单位一个小组，组头带场次与小计
-    const groupHtml = extGroupByOrg(rows).map((g) => `
-      <div class="mt-1" data-mext-group="${extEsc(g.org)}">
-        <div class="flex items-center justify-between gap-2 px-1 py-1.5">
-          <div class="flex items-center gap-1.5 min-w-0">
-            <i class="fa-solid fa-user-tie text-[9px] text-[#b8b2a8]"></i>
-            <span class="text-[11.5px] font-black text-[#111111] truncate">${extEsc(g.org)}</span>
-            <span class="text-[10px] font-semibold text-[#9c9fa5] shrink-0">${g.items.length} 场</span>
+    // 单位/客户是索引：**一个单位一张卡**，卡面只给场次 + 小计（+待收），点开才铺时间与活动明细
+    const groupHtml = extGroupByOrg(rows).map((g) => {
+      const open = mobileExtOpen.has(g.key);
+      // 卡面必须一眼看出这家钱收没收（收起后只有这一行汇总，别再让人点开找）
+      const payTxt = g.unpaid > 0 ? `待收 ${extMoney(g.unpaid)}` : '已收';
+      const payColor = g.unpaid > 0 ? '#b45309' : '#047857';
+      return `
+      <div class="lm-ext-unit" data-mext-group="${extEsc(g.key)}">
+        <button type="button" data-mext-toggle="${extEsc(g.key)}" aria-expanded="${open ? 'true' : 'false'}" class="w-full text-left p-3.5 flex items-center gap-2.5 active:bg-[#faf8f3] transition">
+          <div class="w-8 h-8 rounded-xl shrink-0 flex items-center justify-center" style="background:#f5f2ec"><i class="fa-solid fa-user-tie text-[11px] text-[#a8a29e]"></i></div>
+          <div class="flex-1 min-w-0">
+            <div class="text-[13.5px] font-black text-[#111111] truncate">${extEsc(g.org)}</div>
+            <div class="text-[10.5px] font-semibold text-[#9c9fa5] mt-0.5">${g.items.length} 场 · <span style="color:${payColor}">${payTxt}</span></div>
           </div>
-          <div class="flex items-center gap-2 shrink-0">
-            ${g.unpaid > 0 && g.unpaid < g.total ? `<span class="text-[10px] font-bold" style="color:#b45309">待收 ${extMoney(g.unpaid)}</span>` : ''}
-            <span class="text-[11.5px] font-black text-[#111111]">${extMoney(g.total)}</span>
-          </div>
-        </div>
-        <div class="space-y-2">${extIncomesSorted(g.items).map(rowHtml).join('')}</div>
-      </div>`).join('');
+          <div class="shrink-0 text-right text-[15px] font-black text-[#111111]">${extMoney(g.total)}</div>
+          <i class="fa-solid fa-chevron-down text-[10px] text-[#c4bfb7] transition-transform ${open ? 'rotate-180' : ''}"></i>
+        </button>
+        <div class="border-t border-[#f5f1ea] ${open ? '' : 'hidden'}">${g.items.map(rowHtml).join('')}</div>
+      </div>`;
+    }).join('');
 
     box.innerHTML = `
       <div class="lm-card p-4">
@@ -7724,6 +7728,13 @@
       if (e.target.closest('#mExtPrevMonth')) { mobileExtMonthOffset -= 1; renderMobileWorkbench(); return; }
       if (e.target.closest('#mExtNextMonth')) { mobileExtMonthOffset += 1; renderMobileWorkbench(); return; }
       if (e.target.closest('#mExtAdd')) { openMobileExtForm(); return; }
+      const tg = e.target.closest('[data-mext-toggle]');
+      if (tg) {
+        const key = tg.getAttribute('data-mext-toggle');
+        if (mobileExtOpen.has(key)) mobileExtOpen.delete(key); else mobileExtOpen.add(key);
+        renderMobileWorkbench();
+        return;
+      }
       const row = e.target.closest('[data-mext-row]');
       if (row) openMobileExtForm(row.getAttribute('data-mext-row'));
     };
@@ -7834,6 +7845,8 @@
     const sd = new Date(saved.date + 'T00:00:00');
     const now = new Date();
     mobileExtMonthOffset = (sd.getFullYear() - now.getFullYear()) * 12 + (sd.getMonth() - now.getMonth());
+    // 卡片默认收起 → 刚存的那条顺手展开，否则「记完了看不到明细」
+    mobileExtOpen.add(String(saved.org || '').trim());
 
     saveData();
     renderMobileWorkbench();

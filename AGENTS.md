@@ -1248,3 +1248,30 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
     - 版本 app.js?v=81 / mobile.js?v=96 / styles v37 / tailwind v14 / sw v144。
       回归 `tmp/workbench-check.mjs` **102 项**（新增 A12–A16 分组、K1–K8 单位必填/活动选填）。
       护栏：去掉 `if (!org)` → K2/K3/K4 红；`extGroupByOrg` 换成平铺 → A10/A12/A13/A14/K1 红。
+
+72. **工作台：一个单位一张卡，点开才铺明细**（2026-11-25，Jackson：「一个单位一个卡片，点进去再显示时间活动明细」）
+
+    - 原来的「组头一行 + 明细平铺」信息太散，4 家单位就把首屏塞满。改成**单位卡**：
+      卡面只有 `单位名 / N 场 · 收款状态 / 小计 / 折叠箭头`，点卡头在**卡内**铺出那一家的
+      日期·类型·时间段·活动·金额·收款状态；再点一次收起。桌面 `xl:grid-cols-2` 两列，手机单列。
+    - 展开状态是**页面级 Set**：`extOpenOrgs`（app.js 顶部）/ `mobileExtOpen`（mobile.js 顶部）。
+      ⚠️ 必须放文件顶部声明区 —— 写在函数上方会 TDZ 白屏（AGENTS 47 同一个坑）。
+      key 用 `extGroupByOrg` 给的 **`g.key`（原始单位名，空串=没填）**，别用显示名
+      「（未填单位）」，否则没填单位的卡永远存不进 Set。`data-ext-group` / `data-mext-group`
+      存的也是 key，卡面文案才显示「（未填单位）」。
+    - **明细行仍在 DOM 里**（收起只是容器 `hidden`），所以 `[data-ext-row]` 计数/排序断言照旧可用；
+      但 `innerText`、`getBoundingClientRect().height` 这类**可见性相关**断言必须先点开
+      （回归里的 `dExpandAll` / `mExpandAll`）。「行在不在」≠「行看不看得见」，两个都要断。
+    - **保存后自动展开那家**（`extOpenOrgs.add(saved.org)`）：卡片默认收起，不展开的话
+      「记完了看不到刚记的那条」，Jackson 一定当 bug 报。
+    - 卡面必须写**收款状态**：`unpaid > 0 → 待收 ¥x`（amber）/ `= 0 → 已收`（green）。
+      原来「全待收时不标待收」是因为旁边还有小计对照，收起后卡面只剩这一行汇总，
+      不标就分不出哪家欠钱 —— 别把这条例外逻辑搬回来。
+    - 手机端卡片用 **`.lm-ext-unit`**（`css/intercom-tokens.css`），不是 `.lm-card`：
+      `.lm-card:active` 会给整卡 `scale(0.98)`，展开后的长卡跟着缩一下很怪。
+      电脑端不引 intercom-tokens.css，卡片用内联 tailwind 写。
+    - 版本 app.js?v=82 / mobile.js?v=97 / intercom-tokens v6 / tailwind v15 / sw v145。
+      回归 `tmp/workbench-check.mjs` **115 项**（新增 A10–A20 卡片行为、A15b/A15c 收款状态、
+      B7b/I7b–I7f/I14b 手机端同构）。
+      护栏：`const open = true`（默认全展开）→ A11/A12/A13/A17/A20/I7b/I7c 七红；
+      去掉保存后 `add` → B7b/I14b 红。

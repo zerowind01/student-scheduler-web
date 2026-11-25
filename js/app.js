@@ -47,6 +47,8 @@
   let extFilter = 'all';       // all | unpaid | paid
   let extDraftType = '演出';   // 表单当前类型（点 chip 改）
   let extDraftPaid = false;    // 表单当前收款状态
+  // 已展开的单位卡片（key = 单位名）。默认全收起：列表只给「谁欠多少」，明细点开再看（2026-11-25）
+  let extOpenOrgs = new Set();
   let currentWeekStart = getMonday(new Date()); // 当前视图对应的周一
   let calendarViewMode = 'week';      // 'week' | 'month'（月历总览）
   let monthSelectedDate = null;       // 月视图当前选中日（对齐手机版：点格子选中，右栏出当日安排）
@@ -4726,7 +4728,7 @@
 
     if (!rows.length) {
       listBody.innerHTML = `
-        <div class="py-16 text-center">
+        <div class="py-16 text-center xl:col-span-2 bg-white border border-[#efe9e0] rounded-2xl">
           <i class="fa-solid fa-briefcase text-2xl text-[#d6d3d1] mb-2 block"></i>
           <div class="text-[12px] text-[#a8a29e] font-semibold">${monthList.length ? '这个筛选下没有记录' : '这个月还没有外部收入'}</div>
           <button id="btnExtEmptyAdd" class="mt-3 px-3.5 py-1.5 rounded-xl bg-[#111111] text-white text-[11px] font-bold">记一笔</button>
@@ -4736,45 +4738,58 @@
       return;
     }
 
-    // 分组：单位/客户是索引，组头带场次与小计，组内按日期倒序
+    // 分组：单位/客户是索引，**一个单位一张卡**。卡面只给「场次 + 小计（+待收）」，
+    // 点开卡才铺演出明细（2026-11-25 Jackson：「一个单位一个卡片，点进去再显示时间活动明细」）。
     const groups = extGroupByOrg(rows).map((g) => Object.assign(g, { items: extIncomesSorted(g.items) }));
 
-    const rowHtml = (x) => {
+    const rowHtml = (x, key) => {
       const tm = extIncomeTypeMeta(x.type);
       const pm = extIncomePaidMeta(x);
       const cross = extCrossText(x);
       return `
-      <div class="flex items-center gap-3 px-4 py-3 border-b border-[#f5f1ea] hover:bg-[#faf8f3] transition cursor-pointer" data-ext-row="${x.id}" data-ext-org="${extEsc(x.org)}">
-        <div class="w-[108px] shrink-0">
+      <div class="flex items-center gap-2.5 px-4 py-3 border-b border-[#f5f1ea] last:border-b-0 hover:bg-[#faf8f3] transition cursor-pointer" data-ext-row="${x.id}" data-ext-org="${extEsc(key)}">
+        <div class="w-[96px] shrink-0">
           <div class="text-[12px] font-bold text-[#111111]">${extDayText(x)}</div>
           <div class="text-[10.5px] text-[#a8a29e] font-semibold mt-0.5">${extTimeText(x)}</div>
         </div>
-        <span class="shrink-0 w-[38px] text-center text-[10.5px] font-bold px-1.5 py-0.5 rounded-md" style="background:${tm.bg};color:${tm.fg}">${x.type}</span>
+        <span class="shrink-0 w-[36px] text-center text-[10.5px] font-bold px-1 py-0.5 rounded-md" style="background:${tm.bg};color:${tm.fg}">${x.type}</span>
         <div class="flex-1 min-w-0">
           <div class="text-[13px] font-bold truncate ${x.activity ? 'text-[#111111]' : 'text-[#c4bfb7]'}">${extEsc(x.activity) || '未填活动'}</div>
           ${cross ? `<div class="text-[11px] text-[#a8a29e] truncate mt-0.5">${cross}</div>` : ''}
         </div>
-        <div class="w-[92px] shrink-0 text-right text-[14px] font-black text-[#111111]">${extMoney(x.amount)}</div>
-        <span class="w-[46px] shrink-0 text-center text-[10.5px] font-bold px-1.5 py-0.5 rounded-md" style="background:${pm.bg};color:${pm.fg}">${pm.text}</span>
+        <div class="w-[84px] shrink-0 text-right text-[14px] font-black text-[#111111]">${extMoney(x.amount)}</div>
+        <span class="w-[44px] shrink-0 text-center text-[10.5px] font-bold px-1 py-0.5 rounded-md" style="background:${pm.bg};color:${pm.fg}">${pm.text}</span>
         <button data-ext-edit="${x.id}" class="shrink-0 w-7 h-7 rounded-lg text-[#a8a29e] hover:text-[#111111] hover:bg-[#f0ebe2] transition" title="编辑"><i class="fa-solid fa-pen text-[11px]"></i></button>
       </div>`;
     };
 
-    listBody.innerHTML = groups.map((g) => `
-      <div class="flex items-center justify-between gap-3 px-4 py-2 bg-[#faf8f3] border-b border-[#f0ebe2]" data-ext-group="${extEsc(g.org)}">
-        <div class="flex items-center gap-1.5 min-w-0">
-          <i class="fa-solid fa-user-tie text-[10px] text-[#b8b2a8]"></i>
-          <span class="text-[12px] font-black text-[#111111] truncate">${extEsc(g.org)}</span>
-          <span class="text-[10.5px] font-semibold text-[#a8a29e] shrink-0">${g.items.length} 场</span>
-        </div>
-        <div class="flex items-center gap-2.5 shrink-0">
-          ${g.unpaid > 0 && g.unpaid < g.total ? `<span class="text-[10.5px] font-bold" style="color:#b45309">待收 ${extMoney(g.unpaid)}</span>` : ''}
-          <span class="text-[12.5px] font-black text-[#111111]">${extMoney(g.total)}</span>
-        </div>
-      </div>
-      ${g.items.map(rowHtml).join('')}
-    `).join('');
+    listBody.innerHTML = groups.map((g) => {
+      const open = extOpenOrgs.has(g.key);
+      // 卡面必须一眼看出这家钱收没收（收起后只有这一行汇总，别再让人点开找）
+      const payTxt = g.unpaid > 0 ? `待收 ${extMoney(g.unpaid)}` : '已收';
+      const payColor = g.unpaid > 0 ? '#b45309' : '#047857';
+      return `
+      <div class="bg-white border border-[#efe9e0] rounded-2xl overflow-hidden" data-ext-group="${extEsc(g.key)}">
+        <button type="button" data-ext-toggle="${extEsc(g.key)}" aria-expanded="${open ? 'true' : 'false'}" class="w-full text-left px-4 py-3.5 flex items-center gap-3 hover:bg-[#faf8f3] transition">
+          <div class="w-9 h-9 rounded-xl shrink-0 flex items-center justify-center bg-[#f5f2ec]"><i class="fa-solid fa-user-tie text-[12px] text-[#a8a29e]"></i></div>
+          <div class="flex-1 min-w-0">
+            <div class="text-[13.5px] font-black text-[#111111] truncate">${extEsc(g.org)}</div>
+            <div class="text-[10.5px] font-semibold text-[#a8a29e] mt-0.5">${g.items.length} 场 · <span style="color:${payColor}">${payTxt}</span></div>
+          </div>
+          <div class="shrink-0 text-right text-[15px] font-black text-[#111111]">${extMoney(g.total)}</div>
+          <i class="fa-solid fa-chevron-down text-[10px] text-[#c4bfb7] transition-transform ${open ? 'rotate-180' : ''}"></i>
+        </button>
+        <div class="border-t border-[#f0ebe2] ${open ? '' : 'hidden'}">${g.items.map((x) => rowHtml(x, g.key)).join('')}</div>
+      </div>`;
+    }).join('');
 
+    listBody.querySelectorAll('[data-ext-toggle]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute('data-ext-toggle');
+        if (extOpenOrgs.has(key)) extOpenOrgs.delete(key); else extOpenOrgs.add(key);
+        renderPageWorkbench();
+      });
+    });
     listBody.querySelectorAll('[data-ext-row]').forEach((row) => {
       row.addEventListener('click', (e) => {
         if (e.target.closest('[data-ext-edit]')) return;
@@ -4895,6 +4910,8 @@
     const sd = new Date(saved.date + 'T00:00:00');
     const now = new Date();
     extMonthOffset = (sd.getFullYear() - now.getFullYear()) * 12 + (sd.getMonth() - now.getMonth());
+    // 卡片默认收起 → 刚存的那条顺手展开，不然「记完了看不到那条」
+    extOpenOrgs.add(String(saved.org || '').trim());
 
     saveData();
     renderPageWorkbench();

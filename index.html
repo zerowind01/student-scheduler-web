@@ -36,7 +36,7 @@
        改完 class 要重新生成：tools\build-tailwind.cmd
        ⚠ 必须留在 </head> 之前（即所有自有样式之后），复刻 Play CDN 把 <style>
        append 到 head 末尾的层叠顺序；挪到前面会翻转优先级。 -->
-  <link rel="stylesheet" href="css/tailwind.css?v=14">
+  <link rel="stylesheet" href="css/tailwind.css?v=15">
 </head>
 <body class="text-[#111111] font-sans h-screen flex flex-col overflow-hidden select-none" style="background: var(--surface-page);">
 
@@ -435,17 +435,15 @@
           </div>
         </div>
         <div id="extKpiRow" class="grid grid-cols-2 lg:grid-cols-4 gap-4"><!-- KPI 卡动态渲染 --></div>
-        <div class="bg-white border border-[#efe9e0] rounded-2xl overflow-hidden">
-          <div class="flex items-center justify-between gap-3 px-4 py-3 border-b border-[#f0ebe2] flex-wrap">
-            <div id="extListTitle" class="text-[13px] font-bold text-[#111111]">本月记录</div>
-            <div id="extFilterBar" class="flex items-center gap-1 bg-[#f5f2ec] p-0.5 rounded-lg text-[11px] font-bold">
-              <button data-ext-filter="all" class="px-2.5 py-1 rounded-md bg-white shadow-2xs text-[#111111] transition">全部</button>
-              <button data-ext-filter="unpaid" class="px-2.5 py-1 rounded-md text-[#78716c] transition">待收</button>
-              <button data-ext-filter="paid" class="px-2.5 py-1 rounded-md text-[#78716c] transition">已收</button>
-            </div>
+        <div class="bg-white border border-[#efe9e0] rounded-2xl flex items-center justify-between gap-3 px-4 py-3 flex-wrap">
+          <div id="extListTitle" class="text-[13px] font-bold text-[#111111]">本月记录</div>
+          <div id="extFilterBar" class="flex items-center gap-1 bg-[#f5f2ec] p-0.5 rounded-lg text-[11px] font-bold">
+            <button data-ext-filter="all" class="px-2.5 py-1 rounded-md bg-white shadow-2xs text-[#111111] transition">全部</button>
+            <button data-ext-filter="unpaid" class="px-2.5 py-1 rounded-md text-[#78716c] transition">待收</button>
+            <button data-ext-filter="paid" class="px-2.5 py-1 rounded-md text-[#78716c] transition">已收</button>
           </div>
-          <div id="extListBody"><!-- 记录列表动态渲染 --></div>
         </div>
+        <div id="extListBody" class="grid grid-cols-1 xl:grid-cols-2 gap-3"><!-- 一单位一张卡，点开看明细 --></div>
       </div>
     </section>
 
@@ -1358,7 +1356,7 @@
   </div>
 
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=81"></script>
+  <script src="js/app.js?v=82"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

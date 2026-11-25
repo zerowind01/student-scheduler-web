@@ -49,6 +49,15 @@
   box-shadow: var(--lm-card-shadow-lg, var(--lm-card-shadow));
 }
 
+/* ---- 单位卡（工作台外部收入）：外形同 .lm-card，但不带 :active 缩放 ----
+   卡里还装着可点的明细行，整卡跟着缩会让展开后的长卡抖一下。手机端专用，电脑端不引本文件。 */
+.lm-ext-unit {
+  background: var(--surface-card, #fff);
+  border-radius: 20px;
+  box-shadow: var(--lm-card-shadow);
+  overflow: hidden;
+}
+
 /* ---- 顶栏：融入画布，无重底色 ---- */
 .lm-header {
   background: rgba(253, 251, 248, 0.85);
