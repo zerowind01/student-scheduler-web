@@ -49,6 +49,7 @@
   let extFilter = 'all';       // all | unpaid | paid
   let extDraftType = '演出';   // 表单当前类型（点 chip 改）
   let extDraftPaid = false;    // 表单当前收款状态
+  let extProjectDraftType = '演出'; // 项目表单默认类型（点 chip 改）
   // 已展开的单位卡片（key = 单位名）。默认全收起：列表只给「谁欠多少」，明细点开再看（2026-11-25）
   let extOpenOrgs = new Set();
   let currentWeekStart = getMonday(new Date()); // 当前视图对应的周一
@@ -2801,6 +2802,10 @@
     const name = String(o.name || '').trim();
     if (!name) return null;
     const rawAmt = Number(o.defaultAmount);
+    const hm = (v) => {
+      const m = /^(\d{1,2}):(\d{2})/.exec(String(v || ''));
+      return m ? `${String(m[1]).padStart(2, '0')}:${m[2]}` : '';
+    };
     return {
       id: o.id || ('ep_' + Math.random().toString(36).slice(2, 10)),
       name,
@@ -2811,6 +2816,11 @@
       status: ['ongoing', 'done', 'archived'].includes(o.status) ? o.status : 'ongoing',
       // 默认金额：新建/编辑项目时填，之后在这个项目下记活动自动带入
       defaultAmount: Number.isFinite(rawAmt) && rawAmt > 0 ? Math.round(rawAmt * 100) / 100 : 0,
+      // 默认活动：新建/编辑项目时填，之后在这个项目下记活动自动带入（不填 = 不带）
+      defaultActivity: String(o.defaultActivity || '').trim(),
+      defaultType: EXT_INCOME_TYPES.includes(o.defaultType) ? o.defaultType : '演出',
+      defaultStartTime: hm(o.defaultStartTime),
+      defaultEndTime: hm(o.defaultEndTime),
       createdAt: o.createdAt || new Date().toISOString(),
     };
   }
@@ -5061,6 +5071,7 @@
         <div class="border-t border-[#f0ebe2] ${open ? '' : 'hidden'}">
           <div class="px-4 py-2 bg-[#faf8f3] border-b border-[#f5f1ea] flex items-center gap-2 flex-wrap">
             <button type="button" data-ext-add="${extEsc(g.key)}" class="text-[11px] font-bold text-[#6d28d9] hover:underline"><i class="fa-solid fa-plus mr-1"></i>记一场活动</button>
+            <button type="button" data-ext-quick="${extEsc(g.key)}" title="按项目默认值直接记一场，日期=今天" class="text-[11px] font-bold text-[#6d28d9] hover:underline"><i class="fa-solid fa-bolt mr-1"></i>快速记</button>
             <div class="ml-auto flex items-center gap-1.5">
               <button type="button" data-ext-project-edit="${extEsc(g.key)}" class="px-2 py-1 rounded-lg text-[10.5px] font-bold text-[#57534e] bg-white border border-[#e7e0d6] hover:bg-[#f5f2ec] transition">编辑</button>
               <button type="button" data-ext-project-finish="${extEsc(g.key)}"${done || archived ? ' disabled' : ''} class="px-2 py-1 rounded-lg text-[10.5px] font-bold text-[#b45309] bg-white border border-[#f5d9a8] hover:bg-[#fffbeb] transition ${done || archived ? 'opacity-40 cursor-not-allowed' : ''}">完结</button>
@@ -5081,6 +5092,9 @@
     });
     listBody.querySelectorAll('[data-ext-add]').forEach((btn) => {
       btn.addEventListener('click', () => openExtIncomeForm('', btn.getAttribute('data-ext-add')));
+    });
+    listBody.querySelectorAll('[data-ext-quick]').forEach((btn) => {
+      btn.addEventListener('click', () => quickAddExtIncome(btn.getAttribute('data-ext-quick')));
     });
     listBody.querySelectorAll('[data-ext-project-edit]').forEach((btn) => {
       btn.addEventListener('click', () => openExtProjectForm(btn.getAttribute('data-ext-project-edit')));
@@ -5140,6 +5154,50 @@
     }
   }
 
+  // 项目表单的默认类型 chips（与活动表单的类型 chips 同构）
+  function extProjectSyncTypeChips() {
+    const tBox = document.getElementById('extProjectTypeChips');
+    if (!tBox) return;
+    tBox.innerHTML = EXT_INCOME_TYPES.map((t) => {
+      const on = t === extProjectDraftType;
+      const m = extIncomeTypeMeta(t);
+      return `<button type="button" data-ext-ptype="${t}"${on ? ' data-selected="1"' : ''} class="px-3 py-1.5 rounded-xl text-[11.5px] font-bold border transition"
+        style="background:${on ? m.bg : '#fff'};color:${on ? m.fg : '#78716c'};border-color:${on ? m.fg + '55' : '#efe9e0'}">${t}</button>`;
+    }).join('');
+    tBox.querySelectorAll('[data-ext-ptype]').forEach((b) => {
+      b.addEventListener('click', () => {
+        extProjectDraftType = b.getAttribute('data-ext-ptype');
+        extProjectSyncTypeChips();
+      });
+    });
+  }
+
+  // 快速记：按项目默认值直接记一场（日期 = 今天），不打开表单；点错可撤销。
+  // 跨天（结束早于开始，如 22:00 → 01:30）与表单保存同一口径：结束日期顺延一天。
+  function quickAddExtIncome(projectId) {
+    const p = extProjects.find((q) => q.id === projectId);
+    if (!p) { showToast('项目找不到了', 'triangle-exclamation'); return; }
+    const today = formatDate(new Date());
+    let endDate = today;
+    if (p.defaultStartTime && p.defaultEndTime && p.defaultEndTime < p.defaultStartTime) {
+      const d = new Date(today + 'T00:00:00');
+      d.setDate(d.getDate() + 1);
+      endDate = formatDate(d);
+    }
+    pushUndo('快速记活动');
+    const saved = upsertExternalIncome({
+      type: p.defaultType, org: p.org, activity: p.defaultActivity, amount: p.defaultAmount,
+      projectId: p.id, paid: false, date: today, startTime: p.defaultStartTime, endDate, endTime: p.defaultEndTime,
+    }, null);
+    if (!saved) { showToast('快速记录失败', 'triangle-exclamation'); return; }
+    // 日期是今天：把月份游标挪回本月、把这张卡展开，不然「记完了看不到那条」
+    extMonthOffset = 0;
+    extOpenOrgs.add(p.id);
+    saveData();
+    renderPageWorkbench();
+    showToast(`已快速记入：${saved.activity || p.name} · ${today.slice(5)}${saved.amount ? ` · ${extMoney(saved.amount)}` : ''}`, 'circle-check');
+  }
+
   function openExtIncomeForm(id, projectId) {
     const x = id ? externalIncomes.find((i) => i.id === id) : null;
     const pid = x ? String(x.projectId || '') : String(projectId || '');
@@ -5152,15 +5210,15 @@
     if (label) label.textContent = p ? `所属项目：${p.name} · ${p.org || '未填单位'}` : '所属项目：（未选择，请先建项目）';
     const t = document.getElementById('extFormTitle');
     if (t) t.textContent = x ? '编辑活动明细' : (p ? `记一场活动 · ${p.name}` : '记一场活动');
-    extDraftType = x ? x.type : '演出';
+    // 新活动自动带入项目默认值（类型 / 活动名称 / 金额 / 开始 / 结束时间）；编辑既有活动仍用它自己的值
+    extDraftType = x ? x.type : (p ? p.defaultType : '演出');
     extDraftPaid = x ? !!x.paid : false;
-    set('extActivity', x ? x.activity : '');
+    set('extActivity', x ? x.activity : (p ? (p.defaultActivity || '') : ''));
     set('extOrg', p ? p.org : (x ? x.org : ''));
-    // 新活动自动带入项目默认金额；编辑既有活动仍用它自己的金额
     set('extAmount', x ? (x.amount || '') : (p && p.defaultAmount ? p.defaultAmount : ''));
     set('extStartDate', x ? x.date : today);
-    set('extStartTime', x ? x.startTime : '');
-    set('extEndTime', x ? x.endTime : '');
+    set('extStartTime', x ? x.startTime : (p ? (p.defaultStartTime || '') : ''));
+    set('extEndTime', x ? x.endTime : (p ? (p.defaultEndTime || '') : ''));
     const delBtn = document.getElementById('btnExtDelete');
     if (delBtn) delBtn.classList.toggle('hidden', !x);
     extFillDatalist('extOrgList', extProjects.map((i) => i.org));
@@ -5178,12 +5236,18 @@
     set('extProjectOrg', p ? p.org : '');
     set('extProjectNote', p ? p.note : '');
     set('extProjectDefaultAmount', p && p.defaultAmount ? p.defaultAmount : '');
+    set('extProjectDefaultStartTime', p ? (p.defaultStartTime || '') : '');
+    set('extProjectDefaultEndTime', p ? (p.defaultEndTime || '') : '');
+    set('extProjectDefaultActivity', p ? (p.defaultActivity || '') : '');
+    extProjectDraftType = p && EXT_INCOME_TYPES.includes(p.defaultType) ? p.defaultType : '演出';
+    extProjectSyncTypeChips();
     const t = document.getElementById('extProjectFormTitle');
     if (t) t.textContent = p ? '编辑项目' : '新建项目';
     const delBtn = document.getElementById('btnExtProjectDelete');
     if (delBtn) delBtn.classList.toggle('hidden', !p);
     extFillDatalist('extProjectNameList', extProjects.map((q) => q.name));
     extFillDatalist('extOrgList', extProjects.map((q) => q.org));
+    extFillDatalist('extProjectActivityList', externalIncomes.map((i) => i.activity));
     showModal('modalExtProject');
   }
 
@@ -5197,7 +5261,13 @@
     const defaultAmount = Number(val('extProjectDefaultAmount') || 0);
     if (!Number.isFinite(defaultAmount) || defaultAmount < 0) { showToast('默认金额填个正数', 'triangle-exclamation'); return; }
     pushUndo(id ? '编辑项目' : '新建项目');
-    const saved = upsertExtProject({ name, org, note: val('extProjectNote'), defaultAmount }, id || null);
+    const saved = upsertExtProject({
+      name, org, note: val('extProjectNote'), defaultAmount,
+      defaultActivity: val('extProjectDefaultActivity'),
+      defaultType: extProjectDraftType,
+      defaultStartTime: time24Value('extProjectDefaultStartTime'),
+      defaultEndTime: time24Value('extProjectDefaultEndTime'),
+    }, id || null);
     if (!saved) { showToast('保存失败', 'triangle-exclamation'); return; }
     extOpenOrgs.add(saved.id); // 建完自动展开，马上就能点「记一场活动」
     saveData();

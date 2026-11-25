@@ -1125,7 +1125,26 @@
           <label for="extProjectDefaultAmount" class="block font-bold text-[#44403c] mb-1.5">默认金额（元）<span class="text-[#a8a29e] font-medium">选填 · 记活动时自动带入</span></label>
           <input id="extProjectDefaultAmount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0" class="lm-ext-input">
         </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label for="extProjectDefaultStartTime" class="block font-bold text-[#44403c] mb-1.5">默认开始时间 <span class="text-[#a8a29e] font-medium">选填</span></label>
+            <input id="extProjectDefaultStartTime" type="text" data-time24 placeholder="HH:MM" class="lm-ext-input">
+          </div>
+          <div>
+            <label for="extProjectDefaultEndTime" class="block font-bold text-[#44403c] mb-1.5">默认结束时间 <span class="text-[#a8a29e] font-medium">选填</span></label>
+            <input id="extProjectDefaultEndTime" type="text" data-time24 placeholder="HH:MM" class="lm-ext-input">
+          </div>
+        </div>
+        <div>
+          <label for="extProjectDefaultActivity" class="block font-bold text-[#44403c] mb-1.5">默认活动名称 <span class="text-[#a8a29e] font-medium">选填 · 记活动时自动带入</span></label>
+          <input id="extProjectDefaultActivity" type="text" list="extProjectActivityList" placeholder="如：钢琴伴奏" autocomplete="off" class="lm-ext-input">
+        </div>
+        <div>
+          <label class="block font-bold text-[#44403c] mb-1.5">默认活动类型</label>
+          <div id="extProjectTypeChips" class="flex flex-wrap gap-1.5"></div>
+        </div>
         <datalist id="extProjectNameList"></datalist>
+        <datalist id="extProjectActivityList"></datalist>
       </div>
       <div class="px-5 py-3.5 border-t border-[#f0ebe2] flex items-center gap-2">
         <button id="btnExtProjectDelete" class="hidden px-3 py-2 rounded-xl text-rose-600 bg-rose-50 border border-rose-200 font-bold transition hover:bg-rose-100">删除项目</button>
@@ -1183,7 +1202,7 @@
           <div>
             <label class="block font-bold text-[#44403c] mb-1.5">结束时间</label>
             <div class="flex gap-1.5">
-              <input id="extEndTime" type="text" data-time24 placeholder="HH:MM" class="lm-ext-input w-[102px] shrink-0">
+              <input id="extEndTime" type="text" data-time24 placeholder="HH:MM" class="lm-ext-input w-[102px] shrink-0 ml-auto">
             </div>
           </div>
         </div>
@@ -1400,7 +1419,7 @@
   </div>
 
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=88"></script>
+  <script src="js/app.js?v=90"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
