@@ -36,7 +36,7 @@
        改完 class 要重新生成：tools\build-tailwind.cmd
        ⚠ 必须留在 </head> 之前（即所有自有样式之后），复刻 Play CDN 把 <style>
        append 到 head 末尾的层叠顺序；挪到前面会翻转优先级。 -->
-  <link rel="stylesheet" href="css/tailwind.css?v=16">
+  <link rel="stylesheet" href="css/tailwind.css?v=17">
 </head>
 <body class="text-[#111111] font-sans h-screen flex flex-col overflow-hidden select-none" style="background: var(--surface-page);">
 
@@ -423,9 +423,9 @@
             <div class="text-[11px] text-[#a8a29e] font-semibold mt-0.5">演出 / 排练 / 伴奏等课时以外的活动收入，单独记账（不计入课消 KPI）</div>
           </div>
           <div class="flex items-center gap-2 flex-wrap">
-            <div class="px-2.5 py-1.5 rounded-lg bg-[#f5f2ec]/80 border border-[#efe9e0]/60 text-[11px] font-bold text-[#57534e]">按单位汇总 · 全部记录</div>
+            <div class="px-2.5 py-1.5 rounded-lg bg-[#f5f2ec]/80 border border-[#efe9e0]/60 text-[11px] font-bold text-[#57534e]">按项目汇总 · 全部记录</div>
             <button id="btnExtAdd" class="px-3.5 py-2 rounded-xl bg-[#111111] text-white text-xs font-bold hover:bg-[#2b2b2b] transition flex items-center gap-1.5">
-              <i class="fa-solid fa-plus"></i> 记一笔
+              <i class="fa-solid fa-folder-plus"></i> 新建项目
             </button>
           </div>
         </div>
@@ -438,7 +438,7 @@
             <button data-ext-filter="paid" class="px-2.5 py-1 rounded-md text-[#78716c] transition">已收</button>
           </div>
         </div>
-        <div id="extListBody" class="grid grid-cols-1 xl:grid-cols-2 gap-3"><!-- 一单位一张卡，点开看明细 --></div>
+        <div id="extListBody" class="grid grid-cols-1 xl:grid-cols-2 gap-3"><!-- 一项目一张卡，点开看活动明细 --></div>
       </div>
     </section>
 
@@ -1096,6 +1096,43 @@
     </div>
   </div>
 
+  <!-- 工作台 · 先建项目（单位/客户 + 项目名），再在项目里记活动明细 -->
+  <div id="modalExtProject" role="dialog" aria-modal="true" class="fixed inset-0 bg-[#1c1917]/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
+    <div class="bg-white rounded-2xl shadow-2xl border border-[#f2ece4] w-full sm:w-[460px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
+      <div class="bg-[#111111] px-5 py-3.5 text-white flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-folder-open text-[#d6d3d1] text-lg"></i>
+          <h3 id="extProjectFormTitle" class="font-bold text-sm sm:text-base">新建项目</h3>
+        </div>
+        <button id="btnCloseExtProject" aria-label="关闭" class="text-[#d6d3d1] hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+      <div class="p-5 space-y-3.5 text-xs">
+        <div class="lm-section rounded-xl p-2.5 text-[11px] lm-t2 leading-relaxed">先建项目，再点开项目卡里的「记一场活动」填时间、金额和收款状态。一个项目下可以有多场活动。</div>
+        <input id="extProjectEditId" type="hidden" value="">
+        <div>
+          <label for="extProjectName" class="block font-bold text-[#44403c] mb-1.5">项目名称 <span class="text-rose-500">*</span></label>
+          <input id="extProjectName" type="text" list="extProjectNameList" placeholder="如：宝瑶小学合唱排练 / 新年音乐会" autocomplete="off" class="lm-ext-input">
+        </div>
+        <div>
+          <label for="extProjectOrg" class="block font-bold text-[#44403c] mb-1.5">单位 / 客户 <span class="text-rose-500">*</span></label>
+          <input id="extProjectOrg" type="text" list="extOrgList" placeholder="主办方 / 客户" autocomplete="off" class="lm-ext-input">
+        </div>
+        <div>
+          <label for="extProjectNote" class="block font-bold text-[#44403c] mb-1.5">备注 <span class="text-[#a8a29e] font-medium">选填</span></label>
+          <input id="extProjectNote" type="text" placeholder="如：合同编号 / 结算方式" autocomplete="off" class="lm-ext-input">
+        </div>
+        <datalist id="extProjectNameList"></datalist>
+      </div>
+      <div class="px-5 py-3.5 border-t border-[#f0ebe2] flex items-center gap-2">
+        <button id="btnExtProjectDelete" class="hidden px-3 py-2 rounded-xl text-rose-600 bg-rose-50 border border-rose-200 font-bold transition hover:bg-rose-100">删除项目</button>
+        <div class="flex items-center gap-2 ml-auto">
+          <button id="btnExtProjectCancel" class="px-4 py-2 rounded-xl border border-[#efe9e0] text-[#57534e] font-bold transition hover:bg-[#faf8f3]">取消</button>
+          <button id="btnExtProjectSave" class="px-5 py-2 rounded-xl bg-[#111111] text-white font-bold transition hover:bg-[#2b2b2b]">保存项目</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 工作台 · 记一笔外部收入（新增 / 编辑共用）。字段对齐 Notion 表：
        类型 / 单位 / 活动 / 金额 / 收款状态 / 开始时间 / 结束时间 -->
   <div id="modalExtIncome" role="dialog" aria-modal="true" class="fixed inset-0 bg-[#1c1917]/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
@@ -1109,6 +1146,8 @@
       </div>
       <div class="p-5 space-y-3.5 text-xs">
         <input id="extEditId" type="hidden" value="">
+        <input id="extProjectId" type="hidden" value="">
+        <div id="extProjectLabel" class="text-[11px] font-bold text-[#6d28d9] bg-[#f5f3ff] rounded-xl px-3 py-2">所属项目：（未选择）</div>
         <div>
           <label class="block font-bold text-[#44403c] mb-1.5">类型</label>
           <div id="extTypeChips" class="flex flex-wrap gap-1.5"></div>
@@ -1116,7 +1155,7 @@
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label for="extOrg" class="block font-bold text-[#44403c] mb-1.5">单位 / 客户 <span class="text-rose-500">*</span></label>
-            <input id="extOrg" type="text" list="extOrgList" placeholder="主办方 / 客户" autocomplete="off" class="lm-ext-input">
+            <input id="extOrg" type="text" readonly placeholder="从所属项目带入" class="lm-ext-input opacity-70 cursor-default">
           </div>
           <div>
             <label for="extAmount" class="block font-bold text-[#44403c] mb-1.5">金额（元）</label>
@@ -1358,7 +1397,7 @@
   </div>
 
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=85"></script>
+  <script src="js/app.js?v=86"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

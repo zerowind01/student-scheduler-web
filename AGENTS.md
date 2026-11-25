@@ -1324,3 +1324,23 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
     - `extIncomesOfMonth/extMonthKey/extMonthOffset` 函数与状态保留（表单保存后挪月份游标无害），
       但**渲染层不许再用它们切片**；护栏证明退回按月份会红 18 项。
     - 回归 `tmp/workbench-check.mjs` **118 项**；版本 app v85 / mobile v100 / sw v148。
+
+76. **工作台：先建项目，再在项目里记活动明细**（2026-11-26，Jackson：「改一些操作逻辑，先建立项目，再在项目里记活动明细」）
+    - 新独立集合 `extProjects`（localStorage `edu_scheduler_ext_projects_v1`，字段 `id/name/org/note/createdAt`）；
+      `externalIncomes` 增加 **`projectId`**。照 rechargeLogs 接齐 8 个同步点（loadData / push payload /
+      pull 远端缺键保留本地 / BroadcastChannel / saveDataLocalOnly / pushUndo+runUndo / export / 手机 msetExport）。
+    - 旧数据迁移 `migrateExtProjects()`：没有 projectId 的活动按「单位 + 活动名」归成一个项目。
+      ⚠️ 迁移 ID 必须**确定性**（`extLegacyProjectId` 哈希 org+'|'+name）—— 两端各自迁移若用随机 id，
+      同步后项目对不上。pull / broadcast 覆盖后也要再跑一次迁移。
+    - 操作入口：工具栏只有「新建项目」（`btnExtAdd` 保留此 id 但改开项目表单）；建完项目**自动展开那张卡**，
+      卡内有「记一场活动」（`data-ext-add` / `data-mext-add`）才打开活动表单。活动表单里单位/客户**只读**，
+      取所属项目的 org；保存时从隐藏 `extProjectId` 取归属（`extOrg` 只读，别再从输入框取值）。
+    - ⚠️ **空项目也要出卡**：`groups` 从 `extProjects` 构造（不是从有活动的 rows 分组），
+      否则「建完项目看不到卡 → 没法记第一场活动」。筛选非 all 时只隐藏没有明细的卡。
+      护栏：把空项目出卡去掉 → A14/B1–B5 等红。
+    - 非空项目不能删（`count>0` 拦下并提示「先删掉活动再删项目」）；空项目可直接删。护栏 P9/P10 红。
+    - 云同步 payload 必须带 `extProjects`；漏掉 → H7 红。
+    - 手机卡头窄：副标题只写「待收 / 已收」，不写金额（金额在小计），否则长单位名会把状态截成「待收 ¥…」。
+    - 回归 `tmp/workbench-check.mjs` **132 项**（新增 P1–P13 项目化流程；B/F/H/I/K/L 与
+      `sync-retry-check` / `sync-diag-check` 的交互全部改成「先建项目再记活动」）；线上 BASE 复跑全绿。
+    - 版本 app.js v86 / mobile.js v101 / tailwind v17 / sw v149。

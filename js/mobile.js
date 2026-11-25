@@ -16,6 +16,7 @@
   const STORAGE_KEY_RECHARGE_LOGS = 'edu_scheduler_recharge_logs_v2';
   // 工作台 · 外部收入（演出/排练/伴奏）：独立集合，**不进 checkInLogs、不进课消 KPI**
   const STORAGE_KEY_EXTERNAL_INCOMES = 'edu_scheduler_external_incomes_v2';
+  const STORAGE_KEY_EXT_PROJECTS = 'edu_scheduler_ext_projects_v1';
 
   let students = [];
   let schedules = [];
@@ -25,6 +26,7 @@
   let debts = [];
   let rechargeLogs = [];   // 充值流水（预收款，不进 checkInLogs）
   let externalIncomes = []; // 外部收入（演出/排练/伴奏）：工作台记账，**不进课消 KPI**（AGENTS 第 70 条）
+  let extProjects = [];    // 工作台项目（先建项目，再在项目里记活动明细）
   let selectedTeacherFilter = 'all';           // 课表筛选范围：'all' | 老师 id
   let teacherFilterAutoApplied = false;        // 老师身份下「默认只看自己」是否已应用（每次登录仅一次）
   let mobileStartDate = getToday(); // 默认从今天开始显示 3 日日历（周末也能直接看到今天）
@@ -2926,6 +2928,8 @@
     };
     return {
       id: o.id || ('ei_' + Math.random().toString(36).slice(2, 10)),
+      // 所属项目（新增记录必有；旧数据由 migrateExtProjects 补齐）
+      projectId: String(o.projectId || ''),
       type: String(o.type || '').trim() || '其他',
       org: String(o.org || '').trim(),            // 单位（主办方 / 客户）
       activity: String(o.activity || '').trim(),  // 活动名称
@@ -2938,6 +2942,67 @@
       endTime: hm(o.endTime),
       createdAt: o.createdAt || new Date().toISOString(),
     };
+  }
+
+  // ==========================================
+  // 工作台 · 项目（2026-11-26 Jackson：「先建立项目，再在项目里记活动明细」）
+  // 项目 = 单位/客户 + 项目名；活动明细（externalIncomes）通过 projectId 归属到项目。
+  // 独立集合，和 rechargeLogs 一样接入云同步 / 广播 / 撤销 / 导出。
+  // ==========================================
+  function normalizeExtProject(o) {
+    if (!o || typeof o !== 'object') return null;
+    const name = String(o.name || '').trim();
+    if (!name) return null;
+    return {
+      id: o.id || ('ep_' + Math.random().toString(36).slice(2, 10)),
+      name,
+      org: String(o.org || '').trim(),
+      note: String(o.note || '').trim(),
+      createdAt: o.createdAt || new Date().toISOString(),
+    };
+  }
+
+  // 旧数据迁移：没有 projectId 的活动按「单位 + 活动名」归成一个项目。
+  // ⚠️ ID 必须确定性（两端各自迁移不能生成不同 id，否则同步后项目对不上）。
+  function extLegacyProjectId(org, name) {
+    const s = String(org || '') + '|' + String(name || '');
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+    return 'ep_legacy_' + (h >>> 0).toString(36);
+  }
+
+  function migrateExtProjects() {
+    let changed = false;
+    externalIncomes = externalIncomes.map((x) => {
+      if (x.projectId && extProjects.some((p) => p.id === x.projectId)) return x;
+      const name = String(x.activity || '').trim() || String(x.org || '').trim() || '未命名项目';
+      const org = String(x.org || '').trim();
+      const pid = extLegacyProjectId(org, name);
+      if (!extProjects.some((p) => p.id === pid)) {
+        extProjects.push(normalizeExtProject({ id: pid, name, org, note: '', createdAt: x.createdAt }));
+      }
+      if (x.projectId !== pid) { x.projectId = pid; changed = true; }
+      return x;
+    }).filter(Boolean);
+    return changed;
+  }
+
+  function upsertExtProject(data, editId) {
+    const next = normalizeExtProject(Object.assign({}, data, editId ? { id: editId } : {}));
+    if (!next) return null;
+    const i = editId ? extProjects.findIndex((p) => p.id === editId) : -1;
+    if (i >= 0) {
+      next.id = extProjects[i].id;
+      next.createdAt = extProjects[i].createdAt || next.createdAt;
+      extProjects[i] = next;
+    } else {
+      extProjects.push(next);
+    }
+    return next;
+  }
+
+  function deleteExtProject(id) {
+    extProjects = extProjects.filter((p) => p.id !== id);
   }
 
   // 归月按**开始日期**，与课消的 logLocalDate 口径一致（看"这场是什么时候演的"）
@@ -2975,6 +3040,34 @@
       .sort((a, b) => {
         if (!a.key !== !b.key) return a.key ? -1 : 1;
         return b.total - a.total || a.org.localeCompare(b.org, 'zh');
+      });
+  }
+
+  // 按项目出卡：一个项目一张卡，卡内是它的每一次活动。
+  // 孤儿活动（项目被误删 / 老快照没带项目）归到「未归档」，保证任何一条收入都看得见。
+  function extGroupByProject(list) {
+    const map = new Map();
+    list.forEach((x) => {
+      const pid = String(x.projectId || '');
+      if (!map.has(pid)) map.set(pid, []);
+      map.get(pid).push(x);
+    });
+    return [...map.entries()]
+      .map(([pid, items]) => {
+        const p = extProjects.find((q) => q.id === pid);
+        return {
+          key: pid,
+          name: p ? p.name : '（未归档）',
+          org: p ? (p.org || '未填单位') : '—',
+          note: p ? p.note : '',
+          items,
+          total: extIncomeSum(items),
+          unpaid: extIncomeSum(items.filter((i) => !i.paid)),
+        };
+      })
+      .sort((a, b) => {
+        if ((a.key === '') !== (b.key === '')) return a.key === '' ? 1 : -1;
+        return b.total - a.total || a.name.localeCompare(b.name, 'zh');
       });
   }
 
@@ -4032,6 +4125,14 @@
     } else {
       externalIncomes = [];
     }
+    // 工作台项目：老快照没有这条键 → 空数组，再由 migrateExtProjects 按旧活动补建
+    const rawExtProjects = localStorage.getItem(STORAGE_KEY_EXT_PROJECTS);
+    if (rawExtProjects !== null) {
+      try { extProjects = JSON.parse(rawExtProjects).map(normalizeExtProject).filter(Boolean); } catch (e) { extProjects = []; }
+    } else {
+      extProjects = [];
+    }
+    migrateExtProjects();
 
     if (rawSchedules !== null) {
       try {
@@ -4108,6 +4209,7 @@
       debts,
       rechargeLogs,
       externalIncomes,
+      extProjects,
     };
 
     // 本地其它标签页立刻看到改动，不等网络
@@ -4181,7 +4283,7 @@
     lines.push(`站点：${location.origin}`);
     lines.push(`同步码：${schoolSyncKey ? schoolSyncKey + `（${schoolSyncKey.length} 位）` : '（没设置）'}`);
     lines.push(`网络：${navigator.onLine ? '在线' : '离线'}${document.hidden ? ' · 页面在后台' : ''}`);
-    const snapshot = { students, schedules, teachers, courseTypes, checkInLogs, debts, rechargeLogs, externalIncomes };
+    const snapshot = { students, schedules, teachers, courseTypes, checkInLogs, debts, rechargeLogs, externalIncomes, extProjects };
     const bytes = JSON.stringify(snapshot).length;
     lines.push(`快照体积：${(bytes / 1024).toFixed(0)} KB${bytes > 900 * 1024 ? ' ⚠️ 接近/超过 Upstash 1MB 上限' : ''}`);
     lines.push(`待推送：${pendingPushPayload ? '有（上次没推上去）' : '无'}`);
@@ -4252,6 +4354,8 @@
             if (Array.isArray(remoteData.rechargeLogs)) rechargeLogs = remoteData.rechargeLogs.map(normalizeRechargeLog).filter(Boolean);
             // 同理：远端没有外部收入这条键（老快照）→ 保留本地，别冲掉
             if (Array.isArray(remoteData.externalIncomes)) externalIncomes = remoteData.externalIncomes.map(normalizeExternalIncome).filter(Boolean);
+            if (Array.isArray(remoteData.extProjects)) extProjects = remoteData.extProjects.map(normalizeExtProject).filter(Boolean);
+            migrateExtProjects();
 
             // 云端拿回来的仍可能是旧口径数据 → 每次覆盖后都校准一次（幂等）
             migrateTeacherNames();
@@ -4295,6 +4399,8 @@
           debts = (event.data.debts || []).map(normalizeDebt);
           if (Array.isArray(event.data.rechargeLogs)) rechargeLogs = event.data.rechargeLogs.map(normalizeRechargeLog).filter(Boolean);
           if (Array.isArray(event.data.externalIncomes)) externalIncomes = event.data.externalIncomes.map(normalizeExternalIncome).filter(Boolean);
+          if (Array.isArray(event.data.extProjects)) extProjects = event.data.extProjects.map(normalizeExtProject).filter(Boolean);
+          migrateExtProjects();
           migrateTeacherNames();
           saveDataLocalOnly();
           renderMobileTeacherSelect();
@@ -4371,6 +4477,7 @@
     localStorage.setItem(STORAGE_KEY_DEBTS, JSON.stringify(debts));
     localStorage.setItem(STORAGE_KEY_RECHARGE_LOGS, JSON.stringify(rechargeLogs));
     localStorage.setItem(STORAGE_KEY_EXTERNAL_INCOMES, JSON.stringify(externalIncomes));
+    localStorage.setItem(STORAGE_KEY_EXT_PROJECTS, JSON.stringify(extProjects));
   }
 
   function checkUrlSyncData() {
@@ -5070,6 +5177,9 @@
     safeBind('navTabWork', 'click', () => switchMobileView('workbench'));
     // 工作台表单（底部抽屉）：保存 / 删除 / 关闭 / 点遮罩关
     safeBind('btnCloseMobileExt', 'click', () => hideModal('modalMobileExtIncome'));
+    safeBind('btnCloseMProject', 'click', () => hideModal('modalMobileExtProject'));
+    safeBind('btnMProjectSave', 'click', saveMobileExtProjectForm);
+    safeBind('btnMProjectDelete', 'click', deleteMobileExtProjectForm);
     safeBind('btnMExtSave', 'click', saveMobileExtForm);
     safeBind('btnMExtDelete', 'click', deleteMobileExtForm);
     const mextModal = document.getElementById('modalMobileExtIncome');
@@ -5251,7 +5361,7 @@
       showToast(`已添加老师 [${name}]`);
     });
     safeBind('msetExport', 'click', () => {
-      const payload = JSON.stringify({ students, schedules, teachers, checkInLogs, debts, rechargeLogs, externalIncomes, updatedAt: Date.now() });
+      const payload = JSON.stringify({ students, schedules, teachers, checkInLogs, debts, rechargeLogs, externalIncomes, extProjects, updatedAt: Date.now() });
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(payload).then(() => {
           showToast('已复制全部数据到剪贴板，可粘贴到电脑版导入');
@@ -7735,14 +7845,25 @@
     const box = document.getElementById('mobileWorkbenchContent');
     if (!box) return;
 
-    // 与桌面端同口径：全量汇总，不按月份切片；待收项目一律直接显示
-    const monthList = extIncomesSorted(externalIncomes);
-    const paidList = monthList.filter((x) => x.paid);
-    const unpaidList = monthList.filter((x) => !x.paid);
-    const total = extIncomeSum(monthList);
+    // 与桌面端同口径：全量汇总，不按月份切片；项目是索引，卡内是它的每一次活动
+    const allList = extIncomesSorted(externalIncomes);
+    const paidList = allList.filter((x) => x.paid);
+    const unpaidList = allList.filter((x) => !x.paid);
+    const total = extIncomeSum(allList);
+    const rows = allList.filter((x) => (mobileExtFilter === 'unpaid' ? !x.paid : mobileExtFilter === 'paid' ? x.paid : true));
 
-    const rows = extIncomesSorted(monthList)
-      .filter((x) => (mobileExtFilter === 'unpaid' ? !x.paid : mobileExtFilter === 'paid' ? x.paid : true));
+    // 与桌面端同构：空项目也出卡，建完就能点「记一场活动」
+    const groupMap = new Map();
+    extProjects.forEach((p) => groupMap.set(p.id, { key: p.id, name: p.name, org: p.org || '未填单位', note: p.note, items: [] }));
+    rows.forEach((x) => {
+      const pid = String(x.projectId || '');
+      if (!groupMap.has(pid)) groupMap.set(pid, { key: pid, name: '（未归档）', org: '—', note: '', items: [] });
+      groupMap.get(pid).items.push(x);
+    });
+    const groups = [...groupMap.values()]
+      .map((g) => Object.assign(g, { items: extIncomesSorted(g.items), total: extIncomeSum(g.items), unpaid: extIncomeSum(g.items.filter((i) => !i.paid)) }))
+      .filter((g) => mobileExtFilter === 'all' || g.items.length)
+      .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, 'zh'));
 
     const chip = (v, t) => {
       const on = mobileExtFilter === v;
@@ -7779,38 +7900,46 @@
       </div>`;
     };
 
-    // 单位/客户是索引：**一个单位一张卡**，卡面只给场次 + 小计（+待收），点开才铺时间与活动明细
-    const groupHtml = extGroupByOrg(rows).map((g) => {
+    const groupHtml = groups.map((g) => {
       const open = mobileExtOpen.has(g.key);
-      // 卡面必须一眼看出这家钱收没收（收起后只有这一行汇总，别再让人点开找）
-      const payTxt = g.unpaid > 0 ? `待收 ${extMoney(g.unpaid)}` : '已收';
+      const payTxt = g.unpaid > 0 ? '待收' : '已收'; // 手机卡头窄，金额已有小计，这里只留状态
       const payColor = g.unpaid > 0 ? '#b45309' : '#047857';
       return `
       <div class="lm-ext-unit" data-mext-group="${extEsc(g.key)}">
-        <button type="button" data-mext-toggle="${extEsc(g.key)}" aria-expanded="${open ? 'true' : 'false'}" class="w-full text-left p-3.5 flex items-center gap-2.5 active:bg-[#faf8f3] transition">
-          <div class="w-8 h-8 rounded-xl shrink-0 flex items-center justify-center" style="background:#f5f2ec"><i class="fa-solid fa-user-tie text-[11px] text-[#a8a29e]"></i></div>
-          <div class="flex-1 min-w-0">
-            <div class="text-[13.5px] font-black text-[#111111] truncate">${extEsc(g.org)}</div>
-            <div class="text-[10.5px] font-semibold text-[#9c9fa5] mt-0.5">${g.items.length} 场 · <span style="color:${payColor}">${payTxt}</span></div>
+        <div class="flex items-center gap-1 pr-2">
+          <button type="button" data-mext-toggle="${extEsc(g.key)}" aria-expanded="${open ? 'true' : 'false'}" class="flex-1 min-w-0 text-left p-3.5 flex items-center gap-2.5 active:bg-[#faf8f3] transition">
+            <div class="w-8 h-8 rounded-xl shrink-0 flex items-center justify-center" style="background:#f5f3ff"><i class="fa-solid fa-folder-open text-[11px] text-[#6d28d9]"></i></div>
+            <div class="flex-1 min-w-0">
+              <div class="text-[13.5px] font-black text-[#111111] truncate">${extEsc(g.name)}</div>
+              <div class="text-[10.5px] font-semibold text-[#9c9fa5] mt-0.5 truncate">${extEsc(g.org)} · ${g.items.length} 场 · <span style="color:${payColor}">${payTxt}</span></div>
+            </div>
+            <div class="shrink-0 text-right text-[15px] font-black text-[#111111]">${extMoney(g.total)}</div>
+            <i class="fa-solid fa-chevron-down text-[10px] text-[#c4bfb7] transition-transform ${open ? 'rotate-180' : ''}"></i>
+          </button>
+          <div class="flex flex-col gap-1 shrink-0">
+            <button type="button" data-mext-add="${extEsc(g.key)}" title="记一场活动" class="w-7 h-7 rounded-lg flex items-center justify-center text-[#6d28d9] active:bg-[#f5f3ff]"><i class="fa-solid fa-plus text-[10px]"></i></button>
+            <button type="button" data-mext-project-edit="${extEsc(g.key)}" title="编辑项目" class="w-7 h-7 rounded-lg flex items-center justify-center text-[#a8a29e] active:bg-[#f5f2ec]"><i class="fa-solid fa-pen text-[10px]"></i></button>
+            <button type="button" data-mext-project-del="${extEsc(g.key)}" title="删除项目" class="w-7 h-7 rounded-lg flex items-center justify-center text-[#a8a29e] active:bg-rose-50"><i class="fa-solid fa-trash text-[10px]"></i></button>
           </div>
-          <div class="shrink-0 text-right text-[15px] font-black text-[#111111]">${extMoney(g.total)}</div>
-          <i class="fa-solid fa-chevron-down text-[10px] text-[#c4bfb7] transition-transform ${open ? 'rotate-180' : ''}"></i>
-        </button>
-        <div class="border-t border-[#f5f1ea] ${open ? '' : 'hidden'}">${g.items.map(rowHtml).join('')}</div>
+        </div>
+        <div class="border-t border-[#f5f1ea] ${open ? '' : 'hidden'}">
+          <div class="px-3.5 py-2 bg-[#faf8f3] border-b border-[#f5f1ea]"><button type="button" data-mext-add="${extEsc(g.key)}" class="text-[11px] font-bold text-[#6d28d9]"><i class="fa-solid fa-plus mr-1"></i>记一场活动</button></div>
+          ${g.items.map(rowHtml).join('')}
+        </div>
       </div>`;
     }).join('');
 
     box.innerHTML = `
       <div class="lm-card p-4">
         <div class="text-center">
-          <div class="text-[10.5px] font-bold text-[#9c9fa5]">工作台 · 外部收入（按单位汇总）</div>
+          <div class="text-[10.5px] font-bold text-[#9c9fa5]">工作台 · 外部收入（按项目汇总）</div>
           <div class="text-[13px] font-black text-[#111111] mt-0.5">全部记录</div>
         </div>
         <div class="mt-3 flex items-end justify-between">
           <div>
             <div class="text-[10.5px] font-bold text-[#9c9fa5]">累计合计</div>
             <div id="mExtTotal" class="text-[28px] font-black text-[#111111] leading-none mt-1">${extMoney(total)}</div>
-            <div class="text-[10.5px] font-semibold text-[#9c9fa5] mt-1">${monthList.length} 场活动</div>
+            <div class="text-[10.5px] font-semibold text-[#9c9fa5] mt-1">${allList.length} 场活动</div>
           </div>
           <div class="text-right space-y-1">
             <div id="mExtPaid" class="text-[11px] font-bold" style="color:#047857">已收 ${extMoney(extIncomeSum(paidList))}</div>
@@ -7821,25 +7950,27 @@
           ${chip('all', '全部')}${chip('unpaid', '待收')}${chip('paid', '已收')}
         </div>
         <button id="mExtAdd" class="w-full mt-2.5 py-3 rounded-xl bg-[#111111] text-white text-[12.5px] font-bold flex items-center justify-center gap-1.5 active:opacity-90">
-          <i class="fa-solid fa-plus text-[11px]"></i> 记一笔
+          <i class="fa-solid fa-folder-plus text-[11px]"></i> 新建项目
         </button>
       </div>
-      ${rows.length ? `<div class="space-y-2">${groupHtml}</div>` : `
+      ${groups.length ? `<div class="space-y-2">${groupHtml}</div>` : `
         <div class="lm-card p-8 text-center">
-          <i class="fa-solid fa-briefcase text-xl text-[#d6d3d1] mb-2 block"></i>
-          <div class="text-[11.5px] font-semibold text-[#9c9fa5]">${monthList.length ? '这个筛选下没有记录' : '还没有外部收入'}</div>
+          <i class="fa-solid fa-folder-open text-xl text-[#d6d3d1] mb-2 block"></i>
+          <div class="text-[11.5px] font-semibold text-[#9c9fa5]">${groups.length ? '这个筛选下没有记录' : extProjects.length ? '这个项目下还没有活动' : '还没有项目，先建一个项目'}</div>
         </div>`}
     `;
 
     // 一次性事件委托（box 内容每次重绘，用 onclick 赋值避免重复绑定）
     box.onclick = (e) => {
       const f = e.target.closest('[data-mext-filter]');
-      if (f) {
-        mobileExtFilter = f.getAttribute('data-mext-filter') || 'all';
-        renderMobileWorkbench();
-        return;
-      }
-      if (e.target.closest('#mExtAdd')) { openMobileExtForm(); return; }
+      if (f) { mobileExtFilter = f.getAttribute('data-mext-filter') || 'all'; renderMobileWorkbench(); return; }
+      if (e.target.closest('#mExtAdd')) { openMobileExtProjectForm(); return; }
+      const add = e.target.closest('[data-mext-add]');
+      if (add) { openMobileExtForm('', add.getAttribute('data-mext-add')); return; }
+      const ed = e.target.closest('[data-mext-project-edit]');
+      if (ed) { openMobileExtProjectForm(ed.getAttribute('data-mext-project-edit')); return; }
+      const dl = e.target.closest('[data-mext-project-del]');
+      if (dl) { deleteMobileExtProjectById(dl.getAttribute('data-mext-project-del')); return; }
       const tg = e.target.closest('[data-mext-toggle]');
       if (tg) {
         const key = tg.getAttribute('data-mext-toggle');
@@ -7851,6 +7982,7 @@
       if (row) openMobileExtForm(row.getAttribute('data-mext-row'));
     };
   }
+
 
   // 表单两组 chip：类型 / 收款状态（与电脑端 extFormSyncChips 同构，id 前缀不同）
   function mobileExtFormSyncChips() {
@@ -7886,17 +8018,22 @@
     }
   }
 
-  function openMobileExtForm(id) {
+  function openMobileExtForm(id, projectId) {
     const x = id ? externalIncomes.find((i) => i.id === id) : null;
+    const pid = x ? String(x.projectId || '') : String(projectId || '');
+    const p = extProjects.find((q) => q.id === pid);
     const today = formatDate(new Date());
     const set = (elId, v) => { const el = document.getElementById(elId); if (el) el.value = v; };
     set('mExtEditId', x ? x.id : '');
+    set('mExtProjectId', pid);
+    const label = document.getElementById('mExtProjectLabel');
+    if (label) label.textContent = p ? `所属项目：${p.name} · ${p.org || '未填单位'}` : '所属项目：（未选择，请先建项目）';
     const t = document.getElementById('mobileExtFormTitle');
-    if (t) t.textContent = x ? '编辑外部收入' : '记一笔外部收入';
+    if (t) t.textContent = x ? '编辑活动明细' : (p ? `记一场活动 · ${p.name}` : '记一场活动');
     mobileExtDraftType = x ? x.type : '演出';
     mobileExtDraftPaid = x ? !!x.paid : false;
     set('mExtActivity', x ? x.activity : '');
-    set('mExtOrg', x ? x.org : '');
+    set('mExtOrg', p ? p.org : (x ? x.org : ''));
     set('mExtAmount', x ? (x.amount || '') : '');
     set('mExtStartDate', x ? x.date : today);
     set('mExtStartTime', x ? x.startTime : '');
@@ -7904,12 +8041,64 @@
     set('mExtEndTime', x ? x.endTime : '');
     const delBtn = document.getElementById('btnMExtDelete');
     if (delBtn) delBtn.classList.toggle('hidden', !x);
-    // 单位改成必填索引后，同一家客户别写成两种写法（否则分组会裂开）→ 填过的进下拉候选
-    mExtFillDatalist('mExtOrgList', externalIncomes.map((i) => i.org));
-    mExtFillDatalist('mExtActivityList', externalIncomes.map((i) => i.activity));
+    mExtFillDatalist('mExtOrgList', extProjects.map((i) => i.org));
+    mExtFillDatalist('mExtActivityList', externalIncomes.filter((i) => i.projectId === pid).map((i) => i.activity));
     mobileExtFormSyncChips();
     showModal('modalMobileExtIncome');
   }
+
+  // 项目表单（与桌面端同构）
+  function openMobileExtProjectForm(id) {
+    const p = id ? extProjects.find((q) => q.id === id) : null;
+    const set = (elId, v) => { const el = document.getElementById(elId); if (el) el.value = v; };
+    set('mExtProjectEditId', p ? p.id : '');
+    set('mExtProjectName', p ? p.name : '');
+    set('mExtProjectOrg', p ? p.org : '');
+    set('mExtProjectNote', p ? p.note : '');
+    const t = document.getElementById('mobileExtProjectFormTitle');
+    if (t) t.textContent = p ? '编辑项目' : '新建项目';
+    const delBtn = document.getElementById('btnMProjectDelete');
+    if (delBtn) delBtn.classList.toggle('hidden', !p);
+    mExtFillDatalist('mExtProjectNameList', extProjects.map((q) => q.name));
+    mExtFillDatalist('mExtOrgList', extProjects.map((q) => q.org));
+    showModal('modalMobileExtProject');
+  }
+
+  function saveMobileExtProjectForm() {
+    const val = (elId) => { const el = document.getElementById(elId); return el ? String(el.value || '').trim() : ''; };
+    const id = val('mExtProjectEditId');
+    const name = val('mExtProjectName');
+    const org = val('mExtProjectOrg');
+    if (!name) { showToast('项目名称要填一个'); return; }
+    if (!org) { showToast('「单位 / 客户」要填一个'); return; }
+    pushUndo(id ? '编辑项目' : '新建项目');
+    const saved = upsertExtProject({ name, org, note: val('mExtProjectNote') }, id || null);
+    if (!saved) { showToast('保存失败'); return; }
+    mobileExtOpen.add(saved.id);
+    saveData();
+    renderMobileWorkbench();
+    hideModal('modalMobileExtProject');
+    showToast(id ? '项目已更新' : `项目「${saved.name}」已建好，现在可以记活动了`);
+  }
+
+  function deleteMobileExtProjectById(id) {
+    if (!id) return;
+    const p = extProjects.find((q) => q.id === id);
+    const count = externalIncomes.filter((x) => x.projectId === id).length;
+    if (count) { showToast(`这个项目下还有 ${count} 场活动，先删掉活动再删项目`); return; }
+    pushUndo('删除项目');
+    deleteExtProject(id);
+    mobileExtOpen.delete(id);
+    saveData();
+    renderMobileWorkbench();
+    showToast(p ? `已删除项目：${p.name}` : '已删除项目');
+  }
+
+  function deleteMobileExtProjectForm() {
+    deleteMobileExtProjectById(document.getElementById('mExtProjectEditId')?.value || '');
+    hideModal('modalMobileExtProject');
+  }
+
 
   // 已填过的文本进 <datalist> 候选（与电脑端 extFillDatalist 同构）
   function mExtFillDatalist(elId, values) {
@@ -7924,7 +8113,16 @@
     const val = (elId) => { const el = document.getElementById(elId); return el ? String(el.value || '').trim() : ''; };
     const id = val('mExtEditId');
     const activity = val('mExtActivity');
-    const org = val('mExtOrg');
+    let projectId = val('mExtProjectId');
+    let project = extProjects.find((p) => p.id === projectId);
+    if (!project) {
+      // 兜底：老入口直接记一笔时，按「单位 + 活动名」自动建项目
+      const fallbackOrg = val('mExtOrg');
+      if (!fallbackOrg) { showToast('先建一个项目，再在项目里记活动'); return; }
+      project = upsertExtProject({ name: activity || fallbackOrg, org: fallbackOrg, note: '' }, null);
+      projectId = project.id;
+    }
+    const org = project.org;
     const date = val('mExtStartDate');
     const startTime = time24Value('mExtStartTime');
     const endTime = time24Value('mExtEndTime');
@@ -7948,7 +8146,7 @@
 
     pushUndo(id ? '编辑外部收入' : '记一笔外部收入');
     const saved = upsertExternalIncome({
-      type: mobileExtDraftType, org, activity, amount,
+      type: mobileExtDraftType, org, activity, amount, projectId,
       paid: mobileExtDraftPaid, date, startTime, endDate, endTime,
     }, id || null);
     if (!saved) { showToast('保存失败：数据不完整'); return; }
@@ -7958,7 +8156,7 @@
     const now = new Date();
     mobileExtMonthOffset = (sd.getFullYear() - now.getFullYear()) * 12 + (sd.getMonth() - now.getMonth());
     // 卡片默认收起 → 刚存的那条顺手展开，否则「记完了看不到明细」
-    mobileExtOpen.add(String(saved.org || '').trim());
+    mobileExtOpen.add(projectId);
 
     saveData();
     renderMobileWorkbench();
@@ -8418,6 +8616,7 @@
       debts: JSON.parse(JSON.stringify(debts)),
       rechargeLogs: JSON.parse(JSON.stringify(rechargeLogs)),
       externalIncomes: JSON.parse(JSON.stringify(externalIncomes)),
+      extProjects: JSON.parse(JSON.stringify(extProjects)),
       label: label || '上一次操作',
       flashId: flashId || '',
     };
@@ -8444,6 +8643,7 @@
     debts = undoState.debts;
     if (undoState.rechargeLogs) rechargeLogs = undoState.rechargeLogs;
     if (undoState.externalIncomes) externalIncomes = undoState.externalIncomes;
+    if (undoState.extProjects) extProjects = undoState.extProjects;
     clearUndo();
     saveData();
     pendingReorderId = flashId || null; // 撤销请假时这一行滑回原位

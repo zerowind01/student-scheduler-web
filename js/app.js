@@ -18,6 +18,7 @@
   const STORAGE_KEY_RECHARGE_LOGS = 'edu_scheduler_recharge_logs_v2';
   // 工作台 · 外部收入（演出/排练/伴奏）：独立集合，**不进 checkInLogs、不进课消 KPI**
   const STORAGE_KEY_EXTERNAL_INCOMES = 'edu_scheduler_external_incomes_v2';
+  const STORAGE_KEY_EXT_PROJECTS = 'edu_scheduler_ext_projects_v1';
 
   // 学员主题色：2026-10 定稿色卡六色（键名是数据层约定不能改，渲染色已全端换新）
   const COLOR_THEMES = ['amber', 'emerald', 'sky', 'purple', 'rose', 'mint'];
@@ -34,6 +35,7 @@
   let debts = [];         // 学员欠课账 { id, studentId, courseName, amount(节) }
   let rechargeLogs = [];  // 充值流水（预收款记录，**不进 checkInLogs**，见 purchaseCoursePack 上方注释）
   let externalIncomes = []; // 外部收入（演出/排练/伴奏活动）：工作台记账，**不进课消 KPI**，见第 70 条
+  let extProjects = [];    // 工作台项目（先建项目，再在项目里记活动明细）
   let selectedTeacherFilter = 'all'; // 课表页筛选老师：all 或 teacherId
   // 财务页的「查看视角」：all = 全校，否则是 teacherId。
   // **故意不复用 selectedTeacherFilter** —— 顶栏那个筛选器只在课表页可见（switchPage 里 mainTopbar 只在
@@ -1823,6 +1825,14 @@
     } else {
       externalIncomes = [];
     }
+    // 工作台项目：老快照没有这条键 → 空数组，再由 migrateExtProjects 按旧活动补建
+    const rawExtProjects = localStorage.getItem(STORAGE_KEY_EXT_PROJECTS);
+    if (rawExtProjects !== null) {
+      try { extProjects = JSON.parse(rawExtProjects).map(normalizeExtProject).filter(Boolean); } catch (e) { extProjects = []; }
+    } else {
+      extProjects = [];
+    }
+    migrateExtProjects();
 
     if (rawSchedules !== null) {
       try {
@@ -1904,6 +1914,7 @@
       debts,
       rechargeLogs,
       externalIncomes,
+      extProjects,
     };
 
     // 本地其它标签页立刻看到改动，不等网络
@@ -1977,7 +1988,7 @@
     lines.push(`站点：${location.origin}`);
     lines.push(`同步码：${schoolSyncKey ? schoolSyncKey + `（${schoolSyncKey.length} 位）` : '（没设置）'}`);
     lines.push(`网络：${navigator.onLine ? '在线' : '离线'}${document.hidden ? ' · 页面在后台' : ''}`);
-    const snapshot = { students, schedules, teachers, courseTypes, checkInLogs, debts, rechargeLogs, externalIncomes };
+    const snapshot = { students, schedules, teachers, courseTypes, checkInLogs, debts, rechargeLogs, externalIncomes, extProjects };
     const bytes = JSON.stringify(snapshot).length;
     lines.push(`快照体积：${(bytes / 1024).toFixed(0)} KB${bytes > 900 * 1024 ? ' ⚠️ 接近/超过 Upstash 1MB 上限' : ''}`);
     lines.push(`待推送：${pendingPushPayload ? '有（上次没推上去）' : '无'}`);
@@ -2050,6 +2061,8 @@
             if (Array.isArray(remoteData.rechargeLogs)) rechargeLogs = remoteData.rechargeLogs.map(normalizeRechargeLog).filter(Boolean);
             // 同理：远端没有外部收入这条键（老快照）→ 保留本地，别冲掉
             if (Array.isArray(remoteData.externalIncomes)) externalIncomes = remoteData.externalIncomes.map(normalizeExternalIncome).filter(Boolean);
+            if (Array.isArray(remoteData.extProjects)) extProjects = remoteData.extProjects.map(normalizeExtProject).filter(Boolean);
+            migrateExtProjects();
 
             // 云端拿回来的仍可能是旧口径数据 → 每次覆盖后都校准一次（幂等）
             migrateTeacherNames();
@@ -2093,6 +2106,8 @@
           debts = (event.data.debts || []).map(normalizeDebt);
           if (Array.isArray(event.data.rechargeLogs)) rechargeLogs = event.data.rechargeLogs.map(normalizeRechargeLog).filter(Boolean);
           if (Array.isArray(event.data.externalIncomes)) externalIncomes = event.data.externalIncomes.map(normalizeExternalIncome).filter(Boolean);
+          if (Array.isArray(event.data.extProjects)) extProjects = event.data.extProjects.map(normalizeExtProject).filter(Boolean);
+          migrateExtProjects();
           migrateTeacherNames();
           saveDataLocalOnly();
           renderTeacherOptions();
@@ -2168,6 +2183,7 @@
     localStorage.setItem(STORAGE_KEY_DEBTS, JSON.stringify(debts));
     localStorage.setItem(STORAGE_KEY_RECHARGE_LOGS, JSON.stringify(rechargeLogs));
     localStorage.setItem(STORAGE_KEY_EXTERNAL_INCOMES, JSON.stringify(externalIncomes));
+    localStorage.setItem(STORAGE_KEY_EXT_PROJECTS, JSON.stringify(extProjects));
   }
 
   function addDays(date, days) {
@@ -2759,6 +2775,8 @@
     };
     return {
       id: o.id || ('ei_' + Math.random().toString(36).slice(2, 10)),
+      // 所属项目（新增记录必有；旧数据由 migrateExtProjects 补齐）
+      projectId: String(o.projectId || ''),
       type: String(o.type || '').trim() || '其他',
       org: String(o.org || '').trim(),            // 单位（主办方 / 客户）
       activity: String(o.activity || '').trim(),  // 活动名称
@@ -2771,6 +2789,67 @@
       endTime: hm(o.endTime),
       createdAt: o.createdAt || new Date().toISOString(),
     };
+  }
+
+  // ==========================================
+  // 工作台 · 项目（2026-11-26 Jackson：「先建立项目，再在项目里记活动明细」）
+  // 项目 = 单位/客户 + 项目名；活动明细（externalIncomes）通过 projectId 归属到项目。
+  // 独立集合，和 rechargeLogs 一样接入云同步 / 广播 / 撤销 / 导出。
+  // ==========================================
+  function normalizeExtProject(o) {
+    if (!o || typeof o !== 'object') return null;
+    const name = String(o.name || '').trim();
+    if (!name) return null;
+    return {
+      id: o.id || ('ep_' + Math.random().toString(36).slice(2, 10)),
+      name,
+      org: String(o.org || '').trim(),
+      note: String(o.note || '').trim(),
+      createdAt: o.createdAt || new Date().toISOString(),
+    };
+  }
+
+  // 旧数据迁移：没有 projectId 的活动按「单位 + 活动名」归成一个项目。
+  // ⚠️ ID 必须确定性（两端各自迁移不能生成不同 id，否则同步后项目对不上）。
+  function extLegacyProjectId(org, name) {
+    const s = String(org || '') + '|' + String(name || '');
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+    return 'ep_legacy_' + (h >>> 0).toString(36);
+  }
+
+  function migrateExtProjects() {
+    let changed = false;
+    externalIncomes = externalIncomes.map((x) => {
+      if (x.projectId && extProjects.some((p) => p.id === x.projectId)) return x;
+      const name = String(x.activity || '').trim() || String(x.org || '').trim() || '未命名项目';
+      const org = String(x.org || '').trim();
+      const pid = extLegacyProjectId(org, name);
+      if (!extProjects.some((p) => p.id === pid)) {
+        extProjects.push(normalizeExtProject({ id: pid, name, org, note: '', createdAt: x.createdAt }));
+      }
+      if (x.projectId !== pid) { x.projectId = pid; changed = true; }
+      return x;
+    }).filter(Boolean);
+    return changed;
+  }
+
+  function upsertExtProject(data, editId) {
+    const next = normalizeExtProject(Object.assign({}, data, editId ? { id: editId } : {}));
+    if (!next) return null;
+    const i = editId ? extProjects.findIndex((p) => p.id === editId) : -1;
+    if (i >= 0) {
+      next.id = extProjects[i].id;
+      next.createdAt = extProjects[i].createdAt || next.createdAt;
+      extProjects[i] = next;
+    } else {
+      extProjects.push(next);
+    }
+    return next;
+  }
+
+  function deleteExtProject(id) {
+    extProjects = extProjects.filter((p) => p.id !== id);
   }
 
   // 归月按**开始日期**，与课消的 logLocalDate 口径一致（看"这场是什么时候演的"）
@@ -2808,6 +2887,34 @@
       .sort((a, b) => {
         if (!a.key !== !b.key) return a.key ? -1 : 1;
         return b.total - a.total || a.org.localeCompare(b.org, 'zh');
+      });
+  }
+
+  // 按项目出卡：一个项目一张卡，卡内是它的每一次活动。
+  // 孤儿活动（项目被误删 / 老快照没带项目）归到「未归档」，保证任何一条收入都看得见。
+  function extGroupByProject(list) {
+    const map = new Map();
+    list.forEach((x) => {
+      const pid = String(x.projectId || '');
+      if (!map.has(pid)) map.set(pid, []);
+      map.get(pid).push(x);
+    });
+    return [...map.entries()]
+      .map(([pid, items]) => {
+        const p = extProjects.find((q) => q.id === pid);
+        return {
+          key: pid,
+          name: p ? p.name : '（未归档）',
+          org: p ? (p.org || '未填单位') : '—',
+          note: p ? p.note : '',
+          items,
+          total: extIncomeSum(items),
+          unpaid: extIncomeSum(items.filter((i) => !i.paid)),
+        };
+      })
+      .sort((a, b) => {
+        if ((a.key === '') !== (b.key === '')) return a.key === '' ? 1 : -1;
+        return b.total - a.total || a.name.localeCompare(b.name, 'zh');
       });
   }
 
@@ -4837,27 +4944,39 @@
     const rows = extIncomesSorted(monthList)
       .filter((x) => (extFilter === 'unpaid' ? !x.paid : extFilter === 'paid' ? x.paid : true));
 
+    // 项目先出卡（哪怕一场活动都没有）：建完项目立刻能点卡里的「记一场活动」
+    const groupMap = new Map();
+    extProjects.forEach((p) => groupMap.set(p.id, { key: p.id, name: p.name, org: p.org || '未填单位', note: p.note, items: [] }));
+    rows.forEach((x) => {
+      const pid = String(x.projectId || '');
+      if (!groupMap.has(pid)) groupMap.set(pid, { key: pid, name: '（未归档）', org: '—', note: '', items: [] });
+      groupMap.get(pid).items.push(x);
+    });
+    const groups = [...groupMap.values()]
+      .map((g) => Object.assign(g, { items: extIncomesSorted(g.items), total: extIncomeSum(g.items), unpaid: extIncomeSum(g.items.filter((i) => !i.paid)) }))
+      .filter((g) => extFilter === 'all' || g.items.length)
+      .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, 'zh'));
+
     const titleEl = document.getElementById('extListTitle');
     if (titleEl) {
       const fLabel = extFilter === 'unpaid' ? '待收' : extFilter === 'paid' ? '已收' : '全部';
-      titleEl.textContent = `全部记录 · ${fLabel} ${rows.length} 场`;
+      titleEl.textContent = `全部项目 · ${fLabel} ${rows.length} 场`;
     }
 
-    if (!rows.length) {
+    if (!groups.length) {
       listBody.innerHTML = `
         <div class="py-16 text-center xl:col-span-2 bg-white border border-[#efe9e0] rounded-2xl">
           <i class="fa-solid fa-briefcase text-2xl text-[#d6d3d1] mb-2 block"></i>
-          <div class="text-[12px] text-[#a8a29e] font-semibold">${monthList.length ? '这个筛选下没有记录' : '还没有外部收入'}</div>
-          <button id="btnExtEmptyAdd" class="mt-3 px-3.5 py-1.5 rounded-xl bg-[#111111] text-white text-[11px] font-bold">记一笔</button>
+          <div class="text-[12px] text-[#a8a29e] font-semibold">${groups.length ? '这个筛选下没有记录' : extProjects.length ? '这个项目下还没有活动' : '还没有项目，先建一个项目'}</div>
+          <button id="btnExtEmptyAdd" class="mt-3 px-3.5 py-1.5 rounded-xl bg-[#111111] text-white text-[11px] font-bold">新建项目</button>
         </div>`;
       const b = document.getElementById('btnExtEmptyAdd');
-      if (b) b.addEventListener('click', () => openExtIncomeForm());
+      if (b) b.addEventListener('click', () => openExtProjectForm());
       return;
     }
 
-    // 分组：单位/客户是索引，**一个单位一张卡**。卡面只给「场次 + 小计（+待收）」，
-    // 点开卡才铺演出明细（2026-11-25 Jackson：「一个单位一个卡片，点进去再显示时间活动明细」）。
-    const groups = extGroupByOrg(rows).map((g) => Object.assign(g, { items: extIncomesSorted(g.items) }));
+    // 2026-11-26 新操作逻辑：先建项目，再点开项目卡记活动明细。
+    // 卡片维度是项目，卡面给「项目名 / 单位 / N 场 · 收款状态 / 小计」，点开才铺每一次活动。
 
     const rowHtml = (x, key) => {
       const tm = extIncomeTypeMeta(x.type);
@@ -4882,21 +5001,28 @@
 
     listBody.innerHTML = groups.map((g) => {
       const open = extOpenOrgs.has(g.key);
-      // 卡面必须一眼看出这家钱收没收（收起后只有这一行汇总，别再让人点开找）
       const payTxt = g.unpaid > 0 ? `待收 ${extMoney(g.unpaid)}` : '已收';
       const payColor = g.unpaid > 0 ? '#b45309' : '#047857';
       return `
       <div class="bg-white border border-[#efe9e0] rounded-2xl overflow-hidden" data-ext-group="${extEsc(g.key)}">
-        <button type="button" data-ext-toggle="${extEsc(g.key)}" aria-expanded="${open ? 'true' : 'false'}" class="w-full text-left px-4 py-3.5 flex items-center gap-3 hover:bg-[#faf8f3] transition">
-          <div class="w-9 h-9 rounded-xl shrink-0 flex items-center justify-center bg-[#f5f2ec]"><i class="fa-solid fa-user-tie text-[12px] text-[#a8a29e]"></i></div>
-          <div class="flex-1 min-w-0">
-            <div class="text-[13.5px] font-black text-[#111111] truncate">${extEsc(g.org)}</div>
-            <div class="text-[10.5px] font-semibold text-[#a8a29e] mt-0.5">${g.items.length} 场 · <span style="color:${payColor}">${payTxt}</span></div>
-          </div>
-          <div class="shrink-0 text-right text-[15px] font-black text-[#111111]">${extMoney(g.total)}</div>
-          <i class="fa-solid fa-chevron-down text-[10px] text-[#c4bfb7] transition-transform ${open ? 'rotate-180' : ''}"></i>
-        </button>
-        <div class="border-t border-[#f0ebe2] ${open ? '' : 'hidden'}">${g.items.map((x) => rowHtml(x, g.key)).join('')}</div>
+        <div class="flex items-center gap-1 pr-2">
+          <button type="button" data-ext-toggle="${extEsc(g.key)}" aria-expanded="${open ? 'true' : 'false'}" class="flex-1 min-w-0 text-left px-4 py-3.5 flex items-center gap-3 hover:bg-[#faf8f3] transition">
+            <div class="w-9 h-9 rounded-xl shrink-0 flex items-center justify-center bg-[#f5f3ff]"><i class="fa-solid fa-folder-open text-[12px] text-[#6d28d9]"></i></div>
+            <div class="flex-1 min-w-0">
+              <div class="text-[13.5px] font-black text-[#111111] truncate">${extEsc(g.name)}</div>
+              <div class="text-[10.5px] font-semibold text-[#a8a29e] mt-0.5 truncate">${extEsc(g.org)} · ${g.items.length} 场 · <span style="color:${payColor}">${payTxt}</span></div>
+            </div>
+            <div class="shrink-0 text-right text-[15px] font-black text-[#111111]">${extMoney(g.total)}</div>
+            <i class="fa-solid fa-chevron-down text-[10px] text-[#c4bfb7] transition-transform ${open ? 'rotate-180' : ''}"></i>
+          </button>
+          <button type="button" data-ext-add="${extEsc(g.key)}" title="记一场活动" class="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-[#6d28d9] hover:bg-[#f5f3ff] transition"><i class="fa-solid fa-plus text-[11px]"></i></button>
+          <button type="button" data-ext-project-edit="${extEsc(g.key)}" title="编辑项目" class="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-[#a8a29e] hover:bg-[#f5f2ec] transition"><i class="fa-solid fa-pen text-[11px]"></i></button>
+          <button type="button" data-ext-project-del="${extEsc(g.key)}" title="删除项目" class="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-[#a8a29e] hover:bg-rose-50 hover:text-rose-600 transition"><i class="fa-solid fa-trash text-[11px]"></i></button>
+        </div>
+        <div class="border-t border-[#f0ebe2] ${open ? '' : 'hidden'}">
+          <div class="px-4 py-2 bg-[#faf8f3] border-b border-[#f5f1ea]"><button type="button" data-ext-add="${extEsc(g.key)}" class="text-[11px] font-bold text-[#6d28d9] hover:underline"><i class="fa-solid fa-plus mr-1"></i>记一场活动</button></div>
+          ${g.items.map((x) => rowHtml(x, g.name)).join('')}
+        </div>
       </div>`;
     }).join('');
 
@@ -4906,6 +5032,15 @@
         if (extOpenOrgs.has(key)) extOpenOrgs.delete(key); else extOpenOrgs.add(key);
         renderPageWorkbench();
       });
+    });
+    listBody.querySelectorAll('[data-ext-add]').forEach((btn) => {
+      btn.addEventListener('click', () => openExtIncomeForm('', btn.getAttribute('data-ext-add')));
+    });
+    listBody.querySelectorAll('[data-ext-project-edit]').forEach((btn) => {
+      btn.addEventListener('click', () => openExtProjectForm(btn.getAttribute('data-ext-project-edit')));
+    });
+    listBody.querySelectorAll('[data-ext-project-del]').forEach((btn) => {
+      btn.addEventListener('click', () => deleteExtProjectById(btn.getAttribute('data-ext-project-del')));
     });
     listBody.querySelectorAll('[data-ext-row]').forEach((row) => {
       row.addEventListener('click', (e) => {
@@ -4920,6 +5055,7 @@
       });
     });
   }
+
 
   // 表单里两组 chip（类型 / 收款状态）：每次点完重画，选中态靠 extDraftType / extDraftPaid
   function extFormSyncChips() {
@@ -4955,17 +5091,22 @@
     }
   }
 
-  function openExtIncomeForm(id) {
+  function openExtIncomeForm(id, projectId) {
     const x = id ? externalIncomes.find((i) => i.id === id) : null;
+    const pid = x ? String(x.projectId || '') : String(projectId || '');
+    const p = extProjects.find((q) => q.id === pid);
     const today = formatDate(new Date());
     const set = (elId, v) => { const el = document.getElementById(elId); if (el) el.value = v; };
     set('extEditId', x ? x.id : '');
+    set('extProjectId', pid);
+    const label = document.getElementById('extProjectLabel');
+    if (label) label.textContent = p ? `所属项目：${p.name} · ${p.org || '未填单位'}` : '所属项目：（未选择，请先建项目）';
     const t = document.getElementById('extFormTitle');
-    if (t) t.textContent = x ? '编辑外部收入' : '记一笔外部收入';
+    if (t) t.textContent = x ? '编辑活动明细' : (p ? `记一场活动 · ${p.name}` : '记一场活动');
     extDraftType = x ? x.type : '演出';
     extDraftPaid = x ? !!x.paid : false;
     set('extActivity', x ? x.activity : '');
-    set('extOrg', x ? x.org : '');
+    set('extOrg', p ? p.org : (x ? x.org : ''));
     set('extAmount', x ? (x.amount || '') : '');
     set('extStartDate', x ? x.date : today);
     set('extStartTime', x ? x.startTime : '');
@@ -4973,12 +5114,64 @@
     set('extEndTime', x ? x.endTime : '');
     const delBtn = document.getElementById('btnExtDelete');
     if (delBtn) delBtn.classList.toggle('hidden', !x);
-    // 单位改成必填索引后，同一家客户被写成「万达广场」「万达广场  」会很烦 → 填过的进下拉候选
-    extFillDatalist('extOrgList', externalIncomes.map((i) => i.org));
-    extFillDatalist('extActivityList', externalIncomes.map((i) => i.activity));
+    extFillDatalist('extOrgList', extProjects.map((i) => i.org));
+    extFillDatalist('extActivityList', externalIncomes.filter((i) => i.projectId === pid).map((i) => i.activity));
     extFormSyncChips();
     showModal('modalExtIncome');
   }
+
+  // 项目表单：先建项目，再在项目里记活动
+  function openExtProjectForm(id) {
+    const p = id ? extProjects.find((q) => q.id === id) : null;
+    const set = (elId, v) => { const el = document.getElementById(elId); if (el) el.value = v; };
+    set('extProjectEditId', p ? p.id : '');
+    set('extProjectName', p ? p.name : '');
+    set('extProjectOrg', p ? p.org : '');
+    set('extProjectNote', p ? p.note : '');
+    const t = document.getElementById('extProjectFormTitle');
+    if (t) t.textContent = p ? '编辑项目' : '新建项目';
+    const delBtn = document.getElementById('btnExtProjectDelete');
+    if (delBtn) delBtn.classList.toggle('hidden', !p);
+    extFillDatalist('extProjectNameList', extProjects.map((q) => q.name));
+    extFillDatalist('extOrgList', extProjects.map((q) => q.org));
+    showModal('modalExtProject');
+  }
+
+  function saveExtProjectForm() {
+    const val = (elId) => { const el = document.getElementById(elId); return el ? String(el.value || '').trim() : ''; };
+    const id = val('extProjectEditId');
+    const name = val('extProjectName');
+    const org = val('extProjectOrg');
+    if (!name) { showToast('项目名称要填一个', 'triangle-exclamation'); return; }
+    if (!org) { showToast('「单位 / 客户」要填一个', 'triangle-exclamation'); return; }
+    pushUndo(id ? '编辑项目' : '新建项目');
+    const saved = upsertExtProject({ name, org, note: val('extProjectNote') }, id || null);
+    if (!saved) { showToast('保存失败', 'triangle-exclamation'); return; }
+    extOpenOrgs.add(saved.id); // 建完自动展开，马上就能点「记一场活动」
+    saveData();
+    renderPageWorkbench();
+    hideModal('modalExtProject');
+    showToast(id ? '项目已更新' : `项目「${saved.name}」已建好，现在可以记活动了`, 'circle-check');
+  }
+
+  function deleteExtProjectById(id) {
+    if (!id) return;
+    const p = extProjects.find((q) => q.id === id);
+    const count = externalIncomes.filter((x) => x.projectId === id).length;
+    if (count) { showToast(`这个项目下还有 ${count} 场活动，先删掉活动再删项目`, 'triangle-exclamation'); return; }
+    pushUndo('删除项目');
+    deleteExtProject(id);
+    extOpenOrgs.delete(id);
+    saveData();
+    renderPageWorkbench();
+    showToast(p ? `已删除项目：${p.name}` : '已删除项目', 'trash');
+  }
+
+  function deleteExtProjectForm() {
+    deleteExtProjectById(document.getElementById('extProjectEditId')?.value || '');
+    hideModal('modalExtProject');
+  }
+
 
   // 已填过的文本进 <datalist> 候选（同一家客户别写成两种写法，否则分组会裂开）
   function extFillDatalist(elId, values) {
@@ -4993,7 +5186,16 @@
     const val = (elId) => { const el = document.getElementById(elId); return el ? String(el.value || '').trim() : ''; };
     const id = val('extEditId');
     const activity = val('extActivity');
-    const org = val('extOrg');
+    let projectId = val('extProjectId');
+    let project = extProjects.find((p) => p.id === projectId);
+    if (!project) {
+      // 兜底：老入口直接记一笔时，按「单位 + 活动名」自动建项目，绝不留下孤儿活动
+      const fallbackOrg = val('extOrg');
+      if (!fallbackOrg) { showToast('先建一个项目，再在项目里记活动', 'triangle-exclamation'); return; }
+      project = upsertExtProject({ name: activity || fallbackOrg, org: fallbackOrg, note: '' }, null);
+      projectId = project.id;
+    }
+    const org = project.org;
     const date = val('extStartDate');
     const startTime = time24Value('extStartTime');
     const endTime = time24Value('extEndTime');
@@ -5018,7 +5220,7 @@
 
     pushUndo(id ? '编辑外部收入' : '记一笔外部收入');
     const saved = upsertExternalIncome({
-      type: extDraftType, org, activity, amount,
+      type: extDraftType, org, activity, amount, projectId,
       paid: extDraftPaid, date, startTime, endDate, endTime,
     }, id || null);
     if (!saved) { showToast('保存失败：日期或数据不完整', 'triangle-exclamation'); return; }
@@ -5028,7 +5230,7 @@
     const now = new Date();
     extMonthOffset = (sd.getFullYear() - now.getFullYear()) * 12 + (sd.getMonth() - now.getMonth());
     // 卡片默认收起 → 刚存的那条顺手展开，不然「记完了看不到那条」
-    extOpenOrgs.add(String(saved.org || '').trim());
+    extOpenOrgs.add(projectId);
 
     saveData();
     renderPageWorkbench();
@@ -5052,7 +5254,7 @@
   }
 
   function bindWorkbenchEvents() {
-    safeBind('btnExtAdd', 'click', () => openExtIncomeForm());
+    safeBind('btnExtAdd', 'click', () => openExtProjectForm());
     document.querySelectorAll('[data-ext-filter]').forEach((btn) => {
       btn.addEventListener('click', () => {
         extFilter = btn.getAttribute('data-ext-filter') || 'all';
@@ -5060,11 +5262,17 @@
       });
     });
     safeBind('btnCloseExtModal', 'click', () => hideModal('modalExtIncome'));
+    safeBind('btnCloseExtProject', 'click', () => hideModal('modalExtProject'));
+    safeBind('btnExtProjectCancel', 'click', () => hideModal('modalExtProject'));
+    safeBind('btnExtProjectSave', 'click', saveExtProjectForm);
+    safeBind('btnExtProjectDelete', 'click', deleteExtProjectForm);
     safeBind('btnExtCancel', 'click', () => hideModal('modalExtIncome'));
     safeBind('btnExtSave', 'click', saveExtIncomeForm);
     safeBind('btnExtDelete', 'click', deleteExtIncomeForm);
     const modal = document.getElementById('modalExtIncome');
     if (modal) modal.addEventListener('click', (e) => { if (e.target === modal) hideModal('modalExtIncome'); });
+    const pModal = document.getElementById('modalExtProject');
+    if (pModal) pModal.addEventListener('click', (e) => { if (e.target === pModal) hideModal('modalExtProject'); });
     // 开始日期改了、结束日期还停在上一个值 → 跟着走（多数活动当天结束，跨天才手改）
     const sd = document.getElementById('extStartDate');
     if (sd) sd.addEventListener('change', () => {
@@ -8661,6 +8869,7 @@
       debts: JSON.parse(JSON.stringify(debts)),
       rechargeLogs: JSON.parse(JSON.stringify(rechargeLogs)),
       externalIncomes: JSON.parse(JSON.stringify(externalIncomes)),
+      extProjects: JSON.parse(JSON.stringify(extProjects)),
       label: label || '上一次操作',
       flashId: flashId || '',
     };
@@ -8681,6 +8890,7 @@
     debts = undoState.debts;
     if (undoState.rechargeLogs) rechargeLogs = undoState.rechargeLogs;
     if (undoState.externalIncomes) externalIncomes = undoState.externalIncomes;
+    if (undoState.extProjects) extProjects = undoState.extProjects;
     clearUndo();
     saveData();
     refreshView();
@@ -9006,7 +9216,7 @@
   }
 
   function exportScheduleData() {
-    const jsonText = JSON.stringify({ students, schedules, teachers, courseTypes, checkInLogs, debts, rechargeLogs, externalIncomes }, null, 2);
+    const jsonText = JSON.stringify({ students, schedules, teachers, courseTypes, checkInLogs, debts, rechargeLogs, externalIncomes, extProjects }, null, 2);
 
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(jsonText).then(() => {
