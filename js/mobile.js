@@ -2953,11 +2953,17 @@
     if (!o || typeof o !== 'object') return null;
     const name = String(o.name || '').trim();
     if (!name) return null;
+    const rawAmt = Number(o.defaultAmount);
     return {
       id: o.id || ('ep_' + Math.random().toString(36).slice(2, 10)),
       name,
       org: String(o.org || '').trim(),
       note: String(o.note || '').trim(),
+      // 项目状态：ongoing=进行中 / done=完成待收款 / archived=已收款归档
+      // 老项目没这个字段 → 一律按「进行中」（用户口径：新建的项目统一进行中，点完结才变）
+      status: ['ongoing', 'done', 'archived'].includes(o.status) ? o.status : 'ongoing',
+      // 默认金额：新建/编辑项目时填，之后在这个项目下记活动自动带入
+      defaultAmount: Number.isFinite(rawAmt) && rawAmt > 0 ? Math.round(rawAmt * 100) / 100 : 0,
       createdAt: o.createdAt || new Date().toISOString(),
     };
   }
@@ -2994,6 +3000,7 @@
     if (i >= 0) {
       next.id = extProjects[i].id;
       next.createdAt = extProjects[i].createdAt || next.createdAt;
+      next.status = extProjects[i].status || 'ongoing'; // 编辑项目不能把「完成待收款 / 已归档」洗回进行中
       extProjects[i] = next;
     } else {
       extProjects.push(next);
@@ -3125,6 +3132,36 @@
       其他: { bg: '#f5f5f4', fg: '#57534e' },
     };
     return map[type] || map.其他;
+  }
+
+  // 项目状态徽章（与电脑端同构）
+  function extProjectStatusMeta(p) {
+    const s = String((p && p.status) || 'ongoing');
+    if (s === 'done') return { text: '完成待收款', bg: '#fffbeb', fg: '#b45309' };
+    if (s === 'archived') return { text: '已归档', bg: '#f5f5f4', fg: '#57534e' };
+    return { text: '进行中', bg: '#eff6ff', fg: '#1d4ed8' };
+  }
+
+  // 两态写入点：完结只改项目状态；收款并归档同时把项目下所有活动标为已收。
+  function setExtProjectStatus(id, status) {
+    const p = extProjects.find((q) => q.id === id);
+    if (!p) return null;
+    if (p.status === status) return p;
+    pushUndo(status === 'archived' ? '收款并归档项目' : '完结项目');
+    p.status = status;
+    let n = 0;
+    if (status === 'archived') {
+      externalIncomes.forEach((x) => {
+        if (String(x.projectId || '') === id && !x.paid) { x.paid = true; n++; }
+      });
+    }
+    saveData();
+    renderMobileWorkbench();
+    if (typeof renderPageWorkbench === 'function') renderPageWorkbench();
+    showToast(status === 'done'
+      ? `项目「${p.name}」已完结，等待收款`
+      : `项目「${p.name}」已收款并归档${n ? `（${n} 场标为已收）` : ''}`);
+    return p;
   }
 
   function extMonthKey(offset) {
@@ -7854,7 +7891,10 @@
 
     // 与桌面端同构：空项目也出卡，建完就能点「记一场活动」
     const groupMap = new Map();
-    extProjects.forEach((p) => groupMap.set(p.id, { key: p.id, name: p.name, org: p.org || '未填单位', note: p.note, items: [] }));
+    extProjects.forEach((p) => groupMap.set(p.id, {
+      key: p.id, name: p.name, org: p.org || '未填单位', note: p.note,
+      status: p.status || 'ongoing', defaultAmount: p.defaultAmount || 0, items: [],
+    }));
     rows.forEach((x) => {
       const pid = String(x.projectId || '');
       if (!groupMap.has(pid)) groupMap.set(pid, { key: pid, name: '（未归档）', org: '—', note: '', items: [] });
@@ -7904,26 +7944,29 @@
       const open = mobileExtOpen.has(g.key);
       const payTxt = g.unpaid > 0 ? '待收' : '已收'; // 手机卡头窄，金额已有小计，这里只留状态
       const payColor = g.unpaid > 0 ? '#b45309' : '#047857';
+      const sm = extProjectStatusMeta(g);
+      const done = g.status === 'done';
+      const archived = g.status === 'archived';
       return `
       <div class="lm-ext-unit" data-mext-group="${extEsc(g.key)}">
-        <div class="flex items-center gap-1 pr-2">
-          <button type="button" data-mext-toggle="${extEsc(g.key)}" aria-expanded="${open ? 'true' : 'false'}" class="flex-1 min-w-0 text-left p-3.5 flex items-center gap-2.5 active:bg-[#faf8f3] transition">
-            <div class="w-8 h-8 rounded-xl shrink-0 flex items-center justify-center" style="background:#f5f3ff"><i class="fa-solid fa-folder-open text-[11px] text-[#6d28d9]"></i></div>
-            <div class="flex-1 min-w-0">
-              <div class="text-[13.5px] font-black text-[#111111] truncate">${extEsc(g.name)}</div>
-              <div class="text-[10.5px] font-semibold text-[#9c9fa5] mt-0.5 truncate">${extEsc(g.org)} · ${g.items.length} 场 · <span style="color:${payColor}">${payTxt}</span></div>
-            </div>
-            <div class="shrink-0 text-right text-[15px] font-black text-[#111111]">${extMoney(g.total)}</div>
-            <i class="fa-solid fa-chevron-down text-[10px] text-[#c4bfb7] transition-transform ${open ? 'rotate-180' : ''}"></i>
-          </button>
-          <div class="flex flex-col gap-1 shrink-0">
-            <button type="button" data-mext-add="${extEsc(g.key)}" title="记一场活动" class="w-7 h-7 rounded-lg flex items-center justify-center text-[#6d28d9] active:bg-[#f5f3ff]"><i class="fa-solid fa-plus text-[10px]"></i></button>
-            <button type="button" data-mext-project-edit="${extEsc(g.key)}" title="编辑项目" class="w-7 h-7 rounded-lg flex items-center justify-center text-[#a8a29e] active:bg-[#f5f2ec]"><i class="fa-solid fa-pen text-[10px]"></i></button>
-            <button type="button" data-mext-project-del="${extEsc(g.key)}" title="删除项目" class="w-7 h-7 rounded-lg flex items-center justify-center text-[#a8a29e] active:bg-rose-50"><i class="fa-solid fa-trash text-[10px]"></i></button>
+        <button type="button" data-mext-toggle="${extEsc(g.key)}" aria-expanded="${open ? 'true' : 'false'}" class="w-full text-left p-3.5 flex items-center gap-2.5 active:bg-[#faf8f3] transition">
+          <div class="w-8 h-8 rounded-xl shrink-0 flex items-center justify-center" style="background:#f5f3ff"><i class="fa-solid fa-folder-open text-[11px] text-[#6d28d9]"></i></div>
+          <div class="flex-1 min-w-0">
+            <div class="text-[13.5px] font-black text-[#111111] truncate">${extEsc(g.org)}</div>
+            <div class="text-[10.5px] font-semibold text-[#9c9fa5] mt-0.5 truncate">${extEsc(g.name)} · ${g.items.length} 场 · <span style="color:${sm.fg}">${sm.text}</span> · <span style="color:${payColor}">${payTxt}</span></div>
           </div>
-        </div>
+          <div class="shrink-0 text-right text-[15px] font-black text-[#111111]">${extMoney(g.total)}</div>
+          <i class="fa-solid fa-chevron-down text-[10px] text-[#c4bfb7] transition-transform ${open ? 'rotate-180' : ''}"></i>
+        </button>
         <div class="border-t border-[#f5f1ea] ${open ? '' : 'hidden'}">
-          <div class="px-3.5 py-2 bg-[#faf8f3] border-b border-[#f5f1ea]"><button type="button" data-mext-add="${extEsc(g.key)}" class="text-[11px] font-bold text-[#6d28d9]"><i class="fa-solid fa-plus mr-1"></i>记一场活动</button></div>
+          <div class="px-3.5 py-2 bg-[#faf8f3] border-b border-[#f5f1ea] flex items-center gap-2 flex-wrap">
+            <button type="button" data-mext-add="${extEsc(g.key)}" class="text-[11px] font-bold text-[#6d28d9]"><i class="fa-solid fa-plus mr-1"></i>记一场活动</button>
+            <div class="ml-auto flex items-center gap-1.5">
+              <button type="button" data-mext-project-edit="${extEsc(g.key)}" class="px-2 py-1 rounded-lg text-[10.5px] font-bold text-[#57534e] bg-white border border-[#e7e0d6]">编辑</button>
+              <button type="button" data-mext-project-finish="${extEsc(g.key)}"${done || archived ? ' disabled' : ''} class="px-2 py-1 rounded-lg text-[10.5px] font-bold text-[#b45309] bg-white border border-[#f5d9a8] ${done || archived ? 'opacity-40' : ''}">完结</button>
+              <button type="button" data-mext-project-archive="${extEsc(g.key)}"${archived ? ' disabled' : ''} class="px-2 py-1 rounded-lg text-[10.5px] font-bold text-[#047857] bg-white border border-[#a7f3d0] ${archived ? 'opacity-40' : ''}">收款并归档</button>
+            </div>
+          </div>
           ${g.items.map(rowHtml).join('')}
         </div>
       </div>`;
@@ -7969,8 +8012,10 @@
       if (add) { openMobileExtForm('', add.getAttribute('data-mext-add')); return; }
       const ed = e.target.closest('[data-mext-project-edit]');
       if (ed) { openMobileExtProjectForm(ed.getAttribute('data-mext-project-edit')); return; }
-      const dl = e.target.closest('[data-mext-project-del]');
-      if (dl) { deleteMobileExtProjectById(dl.getAttribute('data-mext-project-del')); return; }
+      const fn = e.target.closest('[data-mext-project-finish]');
+      if (fn) { setExtProjectStatus(fn.getAttribute('data-mext-project-finish'), 'done'); return; }
+      const ar = e.target.closest('[data-mext-project-archive]');
+      if (ar) { setExtProjectStatus(ar.getAttribute('data-mext-project-archive'), 'archived'); return; }
       const tg = e.target.closest('[data-mext-toggle]');
       if (tg) {
         const key = tg.getAttribute('data-mext-toggle');
@@ -8034,7 +8079,8 @@
     mobileExtDraftPaid = x ? !!x.paid : false;
     set('mExtActivity', x ? x.activity : '');
     set('mExtOrg', p ? p.org : (x ? x.org : ''));
-    set('mExtAmount', x ? (x.amount || '') : '');
+    // 新活动自动带入项目默认金额；编辑既有活动仍用它自己的金额
+    set('mExtAmount', x ? (x.amount || '') : (p && p.defaultAmount ? p.defaultAmount : ''));
     set('mExtStartDate', x ? x.date : today);
     set('mExtStartTime', x ? x.startTime : '');
     set('mExtEndDate', x ? (x.endDate || x.date) : today);
@@ -8055,6 +8101,7 @@
     set('mExtProjectName', p ? p.name : '');
     set('mExtProjectOrg', p ? p.org : '');
     set('mExtProjectNote', p ? p.note : '');
+    set('mExtProjectDefaultAmount', p && p.defaultAmount ? p.defaultAmount : '');
     const t = document.getElementById('mobileExtProjectFormTitle');
     if (t) t.textContent = p ? '编辑项目' : '新建项目';
     const delBtn = document.getElementById('btnMProjectDelete');
@@ -8071,8 +8118,10 @@
     const org = val('mExtProjectOrg');
     if (!name) { showToast('项目名称要填一个'); return; }
     if (!org) { showToast('「单位 / 客户」要填一个'); return; }
+    const defaultAmount = Number(val('mExtProjectDefaultAmount') || 0);
+    if (!Number.isFinite(defaultAmount) || defaultAmount < 0) { showToast('默认金额填个正数'); return; }
     pushUndo(id ? '编辑项目' : '新建项目');
-    const saved = upsertExtProject({ name, org, note: val('mExtProjectNote') }, id || null);
+    const saved = upsertExtProject({ name, org, note: val('mExtProjectNote'), defaultAmount }, id || null);
     if (!saved) { showToast('保存失败'); return; }
     mobileExtOpen.add(saved.id);
     saveData();

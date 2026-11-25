@@ -36,7 +36,7 @@
        改完 class 要重新生成：tools\build-tailwind.cmd
        ⚠ 必须留在 </head> 之前（即所有自有样式之后），复刻 Play CDN 把 <style>
        append 到 head 末尾的层叠顺序；挪到前面会翻转优先级。 -->
-  <link rel="stylesheet" href="css/tailwind.css?v=17">
+  <link rel="stylesheet" href="css/tailwind.css?v=18">
 </head>
 <body class="text-[#111111] font-sans h-screen flex flex-col overflow-hidden select-none" style="background: var(--surface-page);">
 
@@ -1121,6 +1121,10 @@
           <label for="extProjectNote" class="block font-bold text-[#44403c] mb-1.5">备注 <span class="text-[#a8a29e] font-medium">选填</span></label>
           <input id="extProjectNote" type="text" placeholder="如：合同编号 / 结算方式" autocomplete="off" class="lm-ext-input">
         </div>
+        <div>
+          <label for="extProjectDefaultAmount" class="block font-bold text-[#44403c] mb-1.5">默认金额（元）<span class="text-[#a8a29e] font-medium">选填 · 记活动时自动带入</span></label>
+          <input id="extProjectDefaultAmount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0" class="lm-ext-input">
+        </div>
         <datalist id="extProjectNameList"></datalist>
       </div>
       <div class="px-5 py-3.5 border-t border-[#f0ebe2] flex items-center gap-2">
@@ -1397,7 +1401,7 @@
   </div>
 
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=86"></script>
+  <script src="js/app.js?v=87"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

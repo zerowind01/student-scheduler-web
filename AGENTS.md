@@ -1344,3 +1344,25 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
     - 回归 `tmp/workbench-check.mjs` **132 项**（新增 P1–P13 项目化流程；B/F/H/I/K/L 与
       `sync-retry-check` / `sync-diag-check` 的交互全部改成「先建项目再记活动」）；线上 BASE 复跑全绿。
     - 版本 app.js v86 / mobile.js v101 / tailwind v17 / sw v149。
+
+77. **项目卡：客户在前、操作进抽屉、状态流转 + 默认金额**（2026-11-26，Jackson：「项目卡片活动名称和客户位置互换，
+    右侧三个按钮移除，在卡片展开后增加一个下层抽屉菜单栏，设置编辑、完结、收款并归档三个按钮。
+    新建的项目统一为进行中状态，直到点击完结，显示完成待收款。新增或编辑项目增加默认金额，之后记活动自动填入默认金额」）
+    - **卡头换位**：第一行放「单位 / 客户」，第二行放「项目名 · N 场 · 项目状态 · 收款状态」。
+      卡头整块只有一个 `data-ext-toggle` / `data-mext-toggle` 按钮，**右侧加号/编辑/删除三个按钮全部移除**。
+      卡面仍保留 `待收 ¥x` / `已收` 口径（第 72 条），别因为换位把待收金额藏掉。
+    - **下层抽屉菜单**：只在展开区显示，三按钮固定为 `编辑` / `完结` / `收款并归档`
+      （`data-ext-project-edit|finish|archive`，手机端 `data-mext-*`）。原来的「记一场活动」保留在抽屉第一行。
+      删除入口保留在**编辑项目弹层**里，别再放回卡头（P9/P10、P13 改从弹层点删除）。
+    - **项目状态**写进 `extProjects.status`：`ongoing=进行中`（默认，老项目归一到它）→ 点完结 `done=完成待收款`
+      → 点收款并归档 `archived=已归档`。唯一写入点 `setExtProjectStatus()`：完结只改 status；
+      归档还要把该项目下所有活动 `paid=true`，统一 `pushUndo + saveData + 重渲染 + toast`。
+      `done/archived` 的「完结」按钮 disabled；`archived` 的「收款并归档」disabled。
+      ⚠️ `upsertExtProject()` 编辑时**必须保留原 status**，否则改个默认金额就把归档项目洗回进行中。
+    - **默认金额**写进 `extProjects.defaultAmount`（ normalize 时非正数归 0）。项目表单两端新增输入框
+      `extProjectDefaultAmount` / `mExtProjectDefaultAmount`；`openExtIncomeForm()` 新增活动时带入项目默认金额，
+      编辑既有活动仍用它自己的金额。金额字段仍走 `Number` + 非负校验。
+    - 回归 `tmp/workbench-check.mjs` **155 项**（新增 Q1–Q16 电脑端、Qm1–Qm7 手机端）。
+      护栏验证：去默认金额带入 → Q10/Q11/Qm5/Qm6 四红；编辑不保 status → Q16 红；
+      卡头换回旧顺序 → Q2/Q3/Q8 三红。
+    - 版本 app.js v87 / mobile.js v102 / tailwind v18 / sw v150。
