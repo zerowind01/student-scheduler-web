@@ -16,6 +16,8 @@
   const STORAGE_KEY_CHECKIN_LOGS = 'edu_scheduler_checkin_logs_v2';
   const STORAGE_KEY_DEBTS = 'edu_scheduler_debts_v2';
   const STORAGE_KEY_RECHARGE_LOGS = 'edu_scheduler_recharge_logs_v2';
+  // 工作台 · 外部收入（演出/排练/伴奏）：独立集合，**不进 checkInLogs、不进课消 KPI**
+  const STORAGE_KEY_EXTERNAL_INCOMES = 'edu_scheduler_external_incomes_v2';
 
   // 学员主题色：2026-10 定稿色卡六色（键名是数据层约定不能改，渲染色已全端换新）
   const COLOR_THEMES = ['amber', 'emerald', 'sky', 'purple', 'rose', 'mint'];
@@ -31,6 +33,7 @@
   let checkInLogs = [];   // 消课流水（财务核心）
   let debts = [];         // 学员欠课账 { id, studentId, courseName, amount(节) }
   let rechargeLogs = [];  // 充值流水（预收款记录，**不进 checkInLogs**，见 purchaseCoursePack 上方注释）
+  let externalIncomes = []; // 外部收入（演出/排练/伴奏活动）：工作台记账，**不进课消 KPI**，见第 70 条
   let selectedTeacherFilter = 'all'; // 课表页筛选老师：all 或 teacherId
   // 财务页的「查看视角」：all = 全校，否则是 teacherId。
   // **故意不复用 selectedTeacherFilter** —— 顶栏那个筛选器只在课表页可见（switchPage 里 mainTopbar 只在
@@ -38,6 +41,12 @@
   let financeTeacherFilter = 'all';
   // 财务页「本月收入明细」是否展开为全部流水（往月补登的课只在这里找得到，见 logCheckInMonth）
   let financeLogShowAll = false;
+  // 工作台（外部收入）页面级状态：月份游标 / 收款状态筛选 / 表单草稿。
+  // 与 mobile.js 的 mobileExtMonthOffset 等一一对应，改一处要改两处。
+  let extMonthOffset = 0;      // 0 = 本月，-1 = 上月，+1 = 下月
+  let extFilter = 'all';       // all | unpaid | paid
+  let extDraftType = '演出';   // 表单当前类型（点 chip 改）
+  let extDraftPaid = false;    // 表单当前收款状态
   let currentWeekStart = getMonday(new Date()); // 当前视图对应的周一
   let calendarViewMode = 'week';      // 'week' | 'month'（月历总览）
   let monthSelectedDate = null;       // 月视图当前选中日（对齐手机版：点格子选中，右栏出当日安排）
@@ -1675,6 +1684,7 @@
     const rawCheckInLogs = localStorage.getItem(STORAGE_KEY_CHECKIN_LOGS);
     const rawDebts = localStorage.getItem(STORAGE_KEY_DEBTS);
     const rawRechargeLogs = localStorage.getItem(STORAGE_KEY_RECHARGE_LOGS);
+    const rawExternalIncomes = localStorage.getItem(STORAGE_KEY_EXTERNAL_INCOMES);
 
     if (rawTeachers !== null) {
       try {
@@ -1729,6 +1739,12 @@
       try { rechargeLogs = JSON.parse(rawRechargeLogs).map(normalizeRechargeLog).filter(Boolean); } catch (e) { rechargeLogs = []; }
     } else {
       rechargeLogs = [];
+    }
+    // 外部收入（2026-11-25 新增；老数据没有这条键 → 空数组）
+    if (rawExternalIncomes !== null) {
+      try { externalIncomes = JSON.parse(rawExternalIncomes).map(normalizeExternalIncome).filter(Boolean); } catch (e) { externalIncomes = []; }
+    } else {
+      externalIncomes = [];
     }
 
     if (rawSchedules !== null) {
@@ -1800,6 +1816,7 @@
         checkInLogs,
         debts,
         rechargeLogs,
+        externalIncomes,
       };
 
       localStorage.setItem('edu_scheduler_last_sync_time', String(now));
@@ -1858,6 +1875,8 @@
             debts = (remoteData.debts || []).map(normalizeDebt);
             // 老快照没有充值记录 → 保留本地那份，别被「缺少字段」当成「一条都没有」冲掉
             if (Array.isArray(remoteData.rechargeLogs)) rechargeLogs = remoteData.rechargeLogs.map(normalizeRechargeLog).filter(Boolean);
+            // 同理：远端没有外部收入这条键（老快照）→ 保留本地，别冲掉
+            if (Array.isArray(remoteData.externalIncomes)) externalIncomes = remoteData.externalIncomes.map(normalizeExternalIncome).filter(Boolean);
 
             // 云端拿回来的仍可能是旧口径数据 → 每次覆盖后都校准一次（幂等）
             migrateTeacherNames();
@@ -1900,6 +1919,7 @@
           checkInLogs = event.data.checkInLogs || [];
           debts = (event.data.debts || []).map(normalizeDebt);
           if (Array.isArray(event.data.rechargeLogs)) rechargeLogs = event.data.rechargeLogs.map(normalizeRechargeLog).filter(Boolean);
+          if (Array.isArray(event.data.externalIncomes)) externalIncomes = event.data.externalIncomes.map(normalizeExternalIncome).filter(Boolean);
           migrateTeacherNames();
           saveDataLocalOnly();
           renderTeacherOptions();
@@ -1974,6 +1994,7 @@
     localStorage.setItem(STORAGE_KEY_CHECKIN_LOGS, JSON.stringify(checkInLogs));
     localStorage.setItem(STORAGE_KEY_DEBTS, JSON.stringify(debts));
     localStorage.setItem(STORAGE_KEY_RECHARGE_LOGS, JSON.stringify(rechargeLogs));
+    localStorage.setItem(STORAGE_KEY_EXTERNAL_INCOMES, JSON.stringify(externalIncomes));
   }
 
   function addDays(date, days) {
@@ -2545,6 +2566,125 @@
       checkInTime: t,
       date: l.date || t.slice(0, 10),
     };
+  }
+
+  // ==========================================
+  // 工作台 · 外部收入（演出 / 排练 / 伴奏）
+  // ==========================================
+  // 独立集合 externalIncomes：**绝不塞 checkInLogs**（那是课消，进财务 KPI），也不参与任何
+  // 课时/欠课计算。字段对齐 Jackson 的 Notion 表：类型 / 单位 / 活动 / 金额 / 收款状态 /
+  // 开始时间 / 结束时间。手机端 externalIncomes 一套逐字同构。
+  const EXT_INCOME_TYPES = ['演出', '排练', '伴奏', '其他'];
+
+  function normalizeExternalIncome(o) {
+    if (!o || typeof o !== 'object') return null;
+    const date = String(o.date || '').slice(0, 10);
+    if (!date) return null; // 没有开始日期就没法归月，直接丢
+    const hm = (v) => {
+      const m = /^(\d{1,2}):(\d{2})/.exec(String(v || ''));
+      return m ? `${String(m[1]).padStart(2, '0')}:${m[2]}` : '';
+    };
+    return {
+      id: o.id || ('ei_' + Math.random().toString(36).slice(2, 10)),
+      type: String(o.type || '').trim() || '其他',
+      org: String(o.org || '').trim(),            // 单位（主办方 / 客户）
+      activity: String(o.activity || '').trim(),  // 活动名称
+      amount: Math.round((Number(o.amount) || 0) * 100) / 100,
+      paid: !!o.paid,                              // 收款状态：true=已收，false=待收
+      date,                                        // 开始日期 YYYY-MM-DD（归月依据）
+      startTime: hm(o.startTime),
+      // 结束日期不填 = 同一天。跨天演出（22:00 到次日 01:30）才需要单独存
+      endDate: String(o.endDate || '').slice(0, 10) || date,
+      endTime: hm(o.endTime),
+      createdAt: o.createdAt || new Date().toISOString(),
+    };
+  }
+
+  // 归月按**开始日期**，与课消的 logLocalDate 口径一致（看"这场是什么时候演的"）
+  function extIncomesOfMonth(monthPrefix) {
+    return externalIncomes.filter((x) => String(x.date || '').startsWith(monthPrefix));
+  }
+
+  function extIncomeSum(list) {
+    return list.reduce((s, x) => s + (Number(x.amount) || 0), 0);
+  }
+
+  // 列表排序：开始日期 + 开始时间倒序（最近的在最上面）
+  function extIncomesSorted(list) {
+    return list.slice().sort((a, b) => ((b.date || '') + (b.startTime || '')).localeCompare((a.date || '') + (a.startTime || '')));
+  }
+
+  // 日期行文案：`11/28 周五`，跨天补 `→ 11/29`
+  function extDayText(x) {
+    const md = (d) => String(d || '').slice(5).replace('-', '/');
+    let wd = '';
+    try {
+      wd = ' 周' + ['日', '一', '二', '三', '四', '五', '六'][new Date(x.date + 'T00:00:00').getDay()];
+    } catch (e) { wd = ''; }
+    return `${md(x.date)}${wd}`;
+  }
+
+  // 时间段文案：`19:30-21:30`，缺一头就给一头，都没有算「全天」
+  function extTimeText(x) {
+    if (x.startTime && x.endTime) return `${x.startTime}-${x.endTime}`;
+    return x.startTime || x.endTime || '全天';
+  }
+
+  // 单位那行：跨天的活动在这里点明「跨天至 11/25」。
+  // 不塞进时间段（日期列只有 108px，多两个字就折成三行）也不塞进类型徽章（那行要留给活动名）。
+  function extOrgText(x) {
+    const org = x.org ? extEsc(x.org) : '—';
+    const cross = x.endDate && x.endDate !== x.date;
+    return cross ? `${org} · 跨天至 ${String(x.endDate).slice(5).replace('-', '/')}` : org;
+  }
+
+  // 活动/单位是手输文本，插进 innerHTML 前必须转义（项目里其它地方是受控数据，这里不是）
+  function extEsc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  // 金额：整数不带小数、有小数保留两位（fmtMoney 是取整的，外部收入常有 350.5 这种报价）
+  function extMoney(v) {
+    const n = Number(v) || 0;
+    const a = Math.abs(n);
+    const s = a % 1 === 0 ? a.toFixed(0) : a.toFixed(2);
+    return (n < 0 ? '-¥' : '¥') + s;
+  }
+
+  // 收款状态文案与配色（两端同一套：已收=绿、待收=琥珀）
+  function extIncomePaidMeta(x) {
+    return x.paid
+      ? { text: '已收', bg: '#ecfdf5', fg: '#047857', dot: '#10b981' }
+      : { text: '待收', bg: '#fffbeb', fg: '#b45309', dot: '#f59e0b' };
+  }
+
+  // 类型徽章配色（演出=紫、排练=蓝、伴奏=橙、其他=灰）
+  function extIncomeTypeMeta(type) {
+    const map = {
+      演出: { bg: '#f5f3ff', fg: '#6d28d9' },
+      排练: { bg: '#eff6ff', fg: '#1d4ed8' },
+      伴奏: { bg: '#fff7ed', fg: '#c2410c' },
+      其他: { bg: '#f5f5f4', fg: '#57534e' },
+    };
+    return map[type] || map.其他;
+  }
+
+  // 唯一写入点：新增（editId 为空）/ 编辑（editId 有值）
+  function upsertExternalIncome(data, editId) {
+    const next = normalizeExternalIncome(Object.assign({}, data, editId ? { id: editId } : {}));
+    if (!next) return null;
+    const i = editId ? externalIncomes.findIndex((x) => x.id === editId) : -1;
+    if (i >= 0) {
+      next.createdAt = externalIncomes[i].createdAt || next.createdAt;
+      externalIncomes[i] = next;
+    } else {
+      externalIncomes.push(next);
+    }
+    return next;
+  }
+
+  function deleteExternalIncome(id) {
+    externalIncomes = externalIncomes.filter((x) => x.id !== id);
   }
 
   function recordRechargeLog(student, courseName, lessons, unitPrice, leftAfter, debtRepaid) {
@@ -3169,6 +3309,10 @@
     updateStats();
     renderPageStudents();
     renderPageFinance();
+    // 工作台只在自己可见时重渲染：外部收入与本页之外的任何操作都无关，
+    // 但跨标签页广播 / 云端拉取回来时会走到这里，得跟着刷
+    const wbPage = document.getElementById('pageWorkbench');
+    if (wbPage && !wbPage.classList.contains('hidden')) renderPageWorkbench();
     updateDebtBadges();
     // 看板可见时才重渲染：消课后「今日时间轴」的行状态要跟着变。
     // 之前这里漏了，导致在看板一键消课后按钮复位成「消课」而不是「已消课」。
@@ -3358,7 +3502,7 @@
   // ==========================================
   // 分页导航（课表/学员/财务/设置）
   // ==========================================
-  const PAGE_IDS = ['pageDashboard', 'pageSchedule', 'pageStudents', 'pageFinance', 'pageSettings'];
+  const PAGE_IDS = ['pageDashboard', 'pageSchedule', 'pageStudents', 'pageFinance', 'pageWorkbench', 'pageSettings'];
 
     // ---- 桌面侧栏选中滑块（动效对齐手机版：滑动+沿方向拉伸+过冲回弹） ----
     const navGliderD = document.getElementById('navGliderDesktop');
@@ -3452,6 +3596,7 @@
 
     if (page === 'students') renderPageStudents();
     if (page === 'finance') renderPageFinance();
+    if (page === 'workbench') renderPageWorkbench();
     if (page === 'dashboard') renderDashboard();
   }
 
@@ -3773,6 +3918,8 @@
     });
     // 每次刷新/进入默认显示看板页（顶栏隐藏、滑块落位）
     switchPage('dashboard');
+    // 工作台（外部收入）：月份切换 / 筛选 / 记一笔 / 表单
+    bindWorkbenchEvents();
     // 看板：本周 / 上周消课趋势切换
     document.querySelectorAll('.dash-week-tab').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -4410,6 +4557,257 @@
     });
     const rechargeAllBtn = document.getElementById('financeRechargeAll');
     if (rechargeAllBtn) rechargeAllBtn.addEventListener('click', () => openRechargeHistoryModal());
+  }
+
+  // ==========================================
+  // 工作台 · 外部收入（演出 / 排练 / 伴奏）
+  // ==========================================
+  // 与财务页完全隔离：课消 KPI 一个字不动，这里只是另一个账本（AGENTS 第 70 条）。
+  // 月归属按**开始日期** date；收款状态 paid 只影响「待收」统计，不影响归月。
+
+  function extMonthKey(offset) {
+    const d = new Date();
+    d.setDate(1);                       // 先回月初再偏移：31 号直接 +1 月会跳两个月
+    d.setMonth(d.getMonth() + offset);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  function extMonthName(prefix) {
+    const p = String(prefix || '').split('-');
+    return `${p[0]}年${Number(p[1])}月`;
+  }
+
+  function renderPageWorkbench() {
+    const kpiRow = document.getElementById('extKpiRow');
+    const listBody = document.getElementById('extListBody');
+    if (!kpiRow || !listBody) return;
+
+    const monthPrefix = extMonthKey(extMonthOffset);
+    const labelEl = document.getElementById('extMonthLabel');
+    if (labelEl) labelEl.textContent = extMonthName(monthPrefix);
+
+    const monthList = extIncomesOfMonth(monthPrefix);
+    const paidList = monthList.filter((x) => x.paid);
+    const unpaidList = monthList.filter((x) => !x.paid);
+    const total = extIncomeSum(monthList);
+    const isCurrent = monthPrefix === extMonthKey(0);
+
+    // KPI 只有这四格：合计 / 已收 / 待收 / 平均。**不混课消数字**（那是财务页的事）
+    const kpi = [
+      { key: 'total', label: `${isCurrent ? '本月' : '当月'}合计`, value: extMoney(total), sub: `${monthList.length} 场活动`, color: '#111111' },
+      { key: 'paid', label: '已收', value: extMoney(extIncomeSum(paidList)), sub: `${paidList.length} 场`, color: '#047857' },
+      { key: 'unpaid', label: '待收', value: extMoney(extIncomeSum(unpaidList)), sub: `${unpaidList.length} 场`, color: '#b45309' },
+      { key: 'avg', label: '平均每场', value: extMoney(monthList.length ? total / monthList.length : 0), sub: '按场次摊', color: '#6d28d9' },
+    ];
+    kpiRow.innerHTML = kpi.map((k) => `
+      <div class="bg-white border border-[#efe9e0] rounded-2xl p-4" data-ext-kpi="${k.key}">
+        <div class="text-[11px] font-bold text-[#a8a29e]">${k.label}</div>
+        <div class="text-[22px] font-black mt-1 leading-none" style="color:${k.color}">${k.value}</div>
+        <div class="text-[10.5px] text-[#a8a29e] font-semibold mt-1.5">${k.sub}</div>
+      </div>`).join('');
+
+    // 筛选按钮高亮（模板里写死 class 会被这里覆盖，别在 HTML 里再写一遍配色）
+    document.querySelectorAll('[data-ext-filter]').forEach((btn) => {
+      const on = btn.getAttribute('data-ext-filter') === extFilter;
+      btn.classList.toggle('bg-white', on);
+      btn.classList.toggle('shadow-2xs', on);
+      btn.classList.toggle('text-[#111111]', on);
+      btn.classList.toggle('text-[#78716c]', !on);
+    });
+
+    const rows = extIncomesSorted(monthList)
+      .filter((x) => (extFilter === 'unpaid' ? !x.paid : extFilter === 'paid' ? x.paid : true));
+
+    const titleEl = document.getElementById('extListTitle');
+    if (titleEl) {
+      const fLabel = extFilter === 'unpaid' ? '待收' : extFilter === 'paid' ? '已收' : '全部';
+      titleEl.textContent = `${extMonthName(monthPrefix)} · ${fLabel} ${rows.length} 场`;
+    }
+
+    if (!rows.length) {
+      listBody.innerHTML = `
+        <div class="py-16 text-center">
+          <i class="fa-solid fa-briefcase text-2xl text-[#d6d3d1] mb-2 block"></i>
+          <div class="text-[12px] text-[#a8a29e] font-semibold">${monthList.length ? '这个筛选下没有记录' : '这个月还没有外部收入'}</div>
+          <button id="btnExtEmptyAdd" class="mt-3 px-3.5 py-1.5 rounded-xl bg-[#111111] text-white text-[11px] font-bold">记一笔</button>
+        </div>`;
+      const b = document.getElementById('btnExtEmptyAdd');
+      if (b) b.addEventListener('click', () => openExtIncomeForm());
+      return;
+    }
+
+    listBody.innerHTML = rows.map((x) => {
+      const tm = extIncomeTypeMeta(x.type);
+      const pm = extIncomePaidMeta(x);
+      return `
+      <div class="flex items-center gap-3 px-4 py-3 border-b border-[#f5f1ea] hover:bg-[#faf8f3] transition cursor-pointer" data-ext-row="${x.id}">
+        <div class="w-[108px] shrink-0">
+          <div class="text-[12px] font-bold text-[#111111]">${extDayText(x)}</div>
+          <div class="text-[10.5px] text-[#a8a29e] font-semibold mt-0.5">${extTimeText(x)}</div>
+        </div>
+        <span class="shrink-0 text-[10.5px] font-bold px-2 py-0.5 rounded-md" style="background:${tm.bg};color:${tm.fg}">${x.type}</span>
+        <div class="flex-1 min-w-0">
+          <div class="text-[13px] font-bold text-[#111111] truncate">${extEsc(x.activity) || '（未填活动）'}</div>
+          <div class="text-[11px] text-[#a8a29e] truncate mt-0.5">${extOrgText(x)}</div>
+        </div>
+        <div class="w-[92px] shrink-0 text-right text-[14px] font-black text-[#111111]">${extMoney(x.amount)}</div>
+        <span class="w-[46px] shrink-0 text-center text-[10.5px] font-bold px-1.5 py-0.5 rounded-md" style="background:${pm.bg};color:${pm.fg}">${pm.text}</span>
+        <button data-ext-edit="${x.id}" class="shrink-0 w-7 h-7 rounded-lg text-[#a8a29e] hover:text-[#111111] hover:bg-[#f0ebe2] transition" title="编辑"><i class="fa-solid fa-pen text-[11px]"></i></button>
+      </div>`;
+    }).join('');
+
+    listBody.querySelectorAll('[data-ext-row]').forEach((row) => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('[data-ext-edit]')) return;
+        openExtIncomeForm(row.getAttribute('data-ext-row'));
+      });
+    });
+    listBody.querySelectorAll('[data-ext-edit]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openExtIncomeForm(btn.getAttribute('data-ext-edit'));
+      });
+    });
+  }
+
+  // 表单里两组 chip（类型 / 收款状态）：每次点完重画，选中态靠 extDraftType / extDraftPaid
+  function extFormSyncChips() {
+    const tBox = document.getElementById('extTypeChips');
+    if (tBox) {
+      tBox.innerHTML = EXT_INCOME_TYPES.map((t) => {
+        const on = t === extDraftType;
+        const m = extIncomeTypeMeta(t);
+        return `<button type="button" data-ext-type="${t}"${on ? ' data-selected="1"' : ''} class="px-3 py-1.5 rounded-xl text-[11.5px] font-bold border transition"
+          style="background:${on ? m.bg : '#fff'};color:${on ? m.fg : '#78716c'};border-color:${on ? m.fg + '55' : '#efe9e0'}">${t}</button>`;
+      }).join('');
+      tBox.querySelectorAll('[data-ext-type]').forEach((b) => {
+        b.addEventListener('click', () => {
+          extDraftType = b.getAttribute('data-ext-type');
+          extFormSyncChips();
+        });
+      });
+    }
+    const pBox = document.getElementById('extPaidChips');
+    if (pBox) {
+      pBox.innerHTML = [{ v: false, t: '待收' }, { v: true, t: '已收' }].map((o) => {
+        const on = o.v === extDraftPaid;
+        const m = extIncomePaidMeta({ paid: o.v });
+        return `<button type="button" data-ext-paid="${o.v ? '1' : '0'}"${on ? ' data-selected="1"' : ''} class="px-3.5 py-1.5 rounded-xl text-[11.5px] font-bold border transition"
+          style="background:${on ? m.bg : '#fff'};color:${on ? m.fg : '#78716c'};border-color:${on ? m.dot + '66' : '#efe9e0'}">${o.t}</button>`;
+      }).join('');
+      pBox.querySelectorAll('[data-ext-paid]').forEach((b) => {
+        b.addEventListener('click', () => {
+          extDraftPaid = b.getAttribute('data-ext-paid') === '1';
+          extFormSyncChips();
+        });
+      });
+    }
+  }
+
+  function openExtIncomeForm(id) {
+    const x = id ? externalIncomes.find((i) => i.id === id) : null;
+    const today = formatDate(new Date());
+    const set = (elId, v) => { const el = document.getElementById(elId); if (el) el.value = v; };
+    set('extEditId', x ? x.id : '');
+    const t = document.getElementById('extFormTitle');
+    if (t) t.textContent = x ? '编辑外部收入' : '记一笔外部收入';
+    extDraftType = x ? x.type : '演出';
+    extDraftPaid = x ? !!x.paid : false;
+    set('extActivity', x ? x.activity : '');
+    set('extOrg', x ? x.org : '');
+    set('extAmount', x ? (x.amount || '') : '');
+    set('extStartDate', x ? x.date : today);
+    set('extStartTime', x ? x.startTime : '');
+    set('extEndDate', x ? (x.endDate || x.date) : today);
+    set('extEndTime', x ? x.endTime : '');
+    const delBtn = document.getElementById('btnExtDelete');
+    if (delBtn) delBtn.classList.toggle('hidden', !x);
+    extFormSyncChips();
+    showModal('modalExtIncome');
+  }
+
+  function saveExtIncomeForm() {
+    const val = (elId) => { const el = document.getElementById(elId); return el ? String(el.value || '').trim() : ''; };
+    const id = val('extEditId');
+    const activity = val('extActivity');
+    const org = val('extOrg');
+    const date = val('extStartDate');
+    const startTime = val('extStartTime');
+    const endTime = val('extEndTime');
+    let endDate = val('extEndDate');
+
+    if (!date) { showToast('先选开始日期', 'triangle-exclamation'); return; }
+    if (!activity) { showToast('活动名称别空着', 'triangle-exclamation'); return; }
+    const amount = Number(val('extAmount') || 0);
+    if (!Number.isFinite(amount) || amount < 0) { showToast('金额填个正数', 'triangle-exclamation'); return; }
+    if (!endDate) endDate = date;
+    if (endDate < date) { showToast('结束日期不能早于开始日期', 'triangle-exclamation'); return; }
+    // 同一天却「结束早于开始」= 想跨天（22:00 → 次日 01:30）。自动顺延一天并说明，
+    // 比弹错误框让人反复试更省事，但必须让用户看见发生了什么。
+    let crossNoted = false;
+    if (endDate === date && startTime && endTime && endTime < startTime) {
+      const d = new Date(date + 'T00:00:00');
+      d.setDate(d.getDate() + 1);
+      endDate = formatDate(d);
+      crossNoted = true;
+    }
+
+    pushUndo(id ? '编辑外部收入' : '记一笔外部收入');
+    const saved = upsertExternalIncome({
+      type: extDraftType, org, activity, amount,
+      paid: extDraftPaid, date, startTime, endDate, endTime,
+    }, id || null);
+    if (!saved) { showToast('保存失败：日期或数据不完整', 'triangle-exclamation'); return; }
+
+    // 保存后把月份游标挪到这条记录所在的月份，否则「存了却看不见」
+    const sd = new Date(saved.date + 'T00:00:00');
+    const now = new Date();
+    extMonthOffset = (sd.getFullYear() - now.getFullYear()) * 12 + (sd.getMonth() - now.getMonth());
+
+    saveData();
+    renderPageWorkbench();
+    hideModal('modalExtIncome');
+    showToast(crossNoted
+      ? `已记为跨天：${extTimeText(saved)}（次日）`
+      : (id ? '已更新这条记录' : `已记一笔 ${extMoney(saved.amount)}`), 'circle-check');
+  }
+
+  function deleteExtIncomeForm() {
+    const el = document.getElementById('extEditId');
+    const id = el ? el.value : '';
+    if (!id) return;
+    const x = externalIncomes.find((i) => i.id === id);
+    pushUndo('删除外部收入');
+    deleteExternalIncome(id);
+    saveData();
+    renderPageWorkbench();
+    hideModal('modalExtIncome');
+    showToast(x && x.activity ? `已删除：${x.activity}` : '已删除这条记录', 'trash');
+  }
+
+  function bindWorkbenchEvents() {
+    safeBind('btnExtAdd', 'click', () => openExtIncomeForm());
+    safeBind('btnExtPrevMonth', 'click', () => { extMonthOffset -= 1; renderPageWorkbench(); });
+    safeBind('btnExtNextMonth', 'click', () => { extMonthOffset += 1; renderPageWorkbench(); });
+    safeBind('btnExtThisMonth', 'click', () => { extMonthOffset = 0; renderPageWorkbench(); });
+    document.querySelectorAll('[data-ext-filter]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        extFilter = btn.getAttribute('data-ext-filter') || 'all';
+        renderPageWorkbench();
+      });
+    });
+    safeBind('btnCloseExtModal', 'click', () => hideModal('modalExtIncome'));
+    safeBind('btnExtCancel', 'click', () => hideModal('modalExtIncome'));
+    safeBind('btnExtSave', 'click', saveExtIncomeForm);
+    safeBind('btnExtDelete', 'click', deleteExtIncomeForm);
+    const modal = document.getElementById('modalExtIncome');
+    if (modal) modal.addEventListener('click', (e) => { if (e.target === modal) hideModal('modalExtIncome'); });
+    // 开始日期改了、结束日期还停在上一个值 → 跟着走（多数活动当天结束，跨天才手改）
+    const sd = document.getElementById('extStartDate');
+    if (sd) sd.addEventListener('change', () => {
+      const ed = document.getElementById('extEndDate');
+      if (ed && (!ed.value || ed.value < sd.value)) ed.value = sd.value;
+    });
   }
 
   // 全部充值记录（桌面弹层）：按时间倒序，带撤销。撤销后重开一次，列表与合计当场刷新。
@@ -7998,6 +8396,7 @@
       checkInLogs: JSON.parse(JSON.stringify(checkInLogs)),
       debts: JSON.parse(JSON.stringify(debts)),
       rechargeLogs: JSON.parse(JSON.stringify(rechargeLogs)),
+      externalIncomes: JSON.parse(JSON.stringify(externalIncomes)),
       label: label || '上一次操作',
       flashId: flashId || '',
     };
@@ -8017,6 +8416,7 @@
     checkInLogs = undoState.checkInLogs;
     debts = undoState.debts;
     if (undoState.rechargeLogs) rechargeLogs = undoState.rechargeLogs;
+    if (undoState.externalIncomes) externalIncomes = undoState.externalIncomes;
     clearUndo();
     saveData();
     refreshView();
@@ -8342,7 +8742,7 @@
   }
 
   function exportScheduleData() {
-    const jsonText = JSON.stringify({ students, schedules, teachers, courseTypes, checkInLogs, debts, rechargeLogs }, null, 2);
+    const jsonText = JSON.stringify({ students, schedules, teachers, courseTypes, checkInLogs, debts, rechargeLogs, externalIncomes }, null, 2);
 
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(jsonText).then(() => {

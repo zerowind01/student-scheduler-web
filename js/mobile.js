@@ -14,6 +14,8 @@
   const STORAGE_KEY_CHECKIN_LOGS = 'edu_scheduler_checkin_logs_v2';
   const STORAGE_KEY_DEBTS = 'edu_scheduler_debts_v2';
   const STORAGE_KEY_RECHARGE_LOGS = 'edu_scheduler_recharge_logs_v2';
+  // 工作台 · 外部收入（演出/排练/伴奏）：独立集合，**不进 checkInLogs、不进课消 KPI**
+  const STORAGE_KEY_EXTERNAL_INCOMES = 'edu_scheduler_external_incomes_v2';
 
   let students = [];
   let schedules = [];
@@ -22,6 +24,7 @@
   let checkInLogs = [];
   let debts = [];
   let rechargeLogs = [];   // 充值流水（预收款，不进 checkInLogs）
+  let externalIncomes = []; // 外部收入（演出/排练/伴奏）：工作台记账，**不进课消 KPI**（AGENTS 第 70 条）
   let selectedTeacherFilter = 'all';           // 课表筛选范围：'all' | 老师 id
   let teacherFilterAutoApplied = false;        // 老师身份下「默认只看自己」是否已应用（每次登录仅一次）
   let mobileStartDate = getToday(); // 默认从今天开始显示 3 日日历（周末也能直接看到今天）
@@ -33,6 +36,11 @@
   let mobileStudentScope = 'active';           // 学员页范围：active=在读 / archived=历史学员库
   // 财务页「收入明细」是否展开为全部流水（往月补登的课只在这里找得到）
   let mobileFinanceLogAll = false;
+  // 工作台（外部收入）页面级状态：**必须声明在顶部**（写在函数上方会 TDZ 白屏，AGENTS 第 47 条）
+  let mobileExtMonthOffset = 0;   // 0 = 本月，-1 = 上月
+  let mobileExtFilter = 'all';    // all | unpaid | paid
+  let mobileExtDraftType = '演出'; // 表单当前类型
+  let mobileExtDraftPaid = false;  // 表单当前收款状态
   // 学员状态（2026-10-24）：页面级状态必须声明在顶部，写在函数上方会 TDZ 白屏
   let mStatusStudentId = '';                   // 状态弹层当前学员
   let pauseExpiredNoticeQueued = false;        // 停课到期提示只弹一次
@@ -2823,6 +2831,137 @@
     };
   }
 
+  // ==========================================
+  // 工作台 · 外部收入（演出 / 排练 / 伴奏）—— 与 app.js 逐字同构
+  // ==========================================
+  // 独立集合 externalIncomes：**绝不塞 checkInLogs**（那是课消，进财务 KPI），也不参与任何
+  // 课时/欠课计算。字段对齐 Jackson 的 Notion 表：类型 / 单位 / 活动 / 金额 / 收款状态 /
+  // 开始时间 / 结束时间。
+  const EXT_INCOME_TYPES = ['演出', '排练', '伴奏', '其他'];
+
+  function normalizeExternalIncome(o) {
+    if (!o || typeof o !== 'object') return null;
+    const date = String(o.date || '').slice(0, 10);
+    if (!date) return null; // 没有开始日期就没法归月，直接丢
+    const hm = (v) => {
+      const m = /^(\d{1,2}):(\d{2})/.exec(String(v || ''));
+      return m ? `${String(m[1]).padStart(2, '0')}:${m[2]}` : '';
+    };
+    return {
+      id: o.id || ('ei_' + Math.random().toString(36).slice(2, 10)),
+      type: String(o.type || '').trim() || '其他',
+      org: String(o.org || '').trim(),            // 单位（主办方 / 客户）
+      activity: String(o.activity || '').trim(),  // 活动名称
+      amount: Math.round((Number(o.amount) || 0) * 100) / 100,
+      paid: !!o.paid,                              // 收款状态：true=已收，false=待收
+      date,                                        // 开始日期 YYYY-MM-DD（归月依据）
+      startTime: hm(o.startTime),
+      // 结束日期不填 = 同一天。跨天演出（22:00 到次日 01:30）才需要单独存
+      endDate: String(o.endDate || '').slice(0, 10) || date,
+      endTime: hm(o.endTime),
+      createdAt: o.createdAt || new Date().toISOString(),
+    };
+  }
+
+  // 归月按**开始日期**，与课消的 logLocalDate 口径一致（看"这场是什么时候演的"）
+  function extIncomesOfMonth(monthPrefix) {
+    return externalIncomes.filter((x) => String(x.date || '').startsWith(monthPrefix));
+  }
+
+  function extIncomeSum(list) {
+    return list.reduce((s, x) => s + (Number(x.amount) || 0), 0);
+  }
+
+  // 列表排序：开始日期 + 开始时间倒序（最近的在最上面）
+  function extIncomesSorted(list) {
+    return list.slice().sort((a, b) => ((b.date || '') + (b.startTime || '')).localeCompare((a.date || '') + (a.startTime || '')));
+  }
+
+  // 日期行文案：`11/28 周五`，跨天补 `→ 11/29`
+  function extDayText(x) {
+    const md = (d) => String(d || '').slice(5).replace('-', '/');
+    let wd = '';
+    try {
+      wd = ' 周' + ['日', '一', '二', '三', '四', '五', '六'][new Date(x.date + 'T00:00:00').getDay()];
+    } catch (e) { wd = ''; }
+    return `${md(x.date)}${wd}`;
+  }
+
+  // 时间段文案：`19:30-21:30`，缺一头就给一头，都没有算「全天」
+  function extTimeText(x) {
+    if (x.startTime && x.endTime) return `${x.startTime}-${x.endTime}`;
+    return x.startTime || x.endTime || '全天';
+  }
+
+  // 单位那行：跨天的活动在这里点明「跨天至 11/25」。
+  // 不塞进时间段（日期列只有 108px，多两个字就折成三行）也不塞进类型徽章（那行要留给活动名）。
+  function extOrgText(x) {
+    const org = x.org ? extEsc(x.org) : '—';
+    const cross = x.endDate && x.endDate !== x.date;
+    return cross ? `${org} · 跨天至 ${String(x.endDate).slice(5).replace('-', '/')}` : org;
+  }
+
+  // 活动/单位是手输文本，插进 innerHTML 前必须转义（项目里其它地方是受控数据，这里不是）
+  function extEsc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  // 金额：整数不带小数、有小数保留两位（fmtMoney 是取整的，外部收入常有 350.5 这种报价）
+  function extMoney(v) {
+    const n = Number(v) || 0;
+    const a = Math.abs(n);
+    const s = a % 1 === 0 ? a.toFixed(0) : a.toFixed(2);
+    return (n < 0 ? '-¥' : '¥') + s;
+  }
+
+  // 收款状态文案与配色（两端同一套：已收=绿、待收=琥珀）
+  function extIncomePaidMeta(x) {
+    return x.paid
+      ? { text: '已收', bg: '#ecfdf5', fg: '#047857', dot: '#10b981' }
+      : { text: '待收', bg: '#fffbeb', fg: '#b45309', dot: '#f59e0b' };
+  }
+
+  // 类型徽章配色（演出=紫、排练=蓝、伴奏=橙、其他=灰）
+  function extIncomeTypeMeta(type) {
+    const map = {
+      演出: { bg: '#f5f3ff', fg: '#6d28d9' },
+      排练: { bg: '#eff6ff', fg: '#1d4ed8' },
+      伴奏: { bg: '#fff7ed', fg: '#c2410c' },
+      其他: { bg: '#f5f5f4', fg: '#57534e' },
+    };
+    return map[type] || map.其他;
+  }
+
+  function extMonthKey(offset) {
+    const d = new Date();
+    d.setDate(1);                       // 先回月初再偏移：31 号直接 +1 月会跳两个月
+    d.setMonth(d.getMonth() + offset);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  function extMonthName(prefix) {
+    const p = String(prefix || '').split('-');
+    return `${p[0]}年${Number(p[1])}月`;
+  }
+
+  // 唯一写入点：新增（editId 为空）/ 编辑（editId 有值）
+  function upsertExternalIncome(data, editId) {
+    const next = normalizeExternalIncome(Object.assign({}, data, editId ? { id: editId } : {}));
+    if (!next) return null;
+    const i = editId ? externalIncomes.findIndex((x) => x.id === editId) : -1;
+    if (i >= 0) {
+      next.createdAt = externalIncomes[i].createdAt || next.createdAt;
+      externalIncomes[i] = next;
+    } else {
+      externalIncomes.push(next);
+    }
+    return next;
+  }
+
+  function deleteExternalIncome(id) {
+    externalIncomes = externalIncomes.filter((x) => x.id !== id);
+  }
+
   function recordRechargeLog(student, courseName, lessons, unitPrice, leftAfter, debtRepaid) {
     const now = new Date();
     const log = {
@@ -3731,6 +3870,7 @@
     const rawCheckInLogs = localStorage.getItem(STORAGE_KEY_CHECKIN_LOGS);
     const rawDebts = localStorage.getItem(STORAGE_KEY_DEBTS);
     const rawRechargeLogs = localStorage.getItem(STORAGE_KEY_RECHARGE_LOGS);
+    const rawExternalIncomes = localStorage.getItem(STORAGE_KEY_EXTERNAL_INCOMES);
 
     if (rawTeachers !== null) {
       try {
@@ -3783,6 +3923,12 @@
       try { rechargeLogs = JSON.parse(rawRechargeLogs).map(normalizeRechargeLog).filter(Boolean); } catch (e) { rechargeLogs = []; }
     } else {
       rechargeLogs = [];
+    }
+    // 外部收入（2026-11-25 新增；老数据没有这条键 → 空数组）
+    if (rawExternalIncomes !== null) {
+      try { externalIncomes = JSON.parse(rawExternalIncomes).map(normalizeExternalIncome).filter(Boolean); } catch (e) { externalIncomes = []; }
+    } else {
+      externalIncomes = [];
     }
 
     if (rawSchedules !== null) {
@@ -3851,6 +3997,7 @@
         checkInLogs,
         debts,
         rechargeLogs,
+        externalIncomes,
       };
 
       localStorage.setItem('edu_scheduler_last_sync_time', String(now));
@@ -3908,6 +4055,8 @@
             debts = (remoteData.debts || []).map(normalizeDebt);
             // 老快照没有充值记录 → 保留本地那份
             if (Array.isArray(remoteData.rechargeLogs)) rechargeLogs = remoteData.rechargeLogs.map(normalizeRechargeLog).filter(Boolean);
+            // 同理：远端没有外部收入这条键（老快照）→ 保留本地，别冲掉
+            if (Array.isArray(remoteData.externalIncomes)) externalIncomes = remoteData.externalIncomes.map(normalizeExternalIncome).filter(Boolean);
 
             // 云端拿回来的仍可能是旧口径数据 → 每次覆盖后都校准一次（幂等）
             migrateTeacherNames();
@@ -3950,6 +4099,7 @@
           checkInLogs = event.data.checkInLogs || [];
           debts = (event.data.debts || []).map(normalizeDebt);
           if (Array.isArray(event.data.rechargeLogs)) rechargeLogs = event.data.rechargeLogs.map(normalizeRechargeLog).filter(Boolean);
+          if (Array.isArray(event.data.externalIncomes)) externalIncomes = event.data.externalIncomes.map(normalizeExternalIncome).filter(Boolean);
           migrateTeacherNames();
           saveDataLocalOnly();
           renderMobileTeacherSelect();
@@ -4025,6 +4175,7 @@
     localStorage.setItem(STORAGE_KEY_CHECKIN_LOGS, JSON.stringify(checkInLogs));
     localStorage.setItem(STORAGE_KEY_DEBTS, JSON.stringify(debts));
     localStorage.setItem(STORAGE_KEY_RECHARGE_LOGS, JSON.stringify(rechargeLogs));
+    localStorage.setItem(STORAGE_KEY_EXTERNAL_INCOMES, JSON.stringify(externalIncomes));
   }
 
   function checkUrlSyncData() {
@@ -4593,7 +4744,7 @@
     });
 
     // ============ 四视图切换（课表/学员/财务/设置） ============
-    const MOBILE_VIEWS = ['home', 'schedule', 'students', 'finance', 'settings'];
+    const MOBILE_VIEWS = ['home', 'schedule', 'students', 'finance', 'workbench', 'settings'];
 
     // ---- 岛台玻璃胶囊滑块：切换时滑向新 tab，途中沿移动方向拉长，到位弹性回弹 ----
     const navGlider = document.getElementById('navGlider');
@@ -4686,6 +4837,7 @@
       if (view === 'schedule') renderCalendar();
       if (view === 'students') renderMobileStudents();
       if (view === 'finance') renderMobileFinance();
+      if (view === 'workbench') renderMobileWorkbench();
       if (view === 'home' && typeof renderMobileHome === 'function') renderMobileHome();
     }
 
@@ -4697,6 +4849,19 @@
     safeBind('navTabSchedule', 'click', () => switchMobileView('schedule'));
     safeBind('navTabStudents', 'click', () => switchMobileView('students'));
     safeBind('navTabFinance', 'click', () => switchMobileView('finance'));
+    safeBind('navTabWork', 'click', () => switchMobileView('workbench'));
+    // 工作台表单（底部抽屉）：保存 / 删除 / 关闭 / 点遮罩关
+    safeBind('btnCloseMobileExt', 'click', () => hideModal('modalMobileExtIncome'));
+    safeBind('btnMExtSave', 'click', saveMobileExtForm);
+    safeBind('btnMExtDelete', 'click', deleteMobileExtForm);
+    const mextModal = document.getElementById('modalMobileExtIncome');
+    if (mextModal) mextModal.addEventListener('click', (e) => { if (e.target === mextModal) hideModal('modalMobileExtIncome'); });
+    // 开始日期改了、结束日期还停在旧值 → 跟着走（多数活动当天结束，跨天才手改）
+    const mextSd = document.getElementById('mExtStartDate');
+    if (mextSd) mextSd.addEventListener('change', () => {
+      const ed = document.getElementById('mExtEndDate');
+      if (ed && (!ed.value || ed.value < mextSd.value)) ed.value = mextSd.value;
+    });
     safeBind('navTabSettings', 'click', () => switchMobileView('settings'));
 
     // 设置页按钮
@@ -4868,7 +5033,7 @@
       showToast(`已添加老师 [${name}]`);
     });
     safeBind('msetExport', 'click', () => {
-      const payload = JSON.stringify({ students, schedules, teachers, checkInLogs, debts, rechargeLogs, updatedAt: Date.now() });
+      const payload = JSON.stringify({ students, schedules, teachers, checkInLogs, debts, rechargeLogs, externalIncomes, updatedAt: Date.now() });
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(payload).then(() => {
           showToast('已复制全部数据到剪贴板，可粘贴到电脑版导入');
@@ -7342,6 +7507,224 @@
     return checkInLogs.filter((l) => logLocalDate(l).startsWith(pfx));
   }
 
+  // ==========================================
+  // 工作台 · 外部收入（演出 / 排练 / 伴奏）—— 手机端渲染
+  // ==========================================
+  // 与财务页完全隔离：课消 KPI 一个字不动（AGENTS 第 70 条）。
+  // KPI 三组数字（合计 / 已收 / 待收）始终跟着**当月**走；筛选只影响下面的列表。
+  function renderMobileWorkbench() {
+    const box = document.getElementById('mobileWorkbenchContent');
+    if (!box) return;
+
+    const monthPrefix = extMonthKey(mobileExtMonthOffset);
+    const monthList = extIncomesOfMonth(monthPrefix);
+    const paidList = monthList.filter((x) => x.paid);
+    const unpaidList = monthList.filter((x) => !x.paid);
+    const total = extIncomeSum(monthList);
+
+    const rows = extIncomesSorted(monthList)
+      .filter((x) => (mobileExtFilter === 'unpaid' ? !x.paid : mobileExtFilter === 'paid' ? x.paid : true));
+
+    const chip = (v, t) => {
+      const on = mobileExtFilter === v;
+      return `<button data-mext-filter="${v}" class="flex-1 py-2 rounded-xl text-[11.5px] font-bold transition"
+        style="background:${on ? '#111111' : 'transparent'};color:${on ? '#fff' : '#78716c'}">${t}</button>`;
+    };
+
+    const rowHtml = rows.map((x) => {
+      const tm = extIncomeTypeMeta(x.type);
+      const pm = extIncomePaidMeta(x);
+      const md = String(x.date || '').slice(5).replace('-', '/');
+      let wd = '';
+      try { wd = '周' + ['日', '一', '二', '三', '四', '五', '六'][new Date(x.date + 'T00:00:00').getDay()]; } catch (e) { wd = ''; }
+      return `
+      <div class="lm-card p-3.5" data-mext-row="${x.id}">
+        <div class="flex items-start gap-2.5">
+          <div class="shrink-0 text-center w-[50px]">
+            <div class="text-[13px] font-black text-[#111111]">${md}</div>
+            <div class="text-[10px] font-semibold text-[#9c9fa5] mt-0.5">${wd}</div>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-md" style="background:${tm.bg};color:${tm.fg}">${x.type}</span>
+              <span class="text-[10.5px] font-semibold text-[#9c9fa5]">${extTimeText(x)}</span>
+            </div>
+            <div class="text-[13.5px] font-bold text-[#111111] truncate mt-1">${extEsc(x.activity) || '（未填活动）'}</div>
+            <div class="text-[11px] text-[#9c9fa5] truncate mt-0.5">${extOrgText(x)}</div>
+          </div>
+          <div class="shrink-0 text-right">
+            <div class="text-[15px] font-black text-[#111111]">${extMoney(x.amount)}</div>
+            <div class="mt-1 inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-md" style="background:${pm.bg};color:${pm.fg}">${pm.text}</div>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    box.innerHTML = `
+      <div class="lm-card p-4">
+        <div class="flex items-center justify-between">
+          <button id="mExtPrevMonth" class="w-9 h-9 rounded-xl flex items-center justify-center text-[#78716c] active:bg-[#f5f2ec]"><i class="fa-solid fa-chevron-left text-[11px]"></i></button>
+          <div class="text-center">
+            <div class="text-[10.5px] font-bold text-[#9c9fa5]">工作台 · 外部收入</div>
+            <div id="mExtMonthLabel" class="text-[13px] font-black text-[#111111] mt-0.5">${extMonthName(monthPrefix)}</div>
+          </div>
+          <button id="mExtNextMonth" class="w-9 h-9 rounded-xl flex items-center justify-center text-[#78716c] active:bg-[#f5f2ec]"><i class="fa-solid fa-chevron-right text-[11px]"></i></button>
+        </div>
+        <div class="mt-3 flex items-end justify-between">
+          <div>
+            <div class="text-[10.5px] font-bold text-[#9c9fa5]">当月合计</div>
+            <div id="mExtTotal" class="text-[28px] font-black text-[#111111] leading-none mt-1">${extMoney(total)}</div>
+            <div class="text-[10.5px] font-semibold text-[#9c9fa5] mt-1">${monthList.length} 场活动</div>
+          </div>
+          <div class="text-right space-y-1">
+            <div id="mExtPaid" class="text-[11px] font-bold" style="color:#047857">已收 ${extMoney(extIncomeSum(paidList))}</div>
+            <div id="mExtUnpaid" class="text-[11px] font-bold" style="color:#b45309">待收 ${extMoney(extIncomeSum(unpaidList))}</div>
+          </div>
+        </div>
+        <div class="mt-3 flex items-center gap-1 bg-[#f5f2ec] p-0.5 rounded-xl">
+          ${chip('all', '全部')}${chip('unpaid', '待收')}${chip('paid', '已收')}
+        </div>
+        <button id="mExtAdd" class="w-full mt-2.5 py-3 rounded-xl bg-[#111111] text-white text-[12.5px] font-bold flex items-center justify-center gap-1.5 active:opacity-90">
+          <i class="fa-solid fa-plus text-[11px]"></i> 记一笔
+        </button>
+      </div>
+      ${rows.length ? rowHtml : `
+        <div class="lm-card p-8 text-center">
+          <i class="fa-solid fa-briefcase text-xl text-[#d6d3d1] mb-2 block"></i>
+          <div class="text-[11.5px] font-semibold text-[#9c9fa5]">${monthList.length ? '这个筛选下没有记录' : '这个月还没有外部收入'}</div>
+        </div>`}
+    `;
+
+    // 一次性事件委托（box 内容每次重绘，用 onclick 赋值避免重复绑定）
+    box.onclick = (e) => {
+      const f = e.target.closest('[data-mext-filter]');
+      if (f) {
+        mobileExtFilter = f.getAttribute('data-mext-filter') || 'all';
+        renderMobileWorkbench();
+        return;
+      }
+      if (e.target.closest('#mExtPrevMonth')) { mobileExtMonthOffset -= 1; renderMobileWorkbench(); return; }
+      if (e.target.closest('#mExtNextMonth')) { mobileExtMonthOffset += 1; renderMobileWorkbench(); return; }
+      if (e.target.closest('#mExtAdd')) { openMobileExtForm(); return; }
+      const row = e.target.closest('[data-mext-row]');
+      if (row) openMobileExtForm(row.getAttribute('data-mext-row'));
+    };
+  }
+
+  // 表单两组 chip：类型 / 收款状态（与电脑端 extFormSyncChips 同构，id 前缀不同）
+  function mobileExtFormSyncChips() {
+    const tBox = document.getElementById('mExtTypeChips');
+    if (tBox) {
+      tBox.innerHTML = EXT_INCOME_TYPES.map((t) => {
+        const on = t === mobileExtDraftType;
+        const m = extIncomeTypeMeta(t);
+        return `<button type="button" data-mext-type="${t}"${on ? ' data-selected="1"' : ''} class="px-3 py-1.5 rounded-xl text-[11.5px] font-bold border transition"
+          style="background:${on ? m.bg : '#fff'};color:${on ? m.fg : '#78716c'};border-color:${on ? m.fg + '55' : '#efe9e0'}">${t}</button>`;
+      }).join('');
+      tBox.querySelectorAll('[data-mext-type]').forEach((b) => {
+        b.addEventListener('click', () => {
+          mobileExtDraftType = b.getAttribute('data-mext-type');
+          mobileExtFormSyncChips();
+        });
+      });
+    }
+    const pBox = document.getElementById('mExtPaidChips');
+    if (pBox) {
+      pBox.innerHTML = [{ v: false, t: '待收' }, { v: true, t: '已收' }].map((o) => {
+        const on = o.v === mobileExtDraftPaid;
+        const m = extIncomePaidMeta({ paid: o.v });
+        return `<button type="button" data-mext-paid="${o.v ? '1' : '0'}"${on ? ' data-selected="1"' : ''} class="px-3.5 py-1.5 rounded-xl text-[11.5px] font-bold border transition"
+          style="background:${on ? m.bg : '#fff'};color:${on ? m.fg : '#78716c'};border-color:${on ? m.dot + '66' : '#efe9e0'}">${o.t}</button>`;
+      }).join('');
+      pBox.querySelectorAll('[data-mext-paid]').forEach((b) => {
+        b.addEventListener('click', () => {
+          mobileExtDraftPaid = b.getAttribute('data-mext-paid') === '1';
+          mobileExtFormSyncChips();
+        });
+      });
+    }
+  }
+
+  function openMobileExtForm(id) {
+    const x = id ? externalIncomes.find((i) => i.id === id) : null;
+    const today = formatDate(new Date());
+    const set = (elId, v) => { const el = document.getElementById(elId); if (el) el.value = v; };
+    set('mExtEditId', x ? x.id : '');
+    const t = document.getElementById('mobileExtFormTitle');
+    if (t) t.textContent = x ? '编辑外部收入' : '记一笔外部收入';
+    mobileExtDraftType = x ? x.type : '演出';
+    mobileExtDraftPaid = x ? !!x.paid : false;
+    set('mExtActivity', x ? x.activity : '');
+    set('mExtOrg', x ? x.org : '');
+    set('mExtAmount', x ? (x.amount || '') : '');
+    set('mExtStartDate', x ? x.date : today);
+    set('mExtStartTime', x ? x.startTime : '');
+    set('mExtEndDate', x ? (x.endDate || x.date) : today);
+    set('mExtEndTime', x ? x.endTime : '');
+    const delBtn = document.getElementById('btnMExtDelete');
+    if (delBtn) delBtn.classList.toggle('hidden', !x);
+    mobileExtFormSyncChips();
+    showModal('modalMobileExtIncome');
+  }
+
+  function saveMobileExtForm() {
+    const val = (elId) => { const el = document.getElementById(elId); return el ? String(el.value || '').trim() : ''; };
+    const id = val('mExtEditId');
+    const activity = val('mExtActivity');
+    const org = val('mExtOrg');
+    const date = val('mExtStartDate');
+    const startTime = val('mExtStartTime');
+    const endTime = val('mExtEndTime');
+    let endDate = val('mExtEndDate');
+
+    if (!date) { showToast('先选开始日期'); return; }
+    if (!activity) { showToast('活动名称别空着'); return; }
+    const amount = Number(val('mExtAmount') || 0);
+    if (!Number.isFinite(amount) || amount < 0) { showToast('金额填个正数'); return; }
+    if (!endDate) endDate = date;
+    if (endDate < date) { showToast('结束日期不能早于开始日期'); return; }
+    // 同一天却「结束早于开始」= 想跨天（22:00 → 次日 01:30）：自动顺延一天并明确告知
+    let crossNoted = false;
+    if (endDate === date && startTime && endTime && endTime < startTime) {
+      const d = new Date(date + 'T00:00:00');
+      d.setDate(d.getDate() + 1);
+      endDate = formatDate(d);
+      crossNoted = true;
+    }
+
+    pushUndo(id ? '编辑外部收入' : '记一笔外部收入');
+    const saved = upsertExternalIncome({
+      type: mobileExtDraftType, org, activity, amount,
+      paid: mobileExtDraftPaid, date, startTime, endDate, endTime,
+    }, id || null);
+    if (!saved) { showToast('保存失败：数据不完整'); return; }
+
+    // 跳到这条记录所在的月份，否则「存了却看不见」
+    const sd = new Date(saved.date + 'T00:00:00');
+    const now = new Date();
+    mobileExtMonthOffset = (sd.getFullYear() - now.getFullYear()) * 12 + (sd.getMonth() - now.getMonth());
+
+    saveData();
+    renderMobileWorkbench();
+    hideModal('modalMobileExtIncome');
+    showToast(crossNoted
+      ? `已记为跨天：${extTimeText(saved)}（次日）`
+      : (id ? '已更新这条记录' : `已记一笔 ${extMoney(saved.amount)}`));
+  }
+
+  function deleteMobileExtForm() {
+    const el = document.getElementById('mExtEditId');
+    const id = el ? el.value : '';
+    if (!id) return;
+    const x = externalIncomes.find((i) => i.id === id);
+    pushUndo('删除外部收入');
+    deleteExternalIncome(id);
+    saveData();
+    renderMobileWorkbench();
+    hideModal('modalMobileExtIncome');
+    showToast(x && x.activity ? `已删除：${x.activity}` : '已删除这条记录');
+  }
+
   function renderMobileFinance() {
     const container = document.getElementById('mobileFinanceContent');
     if (!container) return;
@@ -7778,6 +8161,7 @@
       checkInLogs: JSON.parse(JSON.stringify(checkInLogs)),
       debts: JSON.parse(JSON.stringify(debts)),
       rechargeLogs: JSON.parse(JSON.stringify(rechargeLogs)),
+      externalIncomes: JSON.parse(JSON.stringify(externalIncomes)),
       label: label || '上一次操作',
       flashId: flashId || '',
     };
@@ -7803,6 +8187,7 @@
     checkInLogs = undoState.checkInLogs;
     debts = undoState.debts;
     if (undoState.rechargeLogs) rechargeLogs = undoState.rechargeLogs;
+    if (undoState.externalIncomes) externalIncomes = undoState.externalIncomes;
     clearUndo();
     saveData();
     pendingReorderId = flashId || null; // 撤销请假时这一行滑回原位

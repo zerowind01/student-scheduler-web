@@ -92,6 +92,13 @@ body:has(#viewHome) {
 .lm-island .nav-tab.font-bold {
   color: #111111;
 }
+/* 6 格（加了「工作台」）：每格收窄一档，否则 375 宽的机器上会顶出岛台。
+   宽度是 layout，glider 的宽度靠 getBoundingClientRect 现读，不用跟着改。 */
+.lm-island.is-6 .nav-tab {
+  width: 50px;
+  font-size: 9.5px;
+  padding: 7px 0;
+}
 /* 玻璃胶囊滑块：半透明磨砂底 + 边缘一圈细高光；位置/宽度由 JS 用 WAAPI 驱动 */
 .lm-island #navGlider {
   position: absolute;

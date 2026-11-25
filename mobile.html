@@ -14,11 +14,11 @@
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="css/tokens.css?v=12">
+  <link rel="stylesheet" href="css/tokens.css?v=13">
   <link rel="stylesheet" href="css/intercom-tokens.css?v=5">
-  <link rel="stylesheet" href="css/styles.css?v=35">
+  <link rel="stylesheet" href="css/styles.css?v=36">
   <!-- 手机端 Intercom 主题（岛台导航/奶油渐变/软陶卡） -->
-  <link rel="stylesheet" href="css/mobile-theme.css?v=34">
+  <link rel="stylesheet" href="css/mobile-theme.css?v=35">
   <!-- GSAP 动效：本地内置优先；缺失才回落 CDN，都失败也只是动效变静态 -->
   <script src="js/vendor/gsap.min.js?v=1"></script>
   <script>
@@ -33,7 +33,7 @@
        Play CDN 当年是把 <style> append 到 head 末尾，工具类实际压过自有样式；
        把这份 CSS 放到 head 前部会翻转层叠顺序（实测 FontAwesome 的 line-height:1
        会反过来盖掉 text-* 的行高，图标盒子从 24px 变 16px）。 -->
-  <link rel="stylesheet" href="css/tailwind.css?v=12">
+  <link rel="stylesheet" href="css/tailwind.css?v=13">
 </head>
 <body class="text-slate-800 font-sans h-[100dvh] flex flex-col overflow-hidden select-none" style="background: var(--surface-page);">
 
@@ -222,6 +222,16 @@
       </div>
     </div>
 
+    <!-- 4. 手机端 工作台（外部收入：演出 / 排练 / 伴奏）视图
+         与财务页隔离：这里记的是课时以外的收入，**不进课消 KPI**（AGENTS 第 70 条） -->
+    <div id="viewWorkbench" class="h-full flex flex-col overflow-hidden hidden">
+      <div class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3" style="padding-bottom: 92px">
+        <div id="mobileWorkbenchContent" class="space-y-3">
+          <!-- 动态渲染：本月合计 + 筛选 + 记录列表 -->
+        </div>
+      </div>
+    </div>
+
     <!-- 4. 手机端 设置视图 -->
     <div id="viewSettings" class="h-full flex flex-col overflow-hidden hidden">
       <div class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3">
@@ -272,7 +282,7 @@
     <i class="fa-solid fa-plus"></i>
   </button>
 
-  <nav class="lm-island">
+  <nav class="lm-island is-6">
     <div id="navGlider" aria-hidden="true"></div>
     <button id="navTabHome" class="nav-tab font-bold text-[#111111]" data-view="home">
       <i class="fa-solid fa-house text-base fn-home is-active"></i>
@@ -290,6 +300,10 @@
       <i class="fa-solid fa-coins text-base fn-finance"></i>
       <span>财务</span>
       <span id="mobileNavDebtBadge" class="hidden absolute top-0 right-1 w-2 h-2 rounded-full bg-[#ff2067]"></span>
+    </button>
+    <button id="navTabWork" class="nav-tab font-medium" data-view="workbench">
+      <i class="fa-solid fa-briefcase text-base fn-workbench"></i>
+      <span>工作台</span>
     </button>
     <button id="navTabSettings" class="nav-tab font-medium" data-view="settings">
       <i class="fa-solid fa-gear text-base fn-settings"></i>
@@ -310,6 +324,60 @@
       <div id="mobilePendingSub" class="text-[11px] font-semibold text-[#9c9fa5]"></div>
       <div id="mobilePendingList" class="space-y-2"><!-- 动态渲染 --></div>
       <div class="text-[10.5px] text-[#9c9fa5] leading-relaxed">点整行可记请假 / 改期 / 删除；右侧「消课」直接扣课时并记一笔流水。</div>
+    </div>
+  </div>
+
+  <!-- 工作台 · 记一笔外部收入（手机端底部抽屉）。字段对齐 Notion 表：
+       类型 / 单位 / 活动 / 金额 / 收款状态 / 开始时间 / 结束时间 -->
+  <div id="modalMobileExtIncome" role="dialog" aria-modal="true" aria-labelledby="mobileExtFormTitle" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-end justify-center z-50 hidden transition-opacity">
+    <div class="bg-white lm-sheet w-full max-h-[92dvh] overflow-y-auto p-5 space-y-3.5 text-xs transform transition-all modal-box" style="padding-bottom: calc(1.5rem + env(safe-area-inset-bottom))">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <h3 id="mobileExtFormTitle" class="font-bold text-base text-slate-800">记一笔外部收入</h3>
+        <button id="btnCloseMobileExt" aria-label="关闭" class="text-slate-400 hover:text-slate-700 transition">
+          <i class="fa-solid fa-xmark text-xl"></i>
+        </button>
+      </div>
+      <input type="hidden" id="mExtEditId">
+      <div>
+        <label class="block font-bold text-slate-700 mb-1.5">类型</label>
+        <div id="mExtTypeChips" class="flex flex-wrap gap-1.5"></div>
+      </div>
+      <div>
+        <label for="mExtActivity" class="block font-bold text-slate-700 mb-1.5">活动 <span class="text-rose-500">*</span></label>
+        <input id="mExtActivity" type="text" placeholder="如：新年音乐会 · 钢琴伴奏" class="lm-ext-input">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label for="mExtOrg" class="block font-bold text-slate-700 mb-1.5">单位</label>
+          <input id="mExtOrg" type="text" placeholder="主办方 / 客户" class="lm-ext-input">
+        </div>
+        <div>
+          <label for="mExtAmount" class="block font-bold text-slate-700 mb-1.5">金额（元）</label>
+          <input id="mExtAmount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0" class="lm-ext-input">
+        </div>
+      </div>
+      <div>
+        <label class="block font-bold text-slate-700 mb-1.5">开始时间</label>
+        <div class="flex gap-2">
+          <input id="mExtStartDate" type="date" class="lm-ext-input">
+          <input id="mExtStartTime" type="time" class="lm-ext-input w-[104px] shrink-0">
+        </div>
+      </div>
+      <div>
+        <label class="block font-bold text-slate-700 mb-1.5">结束时间 <span class="text-[#9c9fa5] font-medium">留空 = 当天</span></label>
+        <div class="flex gap-2">
+          <input id="mExtEndDate" type="date" class="lm-ext-input">
+          <input id="mExtEndTime" type="time" class="lm-ext-input w-[104px] shrink-0">
+        </div>
+      </div>
+      <div>
+        <label class="block font-bold text-slate-700 mb-1.5">收款状态</label>
+        <div id="mExtPaidChips" class="flex gap-1.5"></div>
+      </div>
+      <div class="flex items-center gap-2 pt-1">
+        <button id="btnMExtDelete" class="hidden px-3 py-3 rounded-xl text-rose-600 bg-rose-50 border border-rose-200 font-bold">删除</button>
+        <button id="btnMExtSave" class="flex-1 py-3 rounded-xl bg-[#111111] text-white font-bold">保存</button>
+      </div>
     </div>
   </div>
 
@@ -811,7 +879,7 @@
     </div>
   </div>
 
-  <script src="js/mobile.js?v=94"></script>
+  <script src="js/mobile.js?v=95"></script>
   <!-- 老师访问码登录遮罩（管理员数据加载后自动隐藏） -->
   <div id="teacherLoginGate" class="hidden fixed inset-0 z-[90] lm-gate flex flex-col items-center justify-center px-8">
     <div class="w-14 h-14 rounded-2xl bg-[#111111] flex items-center justify-center text-white shadow-lg mb-4">

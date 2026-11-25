@@ -1170,3 +1170,43 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       护栏：① 还原「消课按钮不挂 lm-mini-btn」→ 2 红（A4/A5，复现 24×16 裸按钮）；
       ② 去掉 `pendingIgnored` 过滤 → 3 红（B1/B2/C8）。
     - 版本 app.js?v=79 / mobile.js?v=94 / tailwind.css?v=12 / sw v142。
+
+70. **工作台 · 外部收入：独立账本，绝不并进课消**（2026-11-25，Jackson：
+    「增加一个工作台入口，并入 lessonmate，记录外部收入（演出/排练/伴奏活动）」）
+    - 定位：课时以外的活动收入（演出 / 排练 / 伴奏），跟财务页**平级但不相干**。
+      Jackson 明确选了「单独记账，不进 KPI」—— 财务页本月课消那几个数字一个字都不能被它影响。
+    - **字段严格按他的 Notion 表 7 列**：`type` 类型 / `org` 单位 / `activity` 活动 /
+      `amount` 金额 / `paid` 收款状态（true=已收，false=待收）/ `date`+`startTime` 开始时间 /
+      `endDate`+`endTime` 结束时间。**别自作主张加备注、税后、分账**——列多了他会问「这哪来的」。
+      内部字段只有 `id`（`ei_` 前缀）与 `createdAt`。
+    - 独立集合 `edu_scheduler_external_incomes_v2`，照 `rechargeLogs` 的模式接 8 个点：
+      顶部声明 / `loadData` / `pushToCloudSync` / `pullFromCloudSync`（**`Array.isArray` 判断，
+      远端缺键保留本地**）/ `BroadcastChannel` / `saveDataLocalOnly` / `pushUndo`+`runUndo` /
+      `exportScheduleData`。手机端还有 `msetExport`（设置页导出剪贴板）那一处。
+    - **归月按开始日期** `date`（和课消 `logLocalDate` 同口径：看「这场是什么时候演的」）；
+      收款状态只影响「待收 / 已收」两个数字，**不影响归月、不影响合计**。
+    - `extMoney()` 与全站 `fmtMoney()` **故意不同**：`fmtMoney` 取整（¥800），外部收入常有
+      「1200.5 这种报价」，所以整数不带小数、有零头保留两位（¥1200.50）。别顺手统一掉。
+    - **跨天**：`endDate !== date` 就是跨天（22:00 → 次日 01:30）。表单里「同一天却结束早于开始」
+      自动顺延到次日并用 toast 说明（`crossNoted`），不要静默改、也不要弹错误框让人反复试。
+      显示上跨天文案放在**单位那一行**（`万达广场 · 跨天至 11/25`）：日期列只有 108px，
+      多两个字就折成三行（第一版就是塞在时间段里，截图一看三条都变三行）。
+    - **手输文本必须转义**：`activity` / `org` 是用户随手打的，插 innerHTML 前过 `extEsc()`。
+      项目里其它地方（学员名等）是受控数据没转义，这里是唯一的例外，别当反模式删掉。
+    - UI：电脑端左侧导航第 6 个 `nav-page-btn[data-page="workbench"]` + `section#pageWorkbench`
+      （`PAGE_IDS` 要加，`switchPage` 里 `page === 'workbench'` 才渲染）；
+      手机端底部导航第 6 格 `#navTabWork` + `#viewWorkbench`（`MOBILE_VIEWS` 要加）。
+      ⚠️ 手机岛台 6 格必须给 `<nav class="lm-island is-6">`：`.nav-tab` 宽度是写死的 58px，
+      6×58 在 375 屏上会顶出去，`is-6` 收到 50px / 9.5px。glider 宽度靠 `getBoundingClientRect`
+      现读，不用跟着改。
+    - KPI 四格：当月合计 / 已收 / 待收 / 平均每场（`data-ext-kpi="total|paid|unpaid|avg"`，
+      回归按这个读数字）。筛选只影响列表，**不影响 KPI**。
+    - 保存后把 `extMonthOffset` 挪到该记录所在月份，否则「存了却看不见」（记的是上个月的场次时必然踩）。
+    - 回归 `tmp/workbench-check.mjs` **80 项**：A 入口与默认渲染 / B 记一笔（含隔离性：
+      不写 checkInLogs、不写 rechargeLogs、不动课时余额）/ C 编辑不新增 / D 筛选 / E 归月不串月 /
+      F 跨天顺延 / G 删除 / H 转义 + 云同步 payload 含 externalIncomes / I 手机端同构 + 6 格不溢出 /
+      J 财务页看不到外部收入。
+      护栏：① 外部收入顺手 push 进 checkInLogs → 1 红（B15）；② 去掉归月过滤 → 10 红；
+      ③ 去掉 `extEsc` 转义 → 3 红；④ 去掉 `.lm-island.is-6` 收窄 → 1 红（I3，格宽 55.3）。
+    - 版本 app.js?v=80 / mobile.js?v=95 / tokens v13 / styles v36 / mobile-theme v35 /
+      tailwind v13 / sw v143。

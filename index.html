@@ -20,8 +20,8 @@
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="css/tokens.css?v=12">
-  <link rel="stylesheet" href="css/styles.css?v=35">
+  <link rel="stylesheet" href="css/tokens.css?v=13">
+  <link rel="stylesheet" href="css/styles.css?v=36">
   <link rel="stylesheet" href="css/legacy-tokens.css?v=15">
   <!-- GSAP 动效：本地内置优先（cdnjs 曾实测超时，CDN 挂掉会让全部 GSAP 动效静默消失）。
        本地缺失时才回落到 CDN；两者都失败也不影响功能——anim.js 检测不到 window.gsap 会退化为静态。 -->
@@ -36,7 +36,7 @@
        改完 class 要重新生成：tools\build-tailwind.cmd
        ⚠ 必须留在 </head> 之前（即所有自有样式之后），复刻 Play CDN 把 <style>
        append 到 head 末尾的层叠顺序；挪到前面会翻转优先级。 -->
-  <link rel="stylesheet" href="css/tailwind.css?v=12">
+  <link rel="stylesheet" href="css/tailwind.css?v=13">
 </head>
 <body class="text-[#111111] font-sans h-screen flex flex-col overflow-hidden select-none" style="background: var(--surface-page);">
 
@@ -130,6 +130,9 @@
       <button class="nav-page-btn flex flex-row items-center justify-center w-32 py-1.5 rounded-xl text-[13px] font-bold gap-2.5 transition text-[#78716c] hover:text-[#111111] relative" data-page="finance" title="财务">
         <i class="fa-solid fa-coins text-xl w-6 text-center fn-finance"></i><span>财务</span>
         <span id="navDebtBadge" class="hidden absolute top-1 right-1.5 w-2 h-2 rounded-full bg-rose-500"></span>
+      </button>
+      <button class="nav-page-btn flex flex-row items-center justify-center w-32 py-1.5 rounded-xl text-[13px] font-bold gap-2.5 transition text-[#78716c] hover:text-[#111111]" data-page="workbench" title="工作台 · 外部收入">
+        <i class="fa-solid fa-briefcase text-xl w-6 text-center fn-workbench"></i><span>工作台</span>
       </button>
       <button class="nav-page-btn flex flex-row items-center justify-center w-32 py-1.5 rounded-xl text-[13px] font-bold gap-2.5 transition text-[#78716c] hover:text-[#111111]" data-page="settings" title="设置">
         <i class="fa-solid fa-gear text-xl w-6 text-center fn-settings"></i><span>设置</span>
@@ -405,6 +408,43 @@
         <h2 class="text-lg font-black text-[#111111] flex items-center gap-2"><i class="fa-solid fa-coins text-[#78716c]"></i> 财务经营</h2>
         <div id="pageFinanceContent" class="space-y-4">
           <!-- 动态渲染：本月经营 + 收入明细 + 欠课名单 -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 分页：工作台（外部收入：演出 / 排练 / 伴奏） ============ -->
+    <!-- 记的是课时以外的活动收入，**不进课消 KPI、不进 checkInLogs**（AGENTS 第 70 条）。
+         字段对齐 Jackson 的 Notion 表：类型 / 单位 / 活动 / 金额 / 收款状态 / 开始时间 / 结束时间 -->
+    <section id="pageWorkbench" class="flex-1 overflow-y-auto custom-scrollbar bg-[#faf8f3] hidden p-4 md:p-6">
+      <div class="max-w-6xl mx-auto space-y-4">
+        <div class="flex items-start justify-between flex-wrap gap-3">
+          <div>
+            <h2 class="text-lg font-black text-[#111111] flex items-center gap-2"><i class="fa-solid fa-briefcase text-[#78716c]"></i> 工作台 · 外部收入</h2>
+            <div class="text-[11px] text-[#a8a29e] font-semibold mt-0.5">演出 / 排练 / 伴奏等课时以外的活动收入，单独记账（不计入课消 KPI）</div>
+          </div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <div class="flex items-center gap-1 bg-[#f5f2ec]/80 p-0.5 rounded-lg border border-[#efe9e0]/60">
+              <button id="btnExtPrevMonth" title="上个月" class="px-2 py-1 rounded-md text-[#57534e] hover:bg-white hover:shadow-2xs transition text-xs font-medium"><i class="fa-solid fa-chevron-left text-[10px]"></i></button>
+              <span id="extMonthLabel" class="px-1 text-xs font-bold text-[#44403c] min-w-[78px] text-center">—</span>
+              <button id="btnExtNextMonth" title="下个月" class="px-2 py-1 rounded-md text-[#57534e] hover:bg-white hover:shadow-2xs transition text-xs font-medium"><i class="fa-solid fa-chevron-right text-[10px]"></i></button>
+              <button id="btnExtThisMonth" class="px-2 py-1 rounded-md bg-white shadow-2xs text-[#57534e] hover:shadow-sm transition text-xs font-semibold">本月</button>
+            </div>
+            <button id="btnExtAdd" class="px-3.5 py-2 rounded-xl bg-[#111111] text-white text-xs font-bold hover:bg-[#2b2b2b] transition flex items-center gap-1.5">
+              <i class="fa-solid fa-plus"></i> 记一笔
+            </button>
+          </div>
+        </div>
+        <div id="extKpiRow" class="grid grid-cols-2 lg:grid-cols-4 gap-4"><!-- KPI 卡动态渲染 --></div>
+        <div class="bg-white border border-[#efe9e0] rounded-2xl overflow-hidden">
+          <div class="flex items-center justify-between gap-3 px-4 py-3 border-b border-[#f0ebe2] flex-wrap">
+            <div id="extListTitle" class="text-[13px] font-bold text-[#111111]">本月记录</div>
+            <div id="extFilterBar" class="flex items-center gap-1 bg-[#f5f2ec] p-0.5 rounded-lg text-[11px] font-bold">
+              <button data-ext-filter="all" class="px-2.5 py-1 rounded-md bg-white shadow-2xs text-[#111111] transition">全部</button>
+              <button data-ext-filter="unpaid" class="px-2.5 py-1 rounded-md text-[#78716c] transition">待收</button>
+              <button data-ext-filter="paid" class="px-2.5 py-1 rounded-md text-[#78716c] transition">已收</button>
+            </div>
+          </div>
+          <div id="extListBody"><!-- 记录列表动态渲染 --></div>
         </div>
       </div>
     </section>
@@ -1056,9 +1096,70 @@
     </div>
   </div>
 
+  <!-- 工作台 · 记一笔外部收入（新增 / 编辑共用）。字段对齐 Notion 表：
+       类型 / 单位 / 活动 / 金额 / 收款状态 / 开始时间 / 结束时间 -->
+  <div id="modalExtIncome" role="dialog" aria-modal="true" class="fixed inset-0 bg-[#1c1917]/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
+    <div class="bg-white rounded-2xl shadow-2xl border border-[#f2ece4] w-full sm:w-[520px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
+      <div class="bg-[#111111] px-5 py-3.5 text-white flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-briefcase text-[#d6d3d1] text-lg"></i>
+          <h3 id="extFormTitle" class="font-bold text-sm sm:text-base">记一笔外部收入</h3>
+        </div>
+        <button id="btnCloseExtModal" aria-label="关闭" class="text-[#d6d3d1] hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+      <div class="p-5 space-y-3.5 text-xs">
+        <input id="extEditId" type="hidden" value="">
+        <div>
+          <label class="block font-bold text-[#44403c] mb-1.5">类型</label>
+          <div id="extTypeChips" class="flex flex-wrap gap-1.5"></div>
+        </div>
+        <div>
+          <label for="extActivity" class="block font-bold text-[#44403c] mb-1.5">活动</label>
+          <input id="extActivity" type="text" placeholder="如：新年音乐会 · 钢琴伴奏" class="lm-ext-input">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label for="extOrg" class="block font-bold text-[#44403c] mb-1.5">单位</label>
+            <input id="extOrg" type="text" placeholder="主办方 / 客户" class="lm-ext-input">
+          </div>
+          <div>
+            <label for="extAmount" class="block font-bold text-[#44403c] mb-1.5">金额（元）</label>
+            <input id="extAmount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0" class="lm-ext-input">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-bold text-[#44403c] mb-1.5">开始时间</label>
+            <div class="flex gap-1.5">
+              <input id="extStartDate" type="date" class="lm-ext-input">
+              <input id="extStartTime" type="time" class="lm-ext-input w-[102px] shrink-0">
+            </div>
+          </div>
+          <div>
+            <label class="block font-bold text-[#44403c] mb-1.5">结束时间 <span class="text-[#a8a29e] font-medium">留空=当天</span></label>
+            <div class="flex gap-1.5">
+              <input id="extEndDate" type="date" class="lm-ext-input">
+              <input id="extEndTime" type="time" class="lm-ext-input w-[102px] shrink-0">
+            </div>
+          </div>
+        </div>
+        <div>
+          <label class="block font-bold text-[#44403c] mb-1.5">收款状态</label>
+          <div id="extPaidChips" class="flex gap-1.5"></div>
+        </div>
+      </div>
+      <div class="px-5 py-3.5 border-t border-[#f0ebe2] flex items-center gap-2">
+        <button id="btnExtDelete" class="hidden px-3 py-2 rounded-xl text-rose-600 bg-rose-50 border border-rose-200 font-bold transition hover:bg-rose-100">删除</button>
+        <div class="flex items-center gap-2 ml-auto">
+          <button id="btnExtCancel" class="px-4 py-2 rounded-xl border border-[#efe9e0] text-[#57534e] font-bold transition hover:bg-[#faf8f3]">取消</button>
+          <button id="btnExtSave" class="px-5 py-2 rounded-xl bg-[#111111] text-white font-bold transition hover:bg-[#2b2b2b]">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 课程类型（courseTypes）下拉候选：排课科目 / 学员课程包名称共用 -->
   <datalist id="courseTypesList"></datalist>
-
   <!-- 课程类型管理 Modal 弹窗 -->
   <div id="modalCourseTypes" role="dialog" aria-modal="true" class="fixed inset-0 bg-[#1c1917]/40 backdrop-blur-xs flex items-center justify-center z-50 hidden transition-opacity p-2 sm:p-0">
     <div class="bg-white rounded-2xl shadow-2xl border border-[#f2ece4] w-full sm:w-[480px] max-h-[92vh] overflow-y-auto transform transition-all scale-95 opacity-0 modal-box">
@@ -1255,7 +1356,7 @@
   </div>
 
   <!-- JavaScript 代码 -->
-  <script src="js/app.js?v=79"></script>
+  <script src="js/app.js?v=80"></script>
   <script>
     // PWA：注册 Service Worker（file:// 打开时跳过）
     if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {

@@ -858,3 +858,38 @@ button, a, select, input, textarea {
   }
 }
 
+
+/* ==========================================================================
+   工作台 · 外部收入表单输入（电脑端 modal / 手机端 sheet 共用）
+   两端都引 styles.css，所以只写这一处
+   ========================================================================== */
+.lm-ext-input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid #efe9e0;
+  background: #faf8f3;
+  color: #111111;
+  font-size: 12px;
+  font-weight: 600;
+  outline: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.lm-ext-input:focus {
+  border-color: #a8a29e;
+  background: #ffffff;
+}
+/* 日期/时刻控件在 Chrome 里有默认最小宽度，两列并排时会顶破卡片 */
+.lm-ext-input[type='date'],
+.lm-ext-input[type='time'] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+/* 手机端：iOS 上 font-size < 16px 会在聚焦时自动缩放整页 */
+@media (max-width: 767px) {
+  .lm-ext-input {
+    font-size: 16px;
+    padding: 10px;
+  }
+}
