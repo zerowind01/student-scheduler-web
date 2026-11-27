@@ -1434,4 +1434,32 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       `calSelected === todayStr`，首页今日课固定 true），是判定函数自己漏了这一半条件。
     - 修法：`live` 分支同样加 `isToday` 守门；非今天的课落回 `todo`（待上课），与 `due` 的
       口径一致。桌面端没有「正在上课」徽章（月视图只分已消课/请假/待上课），不用改。
+    - 2026-11-27 已推送部署：GitHub 提交 5e6717a（本地与远程 SHA 一致），Cloudflare 部署
+      b155664e（含 Functions bundle）；线上验证：生产站 app.js?v=92、mobile.js?v=107、
+      下发的 mobile.js 里有修复后的那行、GET /api/sync?meta=1 回 JSON、POST/GET 探针
+      （key=test_probe_20261127）往返通过。教训：同步探针 POST 必须在 URL 里带 `?key=探针key`，
+      key 只从 URL 取、不从 body 取——不带会写进默认 `school_demo_2026`（本次误写后已按
+      11-26 查到的内容原样恢复：仅 1 位老师张老师 t1、其余为空，版本号 1789722824423）。
+
+84. **启动强制拉取盖掉没推上去的本地数据：pending 守卫只在内存里，重启就没了**（2026-11-27，Jackson 报障）
+    - 现象：这周新记的数据回退了，旧数据还在；手机上看，电脑没开过；同步码是自己创建的（不是默认码）。
+      自检：上次推送「从未」（只反映当前会话）、云端版本 v=1795745418818（= 当天 10:10:18）、快照 551 KB。
+    - 根因链：① 11-23–25 推送失败（405 时期）→ 这周的数据只存在手机本地，云端还是旧快照；
+      ② 启动时 `pullFromCloudSync(true)` 强制拉取、不看版本号，把本地这周的数据盖掉；
+      ③ 随后延迟推送又把盖掉后的状态推回云端，手机和云端都只剩旧数据。防「本地没推完」的
+      `pendingPushPayload` 守卫只在内存里，重启就丢了 —— 启动拉取撞上的正是这个空档。
+      10:10 那次云端写入就是手机盖掉后推回去的，在部署（10:14）之前，部署不是触发原因；
+      探针也没有关系（用户的码不是默认码，没碰到他的云端数据）。
+    - 修法（两端同语义）：localStorage 里加持久 dirty 旗 `edu_scheduler_dirty`。
+      `pushToCloudSync` 立旗（与 `pendingPushPayload` 同一处）；推成功才倒旗（期间又改了就留着，
+      与 pending 的「期间又改了就把新的留着」同一条件）；换同步码时清旗（旧码的未推数据绝不能
+      拦住新码的拉取）；`pullFromCloudSync` 与 BroadcastChannel 接广播时都先看这面旗，有旗就让路。
+      启动时改为「有旗先推、再拉」：`if (isSyncDirty()) pushToCloudSync();` 在强制拉取之前，
+      推调用会同步把 pending 立起来，后面的拉取看到它就让路；推成功后 15 秒轮询自会拉新数据。
+      自检「待推送」也改成看 `pendingPushPayload || isSyncDirty()`，重载后不再谎报「无」。
+      入口/加码/换码处的强制拉取不动 —— 刚加入一把码本来就要拉取那把码的数据。
+    - 核对：`/tmp/sync-dirty-check.mjs`（状态机模拟，5 项全过）：① 事故重演新代码本地保住、云端补齐；
+      ② 同一事故改前代码一定丢数据（护栏自检）；③ 干净时别处新数据仍能拉下来；④ 重载后仍推失败时
+      本地安全、旗立着等重试；⑤ 换码后旧旗清掉、新码拉取正常。
+    - 版本 app.js v93 / mobile.js v108 / sw v156。
     - 版本 app.js v92 / mobile.js v107 / sw v155。

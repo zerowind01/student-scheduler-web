@@ -4278,6 +4278,20 @@
   let lastPushError = '';          // 最近一次推送失败的真实原因（设置页自检要显示，别只说「不行」）
   let lastPushAt = 0;              // 最近一次尝试推送的时间
 
+  // 本地未推完标志（2026-11-27）：pendingPushPayload 只在内存里，重启就丢，
+  // 启动时的强制拉取就会把没推上去的本地数据盖掉（11-27 事故：这周新记的数据被旧快照回滚）。
+  // 这面旗存在 localStorage：有改动就立，推成功才倒；拉取与广播看到它都必须先让路。
+  const SYNC_DIRTY_KEY = 'edu_scheduler_dirty';
+  function isSyncDirty() {
+    try { return localStorage.getItem(SYNC_DIRTY_KEY) === '1'; } catch (e) { return false; }
+  }
+  function markSyncDirty() {
+    try { localStorage.setItem(SYNC_DIRTY_KEY, '1'); } catch (e) {}
+  }
+  function clearSyncDirty() {
+    try { localStorage.removeItem(SYNC_DIRTY_KEY); } catch (e) {}
+  }
+
   async function pushToCloudSync() {
     saveDataLocalOnly();
     if (!schoolSyncKey) return;
@@ -4306,6 +4320,7 @@
     }
 
     pendingPushPayload = payload;
+    markSyncDirty();
     await sendPendingPush();
   }
 
@@ -4324,7 +4339,8 @@
       if (!pushRes.ok) throw new Error(`cloud push failed: ${pushRes.status}`);
       // 写进云端才算同步过：这一行必须留在 POST 成功之后（提前写会让本机再也拉不到别人的更新）
       localStorage.setItem('edu_scheduler_last_sync_time', String(payload.updatedAt));
-      if (pendingPushPayload === payload) pendingPushPayload = null; // 期间又改了就把新的留着
+      // 推成功才倒 dirty 旗；期间又改了（pending 已是新的一份）就留着，别把新改动也当成已推。
+      if (pendingPushPayload === payload) { pendingPushPayload = null; clearSyncDirty(); }
       cloudSyncFailedOnce = false;
       lastPushError = '';
       pushRetryDelay = PUSH_RETRY_BASE_MS;
@@ -4372,7 +4388,7 @@
     const snapshot = { students, schedules, teachers, courseTypes, checkInLogs, debts, rechargeLogs, externalIncomes, extProjects };
     const bytes = JSON.stringify(snapshot).length;
     lines.push(`快照体积：${(bytes / 1024).toFixed(0)} KB${bytes > 900 * 1024 ? ' ⚠️ 接近/超过 Upstash 1MB 上限' : ''}`);
-    lines.push(`待推送：${pendingPushPayload ? '有（上次没推上去）' : '无'}`);
+    lines.push(`待推送：${(pendingPushPayload || isSyncDirty()) ? '有（上次没推上去）' : '无'}`);
     lines.push(`上次推送：${lastPushAt ? new Date(lastPushAt).toLocaleTimeString('zh-CN') : '从未'}${lastPushError ? '' : '（没有失败记录）'}`);
     if (lastPushError) lines.push(`上次错误：${lastPushError}`);
     if (!schoolSyncKey) { lines.push('—— 没有同步码，跳过探测 ——'); return lines.join('\n'); }
@@ -4411,7 +4427,9 @@
 
   async function pullFromCloudSync(force = false) {
     // 本地还有没推上去的改动 → 先别拉，否则云端旧快照会把刚改的数据盖掉（重推成功后才放开）
-    if (!schoolSyncKey || isPullingFromCloud || isPushingToCloud || pendingPushPayload) return;
+    // 2026-11-27：只看内存里的 pendingPushPayload 不够 —— 重启后它就没了，启动强制拉取照样盖数据；
+    // 再看 localStorage 里的 dirty 旗，它是持久的。
+    if (!schoolSyncKey || isPullingFromCloud || isPushingToCloud || pendingPushPayload || isSyncDirty()) return;
 
     try {
       isPullingFromCloud = true;
@@ -4477,6 +4495,8 @@
       bc.onmessage = (event) => {
         // 自己发的广播不处理：数据已在内存里，再走一遍全量重渲染只会打断进行中的动效
         if (event.data && event.data.__ctx === LM_CTX) return;
+        // 本地有没推上去的改动时不接别处的广播 —— 接了等于把本地新数据盖掉；推成功后轮询自会拉到。
+        if (pendingPushPayload || isSyncDirty()) return;
         if (event.data && event.data.updatedAt) {
           students = event.data.students || students;
           schedules = (event.data.schedules || schedules).map(normalizeSchedule);
@@ -4609,7 +4629,7 @@
     localStorage.setItem('edu_scheduler_school_key', val);
     // 换了同步码：上一把 key 的待推快照绝不能推给新机构（会串数据）。
     // 但重存同一个码时不能丢 —— 那份还没推上去，丢了就永远停在「仅本机」。
-    if (prevKey !== val) pendingPushPayload = null;
+    if (prevKey !== val) { pendingPushPayload = null; clearSyncDirty(); }
     clearTimeout(pushRetryTimer);
     pushRetryTimer = null;
     pushRetryDelay = PUSH_RETRY_BASE_MS;
@@ -4809,6 +4829,10 @@
     renderMobileTeacherSelect();
     renderCalendar();
     renderMobileStudents();
+    // 2026-11-27：先把上次没推上去的本地数据推上去，再拉。pushToCloudSync 会同步把
+    // pendingPushPayload 立起来，后面的强制拉取看到它就让路；推成功后轮询自会拉新数据。
+    // 直接拉会把本地新数据盖掉（11-27 事故）。
+    if (isSyncDirty()) pushToCloudSync();
     pullFromCloudSync(true).then(() => {
       if (typeof renderMobileHome === 'function') renderMobileHome();
     });
