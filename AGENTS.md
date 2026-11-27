@@ -1425,3 +1425,13 @@ npx wrangler pages deploy . --project-name lesson-mate --branch main --commit-di
       编辑用项目自己的老师。手机端老师登录态（`teacherSession`）时视角强制只看自己、下拉不显示，
       新建项目也锁死是自己。老入口兜底自动建项目时，视角是某老师就归该老师，否则留空等迁移。
     - 版本 app.js v91 / mobile.js v106 / sw v154。
+
+83. **「正在上课」只在今天才标：别的日期同一时间段的课也被标成正在上课**（2026-11-27，Jackson 报障）
+    - 现象：当前时间 10:12，课表上其它日期 10:00 的课也显示「正在上课」。
+    - 根因：手机端 `resolveStatusKey()`（`js/mobile.js`，状态判定唯一口径）里 `live` 分支只比
+      时间段（`nowHM >= startTime && nowHM < endHM`），没看 `isToday`；而 `due`（待消课）分支
+      早就用 `isToday` 守住了。调用方传的 `isToday` 本来就是对的（周/月档选中日清单按
+      `calSelected === todayStr`，首页今日课固定 true），是判定函数自己漏了这一半条件。
+    - 修法：`live` 分支同样加 `isToday` 守门；非今天的课落回 `todo`（待上课），与 `due` 的
+      口径一致。桌面端没有「正在上课」徽章（月视图只分已消课/请假/待上课），不用改。
+    - 版本 app.js v92 / mobile.js v107 / sw v155。

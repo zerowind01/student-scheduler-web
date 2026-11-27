@@ -6434,6 +6434,7 @@
 
   // 状态判定：done / leave / leavePend / leaveDone / live / due / todo（首页今日课时与日历共用一份口径）。
   // isToday=false（在看别的日期）时不标「待消课」——那些课只是还没走到，标了会误导。
+  // 「正在上课」同样只在今天才标：不看日期只比时间，会把别的日期同一时间段的课全标成正在上课。
   // 请假再分三态：待补（needMakeup 且未补）/ 已补（补课已核销）/ 普通请假（用户选了不补）。
   function resolveStatusKey(s, isToday) {
     if (s.status === SCHEDULE_STATUS.COMPLETED) return 'done';
@@ -6448,7 +6449,7 @@
     const end = new Date();
     end.setHours(h, m + (s.durationMinutes || 45), 0, 0);
     const endHM = `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`;
-    if (nowHM >= (s.startTime || '00:00') && nowHM < endHM) return 'live';
+    if (isToday && nowHM >= (s.startTime || '00:00') && nowHM < endHM) return 'live';
     if (isToday && nowHM >= endHM) return 'due';
     return 'todo';
   }
